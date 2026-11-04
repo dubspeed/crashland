@@ -108,17 +108,20 @@ export function createHud() {
     cls(tq, Math.abs(s.torqueCom) > S.RCS_TORQUE * 0.7 ? 'bad' : Math.abs(s.torqueCom) > 2500 ? 'warn' : '');
 
     // controls state
-    $('v-limit').textContent = `${fmt(s.limit * 100)} %`;
-    const lim = $('c-limit');
-    if (document.activeElement !== lim) lim.value = Math.round(s.limit * 100);
+    const lever = $('c-lever');
+    lever.querySelector('.fill').style.height = `${s.throttle * 100}%`;
+    lever.querySelector('.mark').style.bottom = `${s.limit * 100}%`;
+    lever.querySelector('.mark span').textContent = `${fmt(s.limit * 100)} %`;
+    lever.setAttribute('aria-valuenow', Math.round(s.limit * 100));
     const sas = $('c-sas');
     sas.textContent = `Lageregler: ${{ retro: 'Retro', up: 'Senkrecht', off: 'Aus' }[s.sas || 'off']}`;
     sas.classList.toggle('on', !!s.sas);
     $('c-feed').textContent = `Tanks: ${{ LR: 'L+R', L: 'nur L', R: 'nur R' }[s.feed]}`;
     $('c-feed').classList.toggle('on', s.feed !== 'LR');
-    $('c-thrust').classList.toggle('on', s.throttle > 0);
-    $('c-left').classList.toggle('on', input.rcs > 0);
-    $('c-right').classList.toggle('on', input.rcs < 0);
+    lever.classList.toggle('on', s.throttle > 0);
+    const rcs = $('c-rcs');
+    rcs.classList.toggle('on', input.rcs !== 0);
+    rcs.querySelector('.knob').style.transform = `translateX(${-input.rcs * (rcs.clientWidth / 2 - 22)}px)`;
 
     // alerts, most important first
     const al = $('alert');

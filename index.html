@@ -49,20 +49,20 @@
     </section>
 
     <div id="controls">
-      <div class="grp">
-        <button id="c-left" class="pad" aria-label="Nach links drehen">◀</button>
-        <button id="c-right" class="pad" aria-label="Nach rechts drehen">▶</button>
-      </div>
-      <div class="grp col">
-        <label for="c-limit">Schubbegrenzer <b id="v-limit"></b></label>
-        <input id="c-limit" type="range" min="0" max="100" step="1" value="100" />
-        <div class="row">
+      <div class="left">
+        <div class="toggles">
           <button id="c-sas" class="tog"></button>
           <button id="c-feed" class="tog"></button>
           <button id="c-com" class="tog">Schwerpunkt</button>
         </div>
+        <div id="c-rcs" class="rcs" role="slider" aria-label="Drehen: links oder rechts auf das Feld drücken" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">
+          <span class="lbl"><b>◀</b> DREHEN <b>▶</b></span><i class="knob"></i>
+        </div>
       </div>
-      <button id="c-thrust" class="thrust">SCHUB<small>Leertaste halten</small></button>
+      <div id="c-lever" class="lever" role="slider" aria-label="Schubhebel: drücken und hoch oder runter ziehen" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+        <div class="fill"></div><div class="mark"><span></span></div>
+        <span class="lbl">SCHUB</span>
+      </div>
     </div>
   </div>
 
@@ -73,7 +73,8 @@
       <p class="lead">Dein Lander fällt antriebslos auf den Planeten. Zünde den Haupt&shy;antrieb so spät wie möglich und so kurz wie nötig: der <b>Suicide Burn</b>. Achte dabei auf Treibstoff, G-Last der Crew und Batterie.</p>
       <div id="planets"></div>
       <div id="window-info"></div>
-      <p class="keys"><kbd>Leertaste</kbd> Schub · <kbd>W</kbd>/<kbd>S</kbd> Schubbegrenzer · <kbd>A</kbd>/<kbd>D</kbd> drehen · <kbd>T</kbd> Lageregler · <kbd>F</kbd> Tankventile · <kbd>C</kbd> Schwerpunkt · <kbd>R</kbd> Neustart · <kbd>M</kbd> Menü</p>
+      <p class="keys touch-hint">Touch: <b>Schubhebel</b> rechts drücken und hoch/runter ziehen (oben = 100 %) · <b>Drehfeld</b> links: weiter außen drücken = stärker drehen · Kamera: auf der Szene wischen</p>
+      <p class="keys key-hint"><kbd>Leertaste</kbd> Schub · <kbd>W</kbd>/<kbd>S</kbd> Schubbegrenzer · <kbd>A</kbd>/<kbd>D</kbd> drehen · <kbd>T</kbd> Lageregler · <kbd>F</kbd> Tankventile · <kbd>C</kbd> Schwerpunkt · <kbd>R</kbd> Neustart · <kbd>M</kbd> Menü</p>
     </div>
   </div>
 

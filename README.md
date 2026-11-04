@@ -27,15 +27,17 @@ On a crash the ship breaks into its components; the explosion scales with impact
 
 ## Controls
 
-| Key | Touch | Function |
-|-----|-------|----------|
-| Space (hold) | SCHUB | Main engine |
-| W / S, ↑ / ↓ | slider | Thrust limiter |
-| A / D, ← / → | ◀ ▶ | Rotate (RCS) |
+| Key | Touch / mouse | Function |
+|-----|---------------|----------|
+| Space (hold) | **Throttle lever** (right): touching = burn, height = thrust (top = 100 %) | Main engine |
+| W / S, ↑ / ↓ | throttle lever | Thrust limiter |
+| A / D, ← / → | **Rotate pad** (left): press left/right of centre, further out = stronger | Rotate (RCS), analog |
 | T | Lageregler | Attitude control: Retro (leans against drift) / Vertical / Off |
 | F | Tanks | Tank valves L+R / L only / R only |
 | C | Schwerpunkt | Show centre of mass and thrust axis |
 | R / M | buttons | Restart / planet select |
+
+Lever and rotate pad each track their own touch point, so both work at the same time with two thumbs. The layout adapts to desktop, phone portrait and phone landscape.
 
 ## Structure
 

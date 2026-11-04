@@ -148,19 +148,35 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
 
-const hold = { thrust: false, left: false, right: false };
-function bindHold(id, key) {
-  const el = $(id);
-  const on = (e) => { e.preventDefault(); el.setPointerCapture?.(e.pointerId); hold[key] = true; };
-  const off = () => { hold[key] = false; };
-  el.addEventListener('pointerdown', on);
-  el.addEventListener('pointerup', off);
-  el.addEventListener('pointercancel', off);
-  el.addEventListener('lostpointercapture', off);
+// ---------- touch / mouse controls ----------
+// Each control tracks its own pointer, so lever and rotate pad work with two thumbs at once.
+function bindPointer(el, onMove, onEnd) {
+  let id = null;
+  const move = (e) => { if (e.pointerId === id) { e.preventDefault(); onMove(e, el.getBoundingClientRect()); } };
+  const end = (e) => { if (e.pointerId === id) { id = null; onEnd(); } };
+  el.addEventListener('pointerdown', (e) => {
+    if (id !== null) return;
+    e.preventDefault(); id = e.pointerId;
+    el.setPointerCapture?.(e.pointerId);
+    onMove(e, el.getBoundingClientRect());
+  });
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('lostpointercapture', end);
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
-bindHold('c-thrust', 'thrust'); bindHold('c-left', 'left'); bindHold('c-right', 'right');
-$('c-limit').addEventListener('input', (e) => { s.limit = e.target.value / 100; });
+const touch = { lever: false, rcs: 0 };
+bindPointer($('c-lever'), (e, r) => {
+  touch.lever = true;
+  // top 12 % snaps to full thrust so a quick thumb press near the top is 100 %
+  const f = (r.bottom - e.clientY) / r.height;
+  s.limit = Math.min(1, Math.max(0.05, f >= 0.88 ? 1 : f / 0.88));
+}, () => { touch.lever = false; });
+bindPointer($('c-rcs'), (e, r) => {
+  const dx = (r.left + r.width / 2 - e.clientX) / (r.width / 2); // + = left
+  touch.rcs = Math.abs(dx) < 0.12 ? 0 : Math.max(-1, Math.min(1, (dx - Math.sign(dx) * 0.12) / 0.7));
+}, () => { touch.rcs = 0; });
 function cycleSas() { s.sas = { retro: 'up', up: false }[s.sas] ?? 'retro'; }
 function cycleFeed() { s.feed = { LR: 'L', L: 'R', R: 'LR' }[s.feed]; }
 function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
@@ -191,10 +207,10 @@ const STEP = 1 / 120;
 let autopilot = null; // optional (state) => {thrust, rcs}, used by automated tests
 function readInput(dt) {
   if (autopilot) { Object.assign(input, autopilot(s)); return; }
-  input.thrust = keys.has('Space') || hold.thrust;
-  const l = keys.has('KeyA') || keys.has('ArrowLeft') || hold.left;
-  const r = keys.has('KeyD') || keys.has('ArrowRight') || hold.right;
-  input.rcs = (l ? 1 : 0) - (r ? 1 : 0);
+  input.thrust = keys.has('Space') || touch.lever;
+  const l = keys.has('KeyA') || keys.has('ArrowLeft');
+  const r = keys.has('KeyD') || keys.has('ArrowRight');
+  input.rcs = l || r ? (l ? 1 : 0) - (r ? 1 : 0) : touch.rcs;
   const up = keys.has('KeyW') || keys.has('ArrowUp'), down = keys.has('KeyS') || keys.has('ArrowDown');
   if (up || down) s.limit = Math.min(1, Math.max(0, s.limit + (up ? 0.6 : -0.6) * dt));
 }
@@ -222,7 +238,7 @@ renderer.setAnimationLoop(() => {
 
   // chase camera
   focus.set(s.x, s.y + 2.5, 0);
-  const dist = mode === 'menu' ? 22 : cam.dist;
+  const dist = mode === 'menu' ? 22 : cam.dist * (camera.aspect < 0.8 ? 1.25 : 1);
   camera.position.set(focus.x + Math.sin(cam.yaw) * dist, focus.y + dist * 0.16, Math.cos(cam.yaw) * dist);
   const minY = S.terrainHeight(camera.position.x, camera.position.z) + 1.5;
   if (camera.position.y < minY) camera.position.y = minY;
