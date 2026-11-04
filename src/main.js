@@ -79,6 +79,7 @@ function start(p) {
   if (p !== planet || !world.ready) { planet = p; world.setPlanet(p); world.ready = true; }
   debris.clear(); ship.reset();
   s = S.createState(planet);
+  hud.reset();
   mode = 'flight';
   $('menu').hidden = true; $('result').hidden = true; $('hud').hidden = false;
   ship.helpers.visible = showCom;
@@ -88,10 +89,11 @@ function rate(st) {
   if (st.status !== 'landed') return { stars: 0, score: 0 };
   const fuelPct = S.fuel(st) / st.fuel0;
   let stars = 3 - st.touch.grade;
-  if (st.gOverTime >= 0.5 || fuelPct < 0.1) stars--;
+  const fainted = st.crew.some((c) => c.fainted > 0);
+  if (fainted || fuelPct < 0.1) stars--;
   stars = Math.max(1, stars);
   const score = Math.max(0, Math.round(fuelPct * 1000 + (S.LAND.vy[2] - st.touch.vy) * 60 + (S.LAND.tilt[1] - st.touch.tilt) * 10
-    - st.touch.grade * 150 + (st.gOverTime < 0.5 ? 200 : 0) + st.planet.g * 20));
+    - st.touch.grade * 150 + st.crew.filter((c) => !c.fainted).length * 70 + st.planet.g * 20));
   return { stars, score };
 }
 
@@ -120,7 +122,8 @@ function showResult() {
     ['Drift', `${f1(s.touch.vx)} m/s · ${S.GRADES[s.touch.grades.vx].name}`],
     ['Neigung', `${f1(s.touch.tilt)}° · ${S.GRADES[s.touch.grades.tilt].name}`],
     ['Treibstoff übrig', `${Math.round(S.fuel(s))} kg (${Math.round((S.fuel(s) / s.fuel0) * 100)} %)`],
-    ['Max. G-Last', `${f1(s.maxG)} g${s.gOverTime > 0.5 ? ` · ${f1(s.gOverTime)} s über Limit` : ''}`],
+    ['Max. G-Last', `${f1(s.maxG)} g`],
+    ['Crew', s.crew.some((c) => c.fainted) ? s.crew.filter((c) => c.fainted).map((c) => `${c.name} ${c.fainted}× ohnmächtig`).join(', ') : 'alle bei Bewusstsein'],
     ['Batterie', `${Math.round(s.battery)} %`],
     ['Flugzeit', `${f1(s.t)} s`],
   ];

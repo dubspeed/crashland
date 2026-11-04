@@ -43,7 +43,9 @@ small { color: var(--mute); font-size: 11px; }
 #alert.pulse { animation: pulse 0.5s steps(2) infinite; }
 @keyframes pulse { 50% { opacity: 0.35; } }
 
-#flight { top: calc(10px + env(safe-area-inset-top, 0px)); left: max(10px, env(safe-area-inset-left, 0px)); width: 215px; }
+#leftcol { position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); left: max(10px, env(safe-area-inset-left, 0px)); width: 215px; display: flex; flex-direction: column; gap: 10px; }
+#leftcol .panel { position: relative; }
+#crew { --face: 56px; }
 dd { white-space: nowrap; }
 .gline { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
 .lim { color: var(--mute); font-size: 11px; }
@@ -54,13 +56,32 @@ dd { white-space: nowrap; }
 #burn-alt { position: absolute; left: -8px; right: -8px; height: 3px; background: var(--cyan); box-shadow: 0 0 6px var(--cyan); border-radius: 2px; }
 #burn-label { margin-top: 6px; font: 700 11px var(--display); letter-spacing: 0.06em; line-height: 1.2; }
 
-#parts { top: calc(10px + env(safe-area-inset-top, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); width: 230px; }
+#side { position: absolute; top: calc(10px + env(safe-area-inset-top, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); width: 236px; display: flex; flex-direction: column; gap: 10px; }
+#side .panel { position: relative; }
+.huge { font: 700 30px/1.05 var(--display); font-variant-numeric: tabular-nums; }
+
+/* crew portraits */
+.crew-head { display: flex; justify-content: space-between; align-items: baseline; }
+.crew-head h2 { margin: 0; }
+#v-g { font: 700 18px var(--display); font-variant-numeric: tabular-nums; }
+#crew-faces { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px; }
+.face { display: grid; justify-items: center; gap: 2px; min-width: 0; }
+.face canvas { width: var(--face, 64px); height: var(--face, 64px); }
+.face .nm { font-size: 11px; line-height: 1.1; white-space: nowrap; }
+.face .nm small { font-size: 9px; }
+.face .bar { width: 100%; height: 4px; }
+.face.out .nm { color: var(--bad); }
+#crew-say { min-height: 2.6em; margin-top: 6px; font-size: 12px; line-height: 1.3; color: var(--ink); }
+#crew-say b { color: var(--amber); }
+#crew-say.fresh { animation: say 0.25s ease-out; }
+@keyframes say { from { transform: translateY(4px); opacity: 0; } }
+#tunnel { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.75) 70%, #000 100%); }
 #part-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
 #part-list li { display: grid; grid-template-columns: 1fr auto; gap: 1px 8px; font-size: 12px; }
 #part-list li .bar { grid-column: 1 / -1; height: 4px; }
 #part-list li span:last-of-type { color: var(--mute); font-variant-numeric: tabular-nums; }
 .com { display: flex; justify-content: space-between; margin-top: 6px; font-size: 12px; }
-.com span { color: var(--mute); } .com b { font-variant-numeric: tabular-nums; }
+.com span { color: var(--mute); } .com b { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 #controls { position: absolute; left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(10px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; pointer-events: none; }
 #controls > * { pointer-events: auto; }
@@ -117,11 +138,13 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
   .panel h2 { font-size: 9px; margin-bottom: 4px; }
   .panel h2:not(:first-child) { margin-top: 6px; }
   #flight { width: 172px; font-size: 12px; }
-  #flight dl dt:nth-of-type(n+4), #flight dl dd:nth-of-type(n+4) { display: none; }
   .big { font-size: 18px; }
   #burn { left: calc(max(10px, env(safe-area-inset-left, 0px)) + 202px); width: 52px; padding: 7px 6px; }
   #burn-gauge { height: 120px; }
   #parts { display: none; }
+  #crew { --face: 48px; }
+  #crew-say { min-height: 2.6em; font-size: 11px; }
+  .huge { font-size: 24px; }
   #top { display: none; }
   #alert { top: auto; bottom: calc(var(--lever-h, 220px) + 26px + env(safe-area-inset-bottom, 0px)); font-size: 14px; max-width: calc(100vw - 24px); white-space: normal; text-align: center; }
 }
@@ -131,6 +154,12 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
   .tog { font-size: 11px; padding: 7px 8px; }
   #flight { width: calc(100vw - 20px - 70px - 10px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)); max-width: 260px; }
   #burn { left: auto; right: max(10px, env(safe-area-inset-right, 0px)); }
+  #alert { top: calc(262px + env(safe-area-inset-top, 0px)); bottom: auto; }
+  #leftcol { width: auto; }
+  #crew { position: fixed !important; left: max(10px, env(safe-area-inset-left, 0px)); bottom: calc(10px + 84px + 8px + 38px + 8px + env(safe-area-inset-bottom, 0px)); width: calc(100vw - 92px - 44px); }
+  #crew { padding: 6px 8px; }
+  #crew-faces { margin-top: 2px; }
+  .face .nm small { display: none; }
 }
 /* phone landscape: short screen */
 @media (max-height: 520px) {
@@ -138,9 +167,12 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
   #flight .gline + .bar:not(.fuel), #flight small:not(.burntime) { display: none; }
   #burn-gauge { height: 90px; }
   .left { flex-direction: row; align-items: flex-end; }
-  #flight { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; width: 380px; }
+  #flight { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; width: 360px; }
+  #leftcol { width: auto; }
+  #crew { position: fixed !important; top: calc(10px + env(safe-area-inset-top, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); width: 200px; --face: 44px; padding: 6px 8px; }
+  .face .nm small { display: none; }
   #flight .col-b > h2:first-child { margin-top: 0; }
-  #burn { left: calc(max(10px, env(safe-area-inset-left, 0px)) + 412px); }
+  #burn { left: calc(max(10px, env(safe-area-inset-left, 0px)) + 380px); }
   .toggles { flex-direction: column; }
   #landing { gap: 3px; }
 }
@@ -166,3 +198,4 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
   .lead { font-size: 13px; margin-bottom: 12px; }
   #window-info { grid-template-columns: 1fr; }
 }
+.sheet .row { display: flex; gap: 8px; flex-wrap: wrap; }

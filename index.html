@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
+  <div id="tunnel" aria-hidden="true"></div>
   <div id="hud" hidden>
     <header id="top">
       <span class="brand">CRASHLAND</span>
@@ -17,17 +18,11 @@
     </header>
     <div id="alert" hidden></div>
 
+    <div id="leftcol">
     <section id="flight" class="panel" aria-label="Flugdaten">
       <div class="col-a">
-      <h2>Flugdaten</h2>
-      <dl>
-        <dt>Höhe</dt><dd id="v-alt"></dd>
-        <dt>Sinkrate</dt><dd id="v-vy"></dd>
-        <dt>Drift</dt><dd id="v-vx"></dd>
-        <dt>Neigung</dt><dd id="v-tilt"></dd>
-        <dt>Schub/Gewicht</dt><dd id="v-twr"></dd>
-        <dt>Masse</dt><dd id="v-mass"></dd>
-      </dl>
+      <h2>Höhe</h2>
+      <div id="v-alt" class="huge"></div>
       <h2>Treibstoff</h2>
       <div class="gline"><span id="v-fuel" class="big"></span><span id="v-fuelpct" class="lim"></span></div>
       <div class="bar fuel"><i id="b-fuel"></i></div>
@@ -36,12 +31,15 @@
       <div class="col-b">
       <h2>Landefenster</h2>
       <div id="landing"></div>
-      <h2>G-Last Crew</h2>
-      <div class="gline"><span id="v-g" class="big"></span><span class="lim">Limit 3,0 g</span></div>
-      <div class="bar"><i id="b-stress"></i></div>
-      <small id="v-stress"></small>
       </div>
     </section>
+
+    <section id="crew" class="panel" aria-label="Crew">
+      <div class="crew-head"><h2>Crew · G-Last</h2><span id="v-g"></span></div>
+      <div id="crew-faces"></div>
+      <div id="crew-say" aria-live="polite"></div>
+    </section>
+    </div>
 
     <section id="burn" class="panel" aria-label="Suicide-Burn-Anzeige">
       <h2>Burn</h2>
@@ -49,12 +47,16 @@
       <div id="burn-label"></div>
     </section>
 
-    <section id="parts" class="panel" aria-label="Komponenten">
-      <h2>Komponenten</h2>
-      <ul id="part-list"></ul>
-      <div class="com"><span>Schwerpunkt</span><b id="v-com"></b></div>
-      <div class="com"><span>Drehmoment</span><b id="v-torque"></b></div>
-    </section>
+    <div id="side">
+      <section id="parts" class="panel" aria-label="Komponenten">
+        <h2>Komponenten</h2>
+        <ul id="part-list"></ul>
+        <div class="com"><span>Masse</span><b id="v-mass"></b></div>
+        <div class="com"><span>Schub/Gewicht</span><b id="v-twr"></b></div>
+        <div class="com"><span>Schwerpunkt</span><b id="v-com"></b></div>
+        <div class="com"><span>Drehmoment</span><b id="v-torque"></b></div>
+      </section>
+    </div>
 
     <div id="controls">
       <div class="left">
@@ -77,7 +79,7 @@
     <div class="sheet">
       <p class="kicker">Landeprotokoll · Version 1</p>
       <h1>Crashland</h1>
-      <p class="lead">Dein Lander fällt antriebslos auf den Planeten. Zünde den Haupt&shy;antrieb so spät wie möglich und so kurz wie nötig: der <b>Suicide Burn</b>. Achte dabei auf Treibstoff, G-Last der Crew und Batterie.</p>
+      <p class="lead">Dein Lander fällt antriebslos auf den Planeten. Zünde den Haupt&shy;antrieb so spät wie möglich und so kurz wie nötig: der <b>Suicide Burn</b>. Achte dabei auf Treibstoff, Batterie und deine Crew: Pilotin Kira, Ingenieur Bo und Wissenschaftlerin Ines vertragen unterschiedlich viel G-Last. Wird Kira ohnmächtig, steuert niemand.</p>
       <div id="planets"></div>
       <div id="window-info"></div>
       <p class="keys touch-hint">Touch: <b>Schubhebel</b> rechts drücken und hoch/runter ziehen (oben = 100 %) · <b>Drehfeld</b> links: weiter außen drücken = stärker drehen · Kamera: auf der Szene wischen</p>

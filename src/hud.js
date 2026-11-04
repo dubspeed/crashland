@@ -1,4 +1,5 @@
 import * as S from './sim.js';
+import { createCrew } from './crew.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n, d = 0) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -39,6 +40,8 @@ export function createHud() {
     lw[key] = { val: el.querySelector('b'), mark: el.querySelector('i'), unit, max };
   }
 
+  const crew = createCrew($('crew-faces'), $('crew-say'));
+
   function update(s, input) {
     const p = s.planet;
     const alt = Math.max(0, S.altitude(s));
@@ -47,7 +50,6 @@ export function createHud() {
 
     $('planet-tag').textContent = `${p.name} · ${fmt(p.g, 2)} m/s² · ${fmt(p.g / S.G0, 2)} g`;
     $('v-alt').textContent = `${fmt(alt, alt < 100 ? 1 : 0)} m`;
-    const vy = $('v-vy'); vy.textContent = `${fmt(-s.vy, 1)} m/s`;
     const live = { vy: Math.max(0, -s.vy), vx: Math.abs(s.vx), tilt: Math.abs(tilt) };
     if (s.touch) Object.assign(live, { vy: s.touch.vy, vx: s.touch.vx, tilt: s.touch.tilt });
     const gr = { vy: S.grade(live.vy, S.LAND.vy), vx: S.grade(live.vx, S.LAND.vx), tilt: S.grade(live.tilt, S.LAND.tilt) };
@@ -58,21 +60,17 @@ export function createHud() {
       lw[k].mark.style.left = `${Math.min(1, live[k] / lw[k].max) * 100}%`;
     }
     const gradeCls = ['ok', 'warn', 'warn', 'bad'];
-    cls(vy, alt < 200 ? gradeCls[gr.vy] : '');
-    const vx = $('v-vx'); vx.textContent = `${s.vx >= 0 ? '→' : '←'} ${fmt(Math.abs(s.vx), 1)} m/s`;
-    cls(vx, gradeCls[gr.vx]);
-    const ti = $('v-tilt'); ti.textContent = `${fmt(tilt, 1)}°`;
-    cls(ti, gradeCls[gr.tilt]);
     const twr = (S.F_MAX * s.limit) / (m * p.g);
     const tw = $('v-twr'); tw.textContent = fmt(twr, 2); cls(tw, twr > 1.15 ? '' : 'bad');
     $('v-mass').textContent = `${fmt(m)} kg`;
 
-    const g = $('v-g'); g.textContent = `${fmt(s.gNow, 2)} g`;
-    cls(g, `big ${s.gNow > S.G_LIMIT ? 'bad' : s.gNow > S.G_LIMIT * 0.85 ? 'warn' : ''}`);
-    const st = $('b-stress');
-    st.style.width = `${Math.min(1, s.gStress) * 100}%`;
-    st.style.background = s.gStress > 0.6 ? 'var(--bad)' : 'var(--warn)';
-    $('v-stress').textContent = s.blackout ? 'Crew bewusstlos' : s.gStress > 0 ? `Belastung ${fmt(s.gStress * 100)} %` : 'Crew stabil';
+    // crew: faces, g-load, tunnel vision from the pilot's strain
+    const g = $('v-g'); g.textContent = `${fmt(s.status === 'flying' ? s.gNow : 0, 2)} g`;
+    const minLimit = Math.min(...s.crew.map((c) => c.limit));
+    cls(g, s.gNow > S.G_LIMIT ? 'bad' : s.gNow > minLimit ? 'warn' : '');
+    crew.update(s, alt, gr.vy === 3, performance.now() / 1000);
+    const pilot = s.crew[0];
+    $('tunnel').style.opacity = s.status === 'flying' ? Math.min(0.97, pilot.out ? 0.97 : pilot.stress ** 1.3 * 0.9) : 0;
 
     // fuel: amount and how long it lasts at full thrust
     const fuelNow = S.fuel(s), fuelFrac = fuelNow / s.fuel0;
@@ -105,7 +103,8 @@ export function createHud() {
     bl.textContent = label; cls(bl, lc);
 
     // components
-    setRow('capsule', s.blackout ? 'Blackout' : 'Crew ok', 1 - Math.min(1, s.gStress), s.gStress > 0.6 ? 'var(--bad)' : 'var(--ok)');
+    const awake = s.crew.filter((c) => !c.out).length;
+    setRow('capsule', `${awake}/${s.crew.length} wach`, awake / s.crew.length, awake < s.crew.length ? 'var(--bad)' : 'var(--ok)');
     setRow('engine', `${fmt(s.throttle * 100)} %`, s.throttle, 'var(--amber)');
     const half = s.fuel0 / 2;
     const fc = (f) => (f / half < 0.2 ? 'var(--bad)' : 'var(--amber)');
@@ -136,8 +135,9 @@ export function createHud() {
     // alerts, most important first
     const al = $('alert');
     let msg = null, color = 'var(--bad)', pulse = true;
-    if (s.blackout) msg = 'BLACKOUT – CREW BEWUSSTLOS';
+    if (s.blackout) msg = 'PILOTIN BEWUSSTLOS – KEINE STEUERUNG';
     else if (s.gNow > S.G_LIMIT) msg = 'G-LAST ZU HOCH – SCHUB DROSSELN';
+    else if (s.gNow > minLimit && s.throttle > 0) { msg = 'G-LAST: CREW LEIDET'; color = 'var(--warn)'; pulse = false; }
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
     else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
@@ -153,5 +153,5 @@ export function createHud() {
     if (msg) { al.textContent = msg; al.style.color = color; al.classList.toggle('pulse', pulse); }
   }
 
-  return { update };
+  return { update, reset: crew.reset };
 }

@@ -5,7 +5,15 @@ export const G0 = 9.81;
 export const F_MAX = 185000;      // N, main engine
 export const ISP = 290;           // s
 export const RCS_TORQUE = 14000;  // N·m
-export const G_LIMIT = 3.0;       // crew limit (sustained)
+export const G_LIMIT = 3.2;       // pilot limit (sustained); see CREW
+// Crew: each member tolerates a different sustained g-load. Stress builds above the limit;
+// at 1.0 they pass out and wake up again once it has dropped below WAKE.
+export const CREW = [
+  { id: 'kira', name: 'Kira', role: 'Pilotin', limit: 3.2, pilot: true },
+  { id: 'bo', name: 'Bo', role: 'Ingenieur', limit: 2.9 },
+  { id: 'ines', name: 'Ines', role: 'Wissenschaftlerin', limit: 2.6 },
+];
+export const WAKE = 0.55;
 export const BAT_CAP = 100;       // %
 export const FUEL_MAX = 600;     // kg capacity per tank (each mission loads planet.fuel in total)
 export const FOOT_X = 2.0;        // m, half span of landing legs
@@ -75,6 +83,7 @@ export function createState(planet) {
     fuel0: planet.fuel, fuelL: planet.fuel / 2, fuelR: planet.fuel / 2, battery: BAT_CAP,
     limit: 1, throttle: 0, sas: 'retro',
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
+    crew: CREW.map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
     torqueCom: 0, sasTorque: 0,
     status: 'flying', reason: '', touch: null, log: [],
   };
@@ -122,7 +131,7 @@ export function step(s, input, dt) {
   const p = s.planet;
   s.t += dt;
   s.powered = s.battery > 0;
-  s.blackout = s.gStress >= 1;
+  s.blackout = s.crew[0].out;
 
   // --- engine ---
   let thr = input.thrust && !s.blackout ? s.limit : 0;
@@ -167,8 +176,14 @@ export function step(s, input, dt) {
   // --- crew g-load ---
   s.gNow = F / m / G0;
   s.maxG = Math.max(s.maxG, s.gNow);
-  if (s.gNow > G_LIMIT) { s.gStress += (s.gNow - G_LIMIT) * 0.35 * dt; s.gOverTime += dt; }
-  else s.gStress = Math.max(0, s.gStress - 0.06 * dt);
+  for (const c of s.crew) {
+    if (s.gNow > c.limit) c.stress += (s.gNow - c.limit) * 0.35 * dt;
+    else c.stress = Math.max(0, c.stress - (s.gNow < 1.2 ? 0.15 : 0.06) * dt);
+    if (!c.out && c.stress >= 1) { c.out = true; c.fainted++; c.stress = 1; }
+    else if (c.out && c.stress < WAKE) c.out = false;
+  }
+  if (s.gNow > G_LIMIT) s.gOverTime += dt;
+  s.gStress = s.crew[0].stress;
 
   // --- power ---
   const use = 1.0 + (s.sas ? 0.4 : 0) + 2.2 * rcsUse + 1.2 * thr;
