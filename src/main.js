@@ -41,10 +41,17 @@ world.defaultContactMaterial = new CANNON.ContactMaterial(mat, mat, { friction: 
 
 // ---------- Assets ----------
 const loader = new GLTFLoader();
-const load = (n) => loader.loadAsync(`./assets/${n}.glb`).then((g) => {
+// Models are bundled as base64 data URLs (vite assetsInlineLimit) so the build is a single JS file.
+const urls = import.meta.glob('./assets/*.glb', { query: '?url', import: 'default', eager: true });
+const load = async (n) => {
+  const url = urls[`./assets/${n}.glb`];
+  const buf = url.startsWith('data:')
+    ? Uint8Array.from(atob(url.slice(url.indexOf(',') + 1)), (c) => c.charCodeAt(0)).buffer
+    : await (await fetch(url)).arrayBuffer();
+  const g = await loader.parseAsync(buf, '');
   g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return g.scene;
-});
+};
 const [plate, ball, rock, crate] = await Promise.all(['plate', 'ball', 'rock', 'crate'].map(load));
 
 scene.add(plate);
@@ -97,8 +104,12 @@ renderer.domElement.addEventListener('pointerup', (e) => {
   const p = hit ? hit.point : ray.ray.at(20, new THREE.Vector3());
   for (let i = 0; i < 5; i++) spawn(new THREE.Vector3(p.x + (Math.random() - 0.5), 10 + i * 1.3, p.z + (Math.random() - 0.5)));
 });
+const rainBtn = document.getElementById('btn-rain');
+function toggleRain() { raining = !raining; rainBtn.textContent = `Regen: ${raining ? 'an' : 'aus'}`; }
+rainBtn.addEventListener('click', toggleRain);
+document.getElementById('btn-reset').addEventListener('click', reset);
 addEventListener('keydown', (e) => {
-  if (e.code === 'Space') raining = !raining;
+  if (e.code === 'Space') { e.preventDefault(); toggleRain(); }
   if (e.code === 'KeyR') reset();
 });
 addEventListener('resize', () => {

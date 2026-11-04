@@ -8,10 +8,14 @@
     html, body { margin: 0; height: 100%; overflow: hidden; background: #8ec5ff; font-family: system-ui, sans-serif; }
     #hud { position: fixed; top: 12px; left: 12px; color: #fff; text-shadow: 0 1px 3px #0008; font-size: 14px; line-height: 1.5; pointer-events: none; }
     #hud b { font-size: 20px; }
+    #ui { position: fixed; right: 12px; bottom: 12px; display: flex; gap: 8px; }
+    #ui button { font: 600 14px system-ui, sans-serif; color: #2b3a4a; background: #fffd; border: 0; border-radius: 8px; padding: 10px 14px; box-shadow: 0 2px 6px #0003; cursor: pointer; }
+    #ui button:focus-visible { outline: 3px solid #2b6cb0; }
   </style>
 </head>
 <body>
   <div id="hud"><b>Crashland</b><br/>Klick / Tippen: Objekte abwerfen · Leertaste: Regen an/aus · R: Reset<br/><span id="count"></span></div>
+  <div id="ui"><button id="btn-rain">Regen: an</button><button id="btn-reset">Reset</button></div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

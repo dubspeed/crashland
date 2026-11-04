@@ -14,7 +14,7 @@ npm run build      # static build in dist/
 
 ## Assets
 
-All low-poly models are generated procedurally by `blender/build_assets.py` and exported as `.glb` to `public/assets/`:
+All low-poly models are generated procedurally by `blender/build_assets.py` and exported as `.glb` to `src/assets/`:
 
 ```bash
 npm run assets     # = blender --background --python blender/build_assets.py

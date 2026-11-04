@@ -4,7 +4,7 @@ Run:  blender --background --python blender/build_assets.py
 """
 import bpy, bmesh, math, os, random
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "public", "assets")
+OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src", "assets")
 os.makedirs(OUT, exist_ok=True)
 random.seed(7)
 
