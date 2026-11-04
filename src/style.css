@@ -180,6 +180,7 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 
 /* landing window: tier bands with a live marker */
 #landing { display: grid; gap: 6px; }
+.lw .glyph { display: none; }
 .lw-head { display: flex; justify-content: space-between; font-size: 11px; }
 .lw-head span { color: var(--mute); }
 .lw-head b { font-weight: 600; }
@@ -199,3 +200,37 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
   #window-info { grid-template-columns: 1fr; }
 }
 .sheet .row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ===== phone HUD: no panels, edge-mounted gauges, faces only ===== */
+@media (max-width: 520px), (max-height: 520px) {
+  #hud .panel { background: none; border: 0; padding: 0; backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: 0; }
+  #hud .panel h2, #v-alt, #flight .gline, #flight .burntime, .crew-head, .face .nm, .face .bar, #burn-label { display: none !important; }
+  #flight, #flight .col-a, #flight .col-b { display: contents; }
+
+  /* fuel: hairline across the top edge */
+  #flight .bar.fuel { position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0; height: 5px; border-radius: 0; background: rgba(0,0,0,0.35); z-index: 2; }
+  #flight .bar.fuel i { border-radius: 0; }
+
+  /* landing window: three glyph + bar rows, top left */
+  #landing { position: fixed; top: calc(14px + env(safe-area-inset-top, 0px)); left: max(12px, env(safe-area-inset-left, 0px)); width: 112px; gap: 5px; }
+  .lw { display: flex; align-items: center; gap: 6px; }
+  .lw .glyph { display: block; width: 12px; font: 700 12px var(--display); font-style: normal; color: var(--ink); text-shadow: 0 1px 3px #000; text-align: center; }
+  .lw-head { display: none; }
+  .lw-bar { flex: 1; margin: 0; height: 5px; box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
+  .lw-bar i { height: 11px; top: -3px; }
+
+  /* burn: thin vertical strip on the left edge */
+  #burn { position: fixed; left: max(6px, env(safe-area-inset-left, 0px)); top: var(--burn-top); bottom: var(--burn-bottom); width: 8px; }
+  #burn-gauge { height: 100%; width: 8px; border-radius: 4px; background: rgba(0,0,0,0.3); }
+  #burn-alt { left: -4px; right: -4px; }
+
+  /* crew: just the faces, top right; line of speech underneath */
+  #crew { position: fixed !important; top: calc(12px + env(safe-area-inset-top, 0px)) !important; bottom: auto !important; left: auto !important; right: max(10px, env(safe-area-inset-right, 0px)) !important; width: auto !important; --face: 40px; }
+  #crew-faces { display: flex; gap: 4px; margin: 0; }
+  #crew-say { position: absolute; right: 0; top: calc(var(--face) + 6px); width: 62vw; max-width: 260px; min-height: 0; margin: 0; text-align: right; font-size: 12px; text-shadow: 0 1px 3px #000, 0 0 8px #000; }
+
+  /* alerts: plain text, no box */
+  #alert { top: calc(68px + env(safe-area-inset-top, 0px)) !important; bottom: auto !important; background: none; border: 0; padding: 0; font-size: 15px; text-shadow: 0 1px 4px #000, 0 0 10px #000; }
+}
+@media (max-width: 520px) { #hud { --burn-top: 92px; --burn-bottom: 300px; } #crew-say { top: calc(var(--face) + 4px); } #alert { top: calc(96px + env(safe-area-inset-top, 0px)) !important; } }
+@media (max-height: 520px) { #hud { --burn-top: 80px; --burn-bottom: 110px; } }

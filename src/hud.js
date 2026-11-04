@@ -30,12 +30,14 @@ export function createHud() {
     ['vy', 'Sinkrate', 'm/s', 10], ['vx', 'Drift', 'm/s', 6], ['tilt', 'Neigung', '°', 25],
   ];
   const tierColors = ['var(--ok)', 'var(--warn)', 'var(--amber)', 'rgba(255,93,82,0.75)'];
+  const glyphs = { vy: '↓', vx: '↔', tilt: '∠' };
   for (const [key, label, unit, max] of lwDefs) {
     const lim = S.LAND[key];
     const stops = [0, ...lim.map((l) => (l / max) * 100), 100];
     const grad = tierColors.map((c, i) => `${c} ${stops[i]}% ${stops[i + 1]}%`).join(', ');
     const el = document.createElement('div');
-    el.innerHTML = `<div class="lw-head"><span>${label}</span><b></b></div><div class="lw-bar" style="background: linear-gradient(90deg, ${grad})"><i></i></div>`;
+    el.className = 'lw';
+    el.innerHTML = `<i class="glyph" aria-hidden="true">${glyphs[key]}</i><div class="lw-head"><span>${label}</span><b></b></div><div class="lw-bar" style="background: linear-gradient(90deg, ${grad})"><i></i></div>`;
     $('landing').append(el);
     lw[key] = { val: el.querySelector('b'), mark: el.querySelector('i'), unit, max };
   }
