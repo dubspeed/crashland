@@ -14,8 +14,36 @@ export function createDebris(scene) {
     world = null;
   }
 
+  function smokeAt(pos, n, size, color = 0x2a2624, spread = 4) {
+    for (let i = 0; i < n; i++) {
+      const smoke = new THREE.Mesh(new THREE.IcosahedronGeometry(size, 0),
+        new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.85, flatShading: true, depthWrite: false }));
+      smoke.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * spread, Math.random() * size, (Math.random() - 0.5) * spread));
+      smoke.userData.v = new THREE.Vector3((Math.random() - 0.5) * 3, 1 + Math.random() * 2.5 * size, (Math.random() - 0.5) * 3);
+      scene.add(smoke);
+      fx.push({ obj: smoke, t: -Math.random() * 0.3, life: 2 + Math.random() * 2 * size, kind: 'smoke' });
+    }
+  }
+
+  /** dust ring kicked up by a hard (but survivable) landing */
+  function puff(ship, s, strength) {
+    const color = new THREE.Color(s.planet.ground).lerp(new THREE.Color(0xdddddd), 0.4).getHex();
+    const n = 10 + strength * 8;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;
+      const d = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3 + Math.random() * 0.2, 0),
+        new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.5, flatShading: true, depthWrite: false }));
+      d.position.set(s.x + Math.cos(a) * 1.5, s.y + 0.2, Math.sin(a) * 1.5);
+      const sp = 2 + Math.random() * 2 + strength * 1.5;
+      d.userData.v = new THREE.Vector3(Math.cos(a) * sp, 0.3 + Math.random() * 0.6, Math.sin(a) * sp);
+      scene.add(d);
+      fx.push({ obj: d, t: 0, life: 1.5 + Math.random(), kind: 'dust' });
+    }
+  }
+
   function explode(ship, s) {
     clear();
+    const e = s.touch?.energy ?? 1; // 0 = gentle tip-over .. 1 = high-speed impact
     world = new CANNON.World({ gravity: new CANNON.Vec3(0, -s.planet.g, 0) });
     world.allowSleep = true;
     const mat = new CANNON.Material();
@@ -43,32 +71,32 @@ export function createDebris(scene) {
       body.position.copy(part.position);
       body.quaternion.copy(part.quaternion);
       const dir = part.position.clone().sub(impact).setZ((Math.random() - 0.5) * 2).normalize();
-      const pow = 5 + Math.random() * 9;
-      body.velocity.set(s.vx * 0.3 + dir.x * pow, Math.abs(s.vy) * 0.08 + 4 + Math.random() * 6, dir.z * pow);
-      body.angularVelocity.set((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8);
+      const pow = (1 + Math.random() * 2) + e * (4 + Math.random() * 9);
+      body.velocity.set(s.vx * 0.4 + dir.x * pow, 0.5 + e * (3 + Math.random() * 7), dir.z * pow);
+      const spin = 1.5 + e * 6.5;
+      body.angularVelocity.set((Math.random() - 0.5) * spin, (Math.random() - 0.5) * spin, (Math.random() - 0.5) * spin);
       world.addBody(body);
       bodies.push({ body, obj: part });
     }
     ship.flame.visible = false;
     ship.helpers.visible = false;
 
-    // fireball, smoke, flash
-    const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xff7a20, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
-    ball.position.copy(impact);
-    scene.add(ball);
-    fx.push({ obj: ball, t: 0, life: 0.9, kind: 'ball' });
-    const flash = new THREE.PointLight(0xff8a30, 800, 120, 1.6);
-    flash.position.copy(impact).add(new THREE.Vector3(0, 3, 0));
-    scene.add(flash);
-    fx.push({ obj: flash, t: 0, life: 1.4, kind: 'flash' });
-    for (let i = 0; i < 14; i++) {
-      const smoke = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 0),
-        new THREE.MeshStandardMaterial({ color: 0x2a2624, transparent: true, opacity: 0.85, flatShading: true, depthWrite: false }));
-      smoke.position.copy(impact).add(new THREE.Vector3((Math.random() - 0.5) * 4, Math.random() * 2, (Math.random() - 0.5) * 4));
-      smoke.userData.v = new THREE.Vector3((Math.random() - 0.5) * 3, 2 + Math.random() * 3, (Math.random() - 0.5) * 3);
-      scene.add(smoke);
-      fx.push({ obj: smoke, t: -Math.random() * 0.3, life: 3 + Math.random() * 2, kind: 'smoke' });
+    // fireball + flash scale with impact energy and the fuel still on board
+    const fuelFrac = (s.fuelL + s.fuelR) / 1200;
+    const boom = e * (0.4 + 0.6 * fuelFrac);
+    if (boom > 0.3) {
+      const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xff7a20, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+      ball.position.copy(impact);
+      ball.userData.size = 2 + boom * 9;
+      scene.add(ball);
+      fx.push({ obj: ball, t: 0, life: 0.5 + boom * 0.5, kind: 'ball' });
+      const flash = new THREE.PointLight(0xff8a30, 0, 120, 1.6);
+      flash.position.copy(impact).add(new THREE.Vector3(0, 3, 0));
+      flash.userData.peak = 900 * boom;
+      scene.add(flash);
+      fx.push({ obj: flash, t: 0, life: 0.6 + boom, kind: 'flash' });
     }
+    smokeAt(impact, Math.round(4 + boom * 12), 0.6 + boom * 0.6, boom > 0.3 ? 0x2a2624 : new THREE.Color(s.planet.ground).lerp(new THREE.Color(0xcccccc), 0.4).getHex());
   }
 
   function update(dt) {
@@ -80,12 +108,13 @@ export function createDebris(scene) {
       const f = fx[i];
       f.t += dt;
       const k = Math.max(0, f.t / f.life);
-      if (f.kind === 'ball') { f.obj.scale.setScalar(1 + Math.sqrt(k) * 10); f.obj.material.opacity = (1 - k) ** 1.5; f.obj.material.color.setHSL(0.09 - k * 0.07, 1, 0.6 - k * 0.3); }
-      if (f.kind === 'flash') f.obj.intensity = 800 * (1 - k) ** 2;
+      if (f.kind === 'ball') { f.obj.scale.setScalar(1 + Math.sqrt(k) * f.obj.userData.size); f.obj.material.opacity = (1 - k) ** 1.5; f.obj.material.color.setHSL(0.09 - k * 0.07, 1, 0.6 - k * 0.3); }
+      if (f.kind === 'flash') f.obj.intensity = f.obj.userData.peak * (1 - k) ** 2;
       if (f.kind === 'smoke' && f.t > 0) { f.obj.position.addScaledVector(f.obj.userData.v, dt); f.obj.scale.setScalar(1 + k * 4); f.obj.material.opacity = 0.85 * (1 - k); }
+      if (f.kind === 'dust') { f.obj.position.addScaledVector(f.obj.userData.v, dt); f.obj.userData.v.multiplyScalar(1 - 1.5 * dt); f.obj.scale.setScalar(1 + k * 2.5); f.obj.material.opacity = 0.5 * (1 - k); }
       if (k >= 1) { scene.remove(f.obj); fx.splice(i, 1); }
     }
   }
 
-  return { explode, update, clear };
+  return { explode, puff, update, clear };
 }

@@ -14,7 +14,16 @@ Your lander falls toward a planet without power. Light the main engine as late a
 - **Power**: the battery feeds the flight computer, attitude control and the fuel pumps. Solar panels recharge depending on planet. Empty battery → computer offline, pumps off, max. 60 % thrust.
 - **Planets**: Luna (1.62 m/s²), Mars (3.71), Terra (9.81), Brontes (15.2: super-Earth, little thrust reserve).
 
-Touchdown limits: ≤ 3.5 m/s sink rate, ≤ 2 m/s drift, ≤ 10° tilt. Beyond that the ship breaks into its components.
+Landing window (same on all planets, shown live in the HUD):
+
+| Grade | Sink rate | Drift | Tilt |
+|-------|-----------|-------|------|
+| Soft | ≤ 2.5 m/s | ≤ 1 m/s | ≤ 5° |
+| Hard | ≤ 5 m/s | ≤ 2.5 m/s | ≤ 10° |
+| Landing gear damaged (still landed) | ≤ 8 m/s | ≤ 4 m/s | ≤ 18° |
+| Crash | above that | | |
+
+On a crash the ship breaks into its components; the explosion scales with impact speed and the fuel still on board.
 
 ## Controls
 

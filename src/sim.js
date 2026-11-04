@@ -9,7 +9,19 @@ export const G_LIMIT = 3.0;       // crew limit (sustained)
 export const BAT_CAP = 100;       // %
 export const FUEL_MAX = 600;     // kg per tank
 export const FOOT_X = 2.0;        // m, half span of landing legs
-export const LAND = { vy: 3.5, vx: 2.0, tilt: 10 }; // touchdown limits (m/s, m/s, deg)
+// Touchdown window: upper bounds for grade 0 (sanft), 1 (hart), 2 (Fahrwerk beschädigt); above = crash.
+export const LAND = { vy: [2.5, 5, 8], vx: [1, 2.5, 4], tilt: [5, 10, 18] };
+export const GRADES = [
+  { id: 'soft', name: 'Sanft', color: 'var(--ok)' },
+  { id: 'hard', name: 'Hart', color: 'var(--warn)' },
+  { id: 'damage', name: 'Fahrwerk beschädigt', color: 'var(--amber)' },
+  { id: 'crash', name: 'Crash', color: 'var(--bad)' },
+];
+/** 0..3 for a value against one LAND table */
+export function grade(value, limits) {
+  const i = limits.findIndex((l) => value <= l);
+  return i < 0 ? 3 : i;
+}
 
 export const PLANETS = [
   { id: 'luna', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0,
@@ -172,13 +184,18 @@ export function step(s, input, dt) {
   if (alt <= 0) {
     const tilt = Math.abs((s.a * 180) / Math.PI);
     const hL = terrainHeight(s.x - FOOT_X), hR = terrainHeight(s.x + FOOT_X);
-    s.touch = { vy: -s.vy, vx: Math.abs(s.vx), tilt, impactG: Math.abs(s.vy) / (G0 * 0.15) };
+    const sink = -s.vy, drift = Math.abs(s.vx);
+    const g = { vy: grade(sink, LAND.vy), vx: grade(drift, LAND.vx), tilt: grade(tilt, LAND.tilt) };
     const why = [];
-    if (-s.vy > LAND.vy) why.push(`zu schnell (${(-s.vy).toFixed(1)} m/s)`);
-    if (Math.abs(s.vx) > LAND.vx) why.push(`seitliche Drift (${Math.abs(s.vx).toFixed(1)} m/s)`);
-    if (tilt > LAND.tilt) why.push(`zu schräg (${tilt.toFixed(0)}°)`);
+    if (g.vy === 3) why.push(`zu schnell (${sink.toFixed(1)} m/s, max ${LAND.vy[2]})`);
+    if (g.vx === 3) why.push(`seitliche Drift (${drift.toFixed(1)} m/s, max ${LAND.vx[2]})`);
+    if (g.tilt === 3) why.push(`zu schräg (${tilt.toFixed(0)}°, max ${LAND.tilt[2]}°)`);
     if (Math.abs(hL - hR) > 0.8) why.push('Gelände zu uneben');
-    s.status = why.length ? 'crashed' : 'landed';
+    const overall = why.length ? 3 : Math.max(g.vy, g.vx, g.tilt);
+    // crash energy 0..1: how violent the impact was (drives the explosion size)
+    const energy = Math.min(1, Math.max(0, (sink - LAND.vy[2]) / 18 + (drift - LAND.vx[2]) / 25 + 0.1));
+    s.touch = { vy: sink, vx: drift, tilt, grades: g, grade: overall, energy };
+    s.status = overall === 3 ? 'crashed' : 'landed';
     s.reason = why.join(', ');
     s.y -= alt; // snap to ground
   }

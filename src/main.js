@@ -55,7 +55,17 @@ function buildMenu() {
   }
 }
 
+function buildWindowInfo() {
+  const L = S.LAND, f = (n) => n.toLocaleString('de-DE');
+  $('window-info').innerHTML = `<h3>Landefenster (gilt auf allen Planeten)</h3>
+    <span><b class="ok">Sanft</b> ≤ ${f(L.vy[0])} m/s · Drift ≤ ${f(L.vx[0])} · ≤ ${L.tilt[0]}°</span>
+    <span><b class="warn">Hart</b> ≤ ${f(L.vy[1])} m/s · Drift ≤ ${f(L.vx[1])} · ≤ ${L.tilt[1]}°</span>
+    <span><b style="color: var(--amber)">Fahrwerk beschädigt</b> ≤ ${f(L.vy[2])} m/s · Drift ≤ ${f(L.vx[2])} · ≤ ${L.tilt[2]}°</span>
+    <span><b class="bad">Crash</b> darüber</span>`;
+}
+
 function showMenu() {
+  buildWindowInfo();
   mode = 'menu';
   $('menu').hidden = false; $('result').hidden = true; $('hud').hidden = true;
   buildMenu();
@@ -77,17 +87,20 @@ function start(p) {
 function rate(st) {
   if (st.status !== 'landed') return { stars: 0, score: 0 };
   const fuelPct = S.fuel(st) / (2 * S.FUEL_MAX);
-  let stars = 1;
-  if (st.touch.vy <= 2.0) stars++;
-  if (st.gOverTime < 0.5 && fuelPct >= 0.15) stars++;
-  const score = Math.round(fuelPct * 1000 + (S.LAND.vy - st.touch.vy) * 150 + (S.LAND.tilt - st.touch.tilt) * 15 + (st.gOverTime < 0.5 ? 200 : 0) + (st.planet.g * 20));
+  let stars = 3 - st.touch.grade;
+  if (st.gOverTime >= 0.5 || fuelPct < 0.1) stars--;
+  stars = Math.max(1, stars);
+  const score = Math.max(0, Math.round(fuelPct * 1000 + (S.LAND.vy[2] - st.touch.vy) * 60 + (S.LAND.tilt[1] - st.touch.tilt) * 10
+    - st.touch.grade * 150 + (st.gOverTime < 0.5 ? 200 : 0) + st.planet.g * 20));
   return { stars, score };
 }
 
 function finish() {
   mode = 'end';
   const ok = s.status === 'landed';
-  if (!ok) { debris.explode(ship, s); cam.shake = 1.2; }
+  if (!ok) { debris.explode(ship, s); cam.shake = 0.3 + s.touch.energy; }
+  else if (s.touch.grade >= 1) { debris.puff(ship, s, s.touch.grade); cam.shake = 0.15 * s.touch.grade; }
+  if (ok && s.touch.grade === 2) ship.damageLegs();
   endTimer = ok ? 1.0 : 2.2;
 }
 
@@ -95,16 +108,17 @@ function showResult() {
   const ok = s.status === 'landed';
   const { stars, score } = rate(s);
   $('r-kicker').textContent = `${planet.name} · ${planet.g.toLocaleString('de-DE')} m/s²`;
-  $('r-title').textContent = ok ? 'Gelandet' : 'Bruchlandung';
-  $('r-title').style.color = ok ? 'var(--ok)' : 'var(--bad)';
+  const g = s.touch.grade;
+  $('r-title').textContent = ['Butterweich gelandet', 'Gelandet', 'Harte Landung', 'Bruchlandung'][g];
+  $('r-title').style.color = S.GRADES[g].color;
   $('r-reason').textContent = ok
-    ? `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}  ${score} Punkte`
+    ? `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}  ${score} Punkte${g === 2 ? ' · Fahrwerk beschädigt' : g === 1 ? ' · etwas unsanft' : ''}`
     : `Aufschlag: ${s.reason}.`;
   const f1 = (n) => n.toLocaleString('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
   const rows = [
-    ['Aufsetzen', `${f1(s.touch.vy)} m/s (max ${S.LAND.vy})`],
-    ['Drift', `${f1(s.touch.vx)} m/s (max ${S.LAND.vx})`],
-    ['Neigung', `${f1(s.touch.tilt)}° (max ${S.LAND.tilt})`],
+    ['Aufsetzen', `${f1(s.touch.vy)} m/s · ${S.GRADES[s.touch.grades.vy].name}`],
+    ['Drift', `${f1(s.touch.vx)} m/s · ${S.GRADES[s.touch.grades.vx].name}`],
+    ['Neigung', `${f1(s.touch.tilt)}° · ${S.GRADES[s.touch.grades.tilt].name}`],
     ['Treibstoff übrig', `${Math.round(S.fuel(s))} kg (${Math.round((S.fuel(s) / (2 * S.FUEL_MAX)) * 100)} %)`],
     ['Max. G-Last', `${f1(s.maxG)} g${s.gOverTime > 0.5 ? ` · ${f1(s.gOverTime)} s über Limit` : ''}`],
     ['Batterie', `${Math.round(s.battery)} %`],

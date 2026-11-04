@@ -23,6 +23,22 @@ export function createHud() {
     rows[id].bar.style.background = color || 'var(--ok)';
   };
 
+  // landing window bars
+  const lw = {};
+  const lwDefs = [
+    ['vy', 'Sinkrate', 'm/s', 10], ['vx', 'Drift', 'm/s', 6], ['tilt', 'Neigung', '°', 25],
+  ];
+  const tierColors = ['var(--ok)', 'var(--warn)', 'var(--amber)', 'rgba(255,93,82,0.75)'];
+  for (const [key, label, unit, max] of lwDefs) {
+    const lim = S.LAND[key];
+    const stops = [0, ...lim.map((l) => (l / max) * 100), 100];
+    const grad = tierColors.map((c, i) => `${c} ${stops[i]}% ${stops[i + 1]}%`).join(', ');
+    const el = document.createElement('div');
+    el.innerHTML = `<div class="lw-head"><span>${label}</span><b></b></div><div class="lw-bar" style="background: linear-gradient(90deg, ${grad})"><i></i></div>`;
+    $('landing').append(el);
+    lw[key] = { val: el.querySelector('b'), mark: el.querySelector('i'), unit, max };
+  }
+
   function update(s, input) {
     const p = s.planet;
     const alt = Math.max(0, S.altitude(s));
@@ -32,11 +48,21 @@ export function createHud() {
     $('planet-tag').textContent = `${p.name} · ${fmt(p.g, 2)} m/s² · ${fmt(p.g / S.G0, 2)} g`;
     $('v-alt').textContent = `${fmt(alt, alt < 100 ? 1 : 0)} m`;
     const vy = $('v-vy'); vy.textContent = `${fmt(-s.vy, 1)} m/s`;
-    cls(vy, -s.vy <= S.LAND.vy ? 'ok' : alt < 60 ? 'bad' : '');
+    const live = { vy: Math.max(0, -s.vy), vx: Math.abs(s.vx), tilt: Math.abs(tilt) };
+    if (s.touch) Object.assign(live, { vy: s.touch.vy, vx: s.touch.vx, tilt: s.touch.tilt });
+    const gr = { vy: S.grade(live.vy, S.LAND.vy), vx: S.grade(live.vx, S.LAND.vx), tilt: S.grade(live.tilt, S.LAND.tilt) };
+    for (const k of Object.keys(lw)) {
+      const g = S.GRADES[gr[k]];
+      lw[k].val.textContent = `${fmt(live[k], 1)} ${lw[k].unit} · ${g.name.split(' ')[0]}`;
+      lw[k].val.style.color = g.color;
+      lw[k].mark.style.left = `${Math.min(1, live[k] / lw[k].max) * 100}%`;
+    }
+    const gradeCls = ['ok', 'warn', 'warn', 'bad'];
+    cls(vy, alt < 200 ? gradeCls[gr.vy] : '');
     const vx = $('v-vx'); vx.textContent = `${s.vx >= 0 ? '→' : '←'} ${fmt(Math.abs(s.vx), 1)} m/s`;
-    cls(vx, Math.abs(s.vx) <= S.LAND.vx ? 'ok' : 'warn');
+    cls(vx, gradeCls[gr.vx]);
     const ti = $('v-tilt'); ti.textContent = `${fmt(tilt, 1)}°`;
-    cls(ti, Math.abs(tilt) <= S.LAND.tilt ? 'ok' : 'warn');
+    cls(ti, gradeCls[gr.tilt]);
     const twr = (S.F_MAX * s.limit) / (m * p.g);
     const tw = $('v-twr'); tw.textContent = fmt(twr, 2); cls(tw, twr > 1.15 ? '' : 'bad');
     $('v-mass').textContent = `${fmt(m)} kg`;
@@ -57,7 +83,7 @@ export function createHud() {
     $('burn-alt').style.bottom = `calc(${Math.min(1, alt / scale) * 100}% - 1px)`;
     const bl = $('burn-label');
     let label = '', lc = 'mute';
-    if (s.status === 'landed') { label = 'GELANDET'; lc = 'ok'; }
+    if (s.status === 'landed') { label = S.GRADES[s.touch.grade].name.split(' ')[0].toUpperCase(); lc = gradeCls[s.touch.grade]; }
     else if (s.status === 'crashed') { label = 'AUFSCHLAG'; lc = 'bad'; }
     else if (!s.powered) { label = 'OFFLINE'; lc = 'bad'; }
     else if (s.vy >= -0.5) { label = 'SCHWEBT'; lc = ''; }
@@ -101,6 +127,12 @@ export function createHud() {
     else if (s.gNow > S.G_LIMIT) msg = 'G-LAST ZU HOCH – SCHUB DROSSELN';
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
+    else if (alt < 40 && s.vy < -0.3) {
+      const worst = Math.max(gr.vy, gr.vx, gr.tilt);
+      const what = gr.vy === worst ? `${fmt(live.vy, 1)} m/s` : gr.vx === worst ? `Drift ${fmt(live.vx, 1)} m/s` : `Neigung ${fmt(live.tilt, 0)}°`;
+      msg = `AUFSETZEN: ${what} · ${S.GRADES[worst].name.toUpperCase()}`;
+      color = S.GRADES[worst].color; pulse = worst === 3;
+    }
     else if (s.powered && s.vy < -0.5 && isFinite(d) && alt <= d * 1.02 && s.throttle < 0.95 * s.limit) msg = 'BURN!';
     else if (s.battery < 20) { msg = 'BATTERIE SCHWACH'; color = 'var(--warn)'; pulse = false; }
     al.hidden = !msg || s.status !== 'flying';

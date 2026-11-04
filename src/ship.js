@@ -58,13 +58,21 @@ export function createShip(models) {
       o.position.set(...c.pos);
       o.rotation.set(0, c.mirror ? Math.PI : 0, 0);
       o.visible = true;
+      o.scale.set(1, 1, 1);
     }
+    group.userData.sink = 0;
     flame.visible = true;
     helpers.visible = true;
   }
 
+  // hard landing: legs buckle, ship settles lower
+  function damageLegs() {
+    parts.legs.scale.set(1.15, 0.8, 1.15);
+    group.userData.sink = 0.45;
+  }
+
   function update(s, t) {
-    group.position.set(s.x, s.y, 0);
+    group.position.set(s.x, s.y - (group.userData.sink || 0), 0);
     group.rotation.z = s.a;
     const thr = s.status === 'flying' ? s.throttle : 0;
     const flick = 0.9 + Math.random() * 0.2;
@@ -76,5 +84,5 @@ export function createShip(models) {
     for (const m of screenMats) m.emissiveIntensity = s.powered ? 1 : 0;
   }
 
-  return { group, parts, flame, helpers, reset, update };
+  return { group, parts, flame, helpers, reset, update, damageLegs };
 }
