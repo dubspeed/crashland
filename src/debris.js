@@ -82,7 +82,7 @@ export function createDebris(scene) {
     ship.helpers.visible = false;
 
     // fireball + flash scale with impact energy and the fuel still on board
-    const fuelFrac = (s.fuelL + s.fuelR) / 1200;
+    const fuelFrac = Math.min(1, (s.fuelL + s.fuelR) / 900);
     const boom = e * (0.4 + 0.6 * fuelFrac);
     if (boom > 0.3) {
       const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xff7a20, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));

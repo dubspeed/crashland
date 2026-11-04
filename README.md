@@ -8,9 +8,9 @@ Low-poly lander game in the browser: **Three.js** (rendering), **cannon-es** (cr
 
 Your lander falls toward a planet without power. Light the main engine as late as possible and only as long as needed: the **suicide burn**. Along the way:
 
-- **Fuel**: two tanks (600 kg each). Mass drops during the burn, so the thrust-to-weight ratio rises.
+- **Fuel**: loaded per mission (Luna 175 kg, Mars 305, Terra 620, Brontes 880), so that a clean suicide burn leaves about 20–25 % reserve. Burning early, hovering or correcting drift eats into that. Both tanks drain evenly; the mass drops during the burn, so the thrust-to-weight ratio rises.
 - **G-load**: the crew tolerates 3.0 g. Above that, strain builds up until blackout (controls dead → crash). Late in the burn, with nearly empty tanks, full thrust exceeds the limit, so throttle back.
-- **Centre of mass**: computed live from all components. Valve R sticks slightly, so tank L drains faster and the centre of mass drifts. Thrust off the centre of mass creates torque. You can switch the tank valves (L+R / L only / R only) to rebalance.
+- **Centre of mass**: computed live from all components (marker + thrust axis in 3D). If it sits off the thrust axis, the engine creates torque that attitude control has to compensate.
 - **Power**: the battery feeds the flight computer, attitude control and the fuel pumps. Solar panels recharge depending on planet. Empty battery → computer offline, pumps off, max. 60 % thrust.
 - **Planets**: Luna (1.62 m/s²), Mars (3.71), Terra (9.81), Brontes (15.2: super-Earth, little thrust reserve).
 
@@ -33,7 +33,6 @@ On a crash the ship breaks into its components; the explosion scales with impact
 | W / S, ↑ / ↓ | throttle lever | Thrust limiter |
 | A / D, ← / → | **Rotate pad** (left): press left/right of centre, further out = stronger | Rotate (RCS), analog |
 | T | Lageregler | Attitude control: Retro (leans against drift) / Vertical / Off |
-| F | Tanks | Tank valves L+R / L only / R only |
 | C | Schwerpunkt | Show centre of mass and thrust axis |
 | R / M | buttons | Restart / planet select |
 

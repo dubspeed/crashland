@@ -74,6 +74,17 @@ export function createHud() {
     st.style.background = s.gStress > 0.6 ? 'var(--bad)' : 'var(--warn)';
     $('v-stress').textContent = s.blackout ? 'Crew bewusstlos' : s.gStress > 0 ? `Belastung ${fmt(s.gStress * 100)} %` : 'Crew stabil';
 
+    // fuel: amount and how long it lasts at full thrust
+    const fuelNow = S.fuel(s), fuelFrac = fuelNow / s.fuel0;
+    const fullBurn = fuelNow / (S.F_MAX / (S.ISP * S.G0));
+    const vf = $('v-fuel'); vf.textContent = `${fmt(fuelNow)} kg`;
+    cls(vf, `big ${fuelFrac < 0.1 ? 'bad' : fuelFrac < 0.25 ? 'warn' : ''}`);
+    $('v-fuelpct').textContent = `${fmt(fuelFrac * 100)} %`;
+    $('v-burntime').textContent = `reicht für ${fmt(fullBurn, 1)} s Vollschub`;
+    const bf = $('b-fuel');
+    bf.style.width = `${fuelFrac * 100}%`;
+    bf.style.background = fuelFrac < 0.1 ? 'var(--bad)' : fuelFrac < 0.25 ? 'var(--warn)' : 'var(--amber)';
+
     // burn gauge: altitude vs stopping distance on one scale
     const d = S.stoppingDistance(s);
     const scale = Math.max(p.alt, alt) * 1.05;
@@ -96,9 +107,10 @@ export function createHud() {
     // components
     setRow('capsule', s.blackout ? 'Blackout' : 'Crew ok', 1 - Math.min(1, s.gStress), s.gStress > 0.6 ? 'var(--bad)' : 'var(--ok)');
     setRow('engine', `${fmt(s.throttle * 100)} %`, s.throttle, 'var(--amber)');
-    const fc = (f) => (f / S.FUEL_MAX < 0.2 ? 'var(--bad)' : 'var(--amber)');
-    setRow('tankL', `${fmt(s.fuelL)} kg`, s.fuelL / S.FUEL_MAX, fc(s.fuelL));
-    setRow('tankR', `${fmt(s.fuelR)} kg`, s.fuelR / S.FUEL_MAX, fc(s.fuelR));
+    const half = s.fuel0 / 2;
+    const fc = (f) => (f / half < 0.2 ? 'var(--bad)' : 'var(--amber)');
+    setRow('tankL', `${fmt(s.fuelL)} kg`, s.fuelL / half, fc(s.fuelL));
+    setRow('tankR', `${fmt(s.fuelR)} kg`, s.fuelR / half, fc(s.fuelR));
     setRow('battery', `${fmt(s.battery)} %`, s.battery / S.BAT_CAP, s.battery < 20 ? 'var(--bad)' : 'var(--cyan)');
     setRow('solar', `${fmt(p.solar * 100)} % Licht`, p.solar, 'var(--cyan)');
     setRow('computer', s.powered ? 'online' : 'offline', s.powered ? 1 : 0, 'var(--ok)');
@@ -116,8 +128,6 @@ export function createHud() {
     const sas = $('c-sas');
     sas.textContent = `Lageregler: ${{ retro: 'Retro', up: 'Senkrecht', off: 'Aus' }[s.sas || 'off']}`;
     sas.classList.toggle('on', !!s.sas);
-    $('c-feed').textContent = `Tanks: ${{ LR: 'L+R', L: 'nur L', R: 'nur R' }[s.feed]}`;
-    $('c-feed').classList.toggle('on', s.feed !== 'LR');
     lever.classList.toggle('on', s.throttle > 0);
     const rcs = $('c-rcs');
     rcs.classList.toggle('on', input.rcs !== 0);
@@ -129,6 +139,7 @@ export function createHud() {
     if (s.blackout) msg = 'BLACKOUT – CREW BEWUSSTLOS';
     else if (s.gNow > S.G_LIMIT) msg = 'G-LAST ZU HOCH – SCHUB DROSSELN';
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
+    else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
     else if (alt < 40 && s.vy < -0.3) {
       const worst = Math.max(gr.vy, gr.vx, gr.tilt);

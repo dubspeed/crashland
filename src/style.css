@@ -24,12 +24,14 @@ kbd { font: 600 11px var(--mono); border: 1px solid var(--glass-edge); border-bo
 #hud > * { pointer-events: auto; }
 .panel { position: absolute; background: var(--glass); border: 1px solid var(--glass-edge); border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(6px); }
 .panel h2 { margin: 0 0 6px; font: 600 10px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--mute); }
-.panel h2:not(:first-child) { margin-top: 10px; }
+.panel h2:not(:first-child), .col-b > h2:first-child { margin-top: 10px; }
 dl { display: grid; grid-template-columns: auto auto; gap: 2px 14px; margin: 0; }
 dt { color: var(--mute); }
 dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .big { font: 700 22px var(--display); font-variant-numeric: tabular-nums; }
 .bar { height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+.bar.fuel { height: 8px; }
+.burntime { display: block; margin-top: 3px; }
 .bar i { display: block; height: 100%; width: 0; background: var(--ok); border-radius: 3px; }
 small { color: var(--mute); font-size: 11px; }
 .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
@@ -133,9 +135,14 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 /* phone landscape: short screen */
 @media (max-height: 520px) {
   #controls { --lever-w: 84px; --lever-h: min(170px, calc(100vh - 150px)); --rcs-w: 210px; --rcs-h: 70px; }
-  #flight .gline + .bar, #flight small { display: none; }
+  #flight .gline + .bar:not(.fuel), #flight small:not(.burntime) { display: none; }
   #burn-gauge { height: 90px; }
-  .left { flex-direction: column-reverse; }
+  .left { flex-direction: row; align-items: flex-end; }
+  #flight { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; width: 380px; }
+  #flight .col-b > h2:first-child { margin-top: 0; }
+  #burn { left: calc(max(10px, env(safe-area-inset-left, 0px)) + 412px); }
+  .toggles { flex-direction: column; }
+  #landing { gap: 3px; }
 }
 @media (prefers-reduced-motion: reduce) { #alert.pulse { animation: none; } .planet { transition: none; } }
 

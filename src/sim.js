@@ -7,7 +7,7 @@ export const ISP = 290;           // s
 export const RCS_TORQUE = 14000;  // N·m
 export const G_LIMIT = 3.0;       // crew limit (sustained)
 export const BAT_CAP = 100;       // %
-export const FUEL_MAX = 600;     // kg per tank
+export const FUEL_MAX = 600;     // kg capacity per tank (each mission loads planet.fuel in total)
 export const FOOT_X = 2.0;        // m, half span of landing legs
 // Touchdown window: upper bounds for grade 0 (sanft), 1 (hart), 2 (Fahrwerk beschädigt); above = crash.
 export const LAND = { vy: [2.5, 5, 8], vx: [1, 2.5, 4], tilt: [5, 10, 18] };
@@ -24,16 +24,16 @@ export function grade(value, limits) {
 }
 
 export const PLANETS = [
-  { id: 'luna', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0,
+  { id: 'luna', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0, fuel: 175,
     text: 'Geringe Schwerkraft. Viel Zeit, wenig Risiko. Gut zum Üben.',
     sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true },
-  { id: 'mars', name: 'Mars', g: 3.71, alt: 1200, vy: -95, vx: -4, tilt: -3, solar: 0.45,
+  { id: 'mars', name: 'Mars', g: 3.71, alt: 1200, vy: -95, vx: -4, tilt: -3, solar: 0.45, fuel: 305,
     text: 'Mittlere Schwerkraft, schwache Sonne. Auf die Batterie achten.',
     sky: 0xd4a27c, fog: 0xc89670, ground: 0xb4552f, ground2: 0x7d3a22, sun: 0xffe2c4 },
-  { id: 'terra', name: 'Terra', g: 9.81, alt: 1600, vy: -140, vx: 5, tilt: 4, solar: 0.75,
+  { id: 'terra', name: 'Terra', g: 9.81, alt: 1600, vy: -140, vx: 5, tilt: 4, solar: 0.75, fuel: 620,
     text: 'Volle Erdschwerkraft. Der Burn muss sitzen, die G-Last steigt schnell.',
     sky: 0x8ec5ff, fog: 0xa9d2ff, ground: 0x5f9a4c, ground2: 0x7a6145, sun: 0xffffff },
-  { id: 'brontes', name: 'Brontes', g: 15.2, alt: 1800, vy: -120, vx: -3, tilt: -2, solar: 0.3,
+  { id: 'brontes', name: 'Brontes', g: 15.2, alt: 1800, vy: -120, vx: -3, tilt: -2, solar: 0.3, fuel: 880,
     text: 'Supererde. Kaum Schubreserve, wenig Licht. Nur für Profis.',
     sky: 0x3b2f5c, fog: 0x463868, ground: 0x2f6e6a, ground2: 0x1f4442, sun: 0xd8c8ff },
 ];
@@ -72,8 +72,8 @@ export function createState(planet) {
     planet, t: 0,
     x: 0, y: planet.alt, vx: planet.vx, vy: planet.vy,
     a: (planet.tilt * Math.PI) / 180, w: 0,
-    fuelL: FUEL_MAX, fuelR: FUEL_MAX, battery: BAT_CAP,
-    limit: 1, throttle: 0, sas: 'retro', feed: 'LR',
+    fuel0: planet.fuel, fuelL: planet.fuel / 2, fuelR: planet.fuel / 2, battery: BAT_CAP,
+    limit: 1, throttle: 0, sas: 'retro',
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
     torqueCom: 0, sasTorque: 0,
     status: 'flying', reason: '', touch: null, log: [],
@@ -129,16 +129,12 @@ export function step(s, input, dt) {
   if (!s.powered) thr = Math.min(thr, 0.6); // pumps off -> pressure-fed only
   if (fuel(s) <= 0) thr = 0;
   const mdot = (thr * F_MAX) / (ISP * G0);
-  let need = mdot * dt;
-  let shareL = s.feed === 'L' ? 1 : s.feed === 'R' ? 0 : 0.56; // valve R sticks a little
-  const takeL = Math.min(s.fuelL, need * shareL);
+  // both tanks feed the engine evenly; if one runs dry the other takes over
+  const need = mdot * dt;
+  const takeL = Math.min(s.fuelL, need / 2 + Math.max(0, need / 2 - s.fuelR));
   const takeR = Math.min(s.fuelR, need - takeL);
-  const rest = need - takeL - takeR;
-  s.fuelL -= takeL + Math.min(s.fuelL - takeL, rest);
-  s.fuelR -= takeR;
-  s.fuelL = Math.max(0, s.fuelL); s.fuelR = Math.max(0, s.fuelR);
-  if (s.feed === 'R' && s.fuelR <= 0) s.feed = 'LR';
-  if (s.feed === 'L' && s.fuelL <= 0) s.feed = 'LR';
+  s.fuelL = Math.max(0, s.fuelL - takeL);
+  s.fuelR = Math.max(0, s.fuelR - takeR);
   s.throttle = thr;
 
   const { m, cx, I } = massProps(s);

@@ -18,6 +18,7 @@
     <div id="alert" hidden></div>
 
     <section id="flight" class="panel" aria-label="Flugdaten">
+      <div class="col-a">
       <h2>Flugdaten</h2>
       <dl>
         <dt>Höhe</dt><dd id="v-alt"></dd>
@@ -27,12 +28,19 @@
         <dt>Schub/Gewicht</dt><dd id="v-twr"></dd>
         <dt>Masse</dt><dd id="v-mass"></dd>
       </dl>
+      <h2>Treibstoff</h2>
+      <div class="gline"><span id="v-fuel" class="big"></span><span id="v-fuelpct" class="lim"></span></div>
+      <div class="bar fuel"><i id="b-fuel"></i></div>
+      <small id="v-burntime" class="burntime"></small>
+      </div>
+      <div class="col-b">
       <h2>Landefenster</h2>
       <div id="landing"></div>
       <h2>G-Last Crew</h2>
       <div class="gline"><span id="v-g" class="big"></span><span class="lim">Limit 3,0 g</span></div>
       <div class="bar"><i id="b-stress"></i></div>
       <small id="v-stress"></small>
+      </div>
     </section>
 
     <section id="burn" class="panel" aria-label="Suicide-Burn-Anzeige">
@@ -52,7 +60,6 @@
       <div class="left">
         <div class="toggles">
           <button id="c-sas" class="tog"></button>
-          <button id="c-feed" class="tog"></button>
           <button id="c-com" class="tog">Schwerpunkt</button>
         </div>
         <div id="c-rcs" class="rcs" role="slider" aria-label="Drehen: links oder rechts auf das Feld drücken" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0">
@@ -74,7 +81,7 @@
       <div id="planets"></div>
       <div id="window-info"></div>
       <p class="keys touch-hint">Touch: <b>Schubhebel</b> rechts drücken und hoch/runter ziehen (oben = 100 %) · <b>Drehfeld</b> links: weiter außen drücken = stärker drehen · Kamera: auf der Szene wischen</p>
-      <p class="keys key-hint"><kbd>Leertaste</kbd> Schub · <kbd>W</kbd>/<kbd>S</kbd> Schubbegrenzer · <kbd>A</kbd>/<kbd>D</kbd> drehen · <kbd>T</kbd> Lageregler · <kbd>F</kbd> Tankventile · <kbd>C</kbd> Schwerpunkt · <kbd>R</kbd> Neustart · <kbd>M</kbd> Menü</p>
+      <p class="keys key-hint"><kbd>Leertaste</kbd> Schub · <kbd>W</kbd>/<kbd>S</kbd> Schubbegrenzer · <kbd>A</kbd>/<kbd>D</kbd> drehen · <kbd>T</kbd> Lageregler · <kbd>C</kbd> Schwerpunkt · <kbd>R</kbd> Neustart · <kbd>M</kbd> Menü</p>
     </div>
   </div>
 

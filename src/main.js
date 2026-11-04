@@ -48,7 +48,7 @@ function buildMenu() {
     const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
     b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
       <b>${p.name}</b><span class="g">${p.g.toLocaleString('de-DE')} m/s² · ${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span>
-      <p>${p.text}</p><p>Start: ${p.alt} m · ${-p.vy} m/s</p>
+      <p>${p.text}</p><p>Start: ${p.alt} m · ${-p.vy} m/s<br>Treibstoff: ${p.fuel} kg</p>
       <span class="best">${rec ? `Bestwert: ${'★'.repeat(rec.stars)}${'☆'.repeat(3 - rec.stars)} · ${rec.score} Punkte` : ''}</span>`;
     b.addEventListener('click', () => start(p));
     wrap.append(b);
@@ -86,7 +86,7 @@ function start(p) {
 
 function rate(st) {
   if (st.status !== 'landed') return { stars: 0, score: 0 };
-  const fuelPct = S.fuel(st) / (2 * S.FUEL_MAX);
+  const fuelPct = S.fuel(st) / st.fuel0;
   let stars = 3 - st.touch.grade;
   if (st.gOverTime >= 0.5 || fuelPct < 0.1) stars--;
   stars = Math.max(1, stars);
@@ -119,7 +119,7 @@ function showResult() {
     ['Aufsetzen', `${f1(s.touch.vy)} m/s · ${S.GRADES[s.touch.grades.vy].name}`],
     ['Drift', `${f1(s.touch.vx)} m/s · ${S.GRADES[s.touch.grades.vx].name}`],
     ['Neigung', `${f1(s.touch.tilt)}° · ${S.GRADES[s.touch.grades.tilt].name}`],
-    ['Treibstoff übrig', `${Math.round(S.fuel(s))} kg (${Math.round((S.fuel(s) / (2 * S.FUEL_MAX)) * 100)} %)`],
+    ['Treibstoff übrig', `${Math.round(S.fuel(s))} kg (${Math.round((S.fuel(s) / s.fuel0) * 100)} %)`],
     ['Max. G-Last', `${f1(s.maxG)} g${s.gOverTime > 0.5 ? ` · ${f1(s.gOverTime)} s über Limit` : ''}`],
     ['Batterie', `${Math.round(s.battery)} %`],
     ['Flugzeit', `${f1(s.t)} s`],
@@ -142,7 +142,6 @@ addEventListener('keydown', (e) => {
   if ((e.code === 'KeyM' || e.code === 'Escape') && mode !== 'menu') showMenu();
   if (mode !== 'flight') return;
   if (e.code === 'KeyT') cycleSas();
-  if (e.code === 'KeyF') cycleFeed();
   if (e.code === 'KeyC') toggleCom();
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
@@ -178,10 +177,8 @@ bindPointer($('c-rcs'), (e, r) => {
   touch.rcs = Math.abs(dx) < 0.12 ? 0 : Math.max(-1, Math.min(1, (dx - Math.sign(dx) * 0.12) / 0.7));
 }, () => { touch.rcs = 0; });
 function cycleSas() { s.sas = { retro: 'up', up: false }[s.sas] ?? 'retro'; }
-function cycleFeed() { s.feed = { LR: 'L', L: 'R', R: 'LR' }[s.feed]; }
 function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
 $('c-sas').addEventListener('click', cycleSas);
-$('c-feed').addEventListener('click', cycleFeed);
 $('c-com').addEventListener('click', toggleCom);
 $('c-com').classList.add('on');
 $('r-again').addEventListener('click', () => start(planet));
