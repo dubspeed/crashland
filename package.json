@@ -1,0 +1,30 @@
+{
+  "name": "crashland",
+  "version": "1.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "assets": "blender --background --python blender/build_assets.py"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dubspeed/crashland.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/dubspeed/crashland/issues"
+  },
+  "homepage": "https://github.com/dubspeed/crashland#readme",
+  "dependencies": {
+    "cannon-es": "^0.20.0",
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
+  },
+  "private": true,
+  "type": "module"
+}
