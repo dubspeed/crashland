@@ -1,142 +1,228 @@
 import * as THREE from 'three';
-import * as CANNON from 'cannon-es';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import * as S from './sim.js';
+import { loadModels } from './models.js';
+import { createWorld } from './world.js';
+import { createShip } from './ship.js';
+import { createDebris } from './debris.js';
+import { createHud } from './hud.js';
 
-// ---------- Rendering ----------
+const $ = (id) => document.getElementById(id);
+
+// ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
-document.body.appendChild(renderer.domElement);
-
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8ec5ff);
-scene.fog = new THREE.Fog(0x8ec5ff, 30, 70);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 6000);
 
-const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 200);
-camera.position.set(13, 5, 15);
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, -0.5, 0);
-controls.enableDamping = true;
-controls.maxPolarAngle = Math.PI * 0.6;
+const models = await loadModels();
+const world = createWorld(scene, models);
+const ship = createShip(models);
+scene.add(ship.group);
+const debris = createDebris(scene);
+const hud = createHud();
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.2));
-const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-sun.position.set(8, 16, 6);
-sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.bias = -0.0005;
-sun.shadow.normalBias = 0.04;
-Object.assign(sun.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10 });
-scene.add(sun);
+// ---------- game state ----------
+let planet = S.PLANETS[0];
+let s = S.createState(planet);
+let mode = 'menu'; // menu | flight | end
+let endTimer = 0;
+const input = { thrust: false, rcs: 0, limitDir: 0 };
+const keys = new Set();
+let showCom = true;
+let cam = { yaw: 0.35, dist: 28, shake: 0 };
 
-// ---------- Physics ----------
-const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -9.82, 0) });
-world.broadphase = new CANNON.SAPBroadphase(world);
-world.allowSleep = true;
-const mat = new CANNON.Material('default');
-world.defaultContactMaterial = new CANNON.ContactMaterial(mat, mat, { friction: 0.4, restitution: 0.45 });
+function best(id) { try { return JSON.parse(localStorage.getItem(`crashland.best.${id}`)); } catch { return null; } }
+function saveBest(id, v) { try { localStorage.setItem(`crashland.best.${id}`, JSON.stringify(v)); } catch { /* storage unavailable */ } }
 
-// ---------- Assets ----------
-const loader = new GLTFLoader();
-// Models are bundled as base64 data URLs (vite assetsInlineLimit) so the build is a single JS file.
-const urls = import.meta.glob('./assets/*.glb', { query: '?url', import: 'default', eager: true });
-const load = async (n) => {
-  const url = urls[`./assets/${n}.glb`];
-  const buf = url.startsWith('data:')
-    ? Uint8Array.from(atob(url.slice(url.indexOf(',') + 1)), (c) => c.charCodeAt(0)).buffer
-    : await (await fetch(url)).arrayBuffer();
-  const g = await loader.parseAsync(buf, '');
-  g.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  return g.scene;
-};
-const [plate, ball, rock, crate] = await Promise.all(['plate', 'ball', 'rock', 'crate'].map(load));
-
-scene.add(plate);
-// Plate collider: 8-sided cylinder, radius 6, height 0.6 (matches the Blender mesh)
-const plateBody = new CANNON.Body({ mass: 0, material: mat });
-const plateShape = new CANNON.Cylinder(6, 6, 0.6, 8);
-plateBody.addShape(plateShape, new CANNON.Vec3(), new CANNON.Quaternion().setFromEuler(0, Math.PI / 8, 0));
-world.addBody(plateBody);
-
-const kinds = [
-  { model: ball, shape: () => new CANNON.Sphere(0.5), mass: 1 },
-  { model: rock, shape: () => new CANNON.Sphere(0.48), mass: 2 },
-  { model: crate, shape: () => new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)), mass: 1.5 },
-];
-
-const objects = [];
-const countEl = document.getElementById('count');
-
-function spawn(pos = new THREE.Vector3((Math.random() - 0.5) * 8, 12 + Math.random() * 4, (Math.random() - 0.5) * 8)) {
-  const k = kinds[Math.random() < 0.55 ? 0 : Math.random() < 0.5 ? 1 : 2];
-  const s = 0.6 + Math.random() * 0.8;
-  const mesh = k.model.clone();
-  mesh.scale.setScalar(s);
-  scene.add(mesh);
-  const shape = k.shape();
-  if (shape instanceof CANNON.Sphere) shape.radius *= s, shape.updateBoundingSphereRadius();
-  else shape.halfExtents.scale(s, shape.halfExtents), shape.updateConvexPolyhedronRepresentation(), shape.updateBoundingSphereRadius();
-  const body = new CANNON.Body({ mass: k.mass * s * s * s, material: mat, shape, linearDamping: 0.05, angularDamping: 0.1 });
-  body.position.copy(pos);
-  body.quaternion.setFromEuler(Math.random() * 6, Math.random() * 6, Math.random() * 6);
-  body.angularVelocity.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
-  world.addBody(body);
-  objects.push({ mesh, body });
+function buildMenu() {
+  const wrap = $('planets');
+  wrap.innerHTML = '';
+  for (const p of S.PLANETS) {
+    const b = document.createElement('button');
+    b.className = 'planet';
+    const rec = best(p.id);
+    const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
+    b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
+      <b>${p.name}</b><span class="g">${p.g.toLocaleString('de-DE')} m/s² · ${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span>
+      <p>${p.text}</p><p>Start: ${p.alt} m · ${-p.vy} m/s</p>
+      <span class="best">${rec ? `Bestwert: ${'★'.repeat(rec.stars)}${'☆'.repeat(3 - rec.stars)} · ${rec.score} Punkte` : ''}</span>`;
+    b.addEventListener('click', () => start(p));
+    wrap.append(b);
+  }
 }
 
-function remove(o) { scene.remove(o.mesh); world.removeBody(o.body); }
-function reset() { objects.splice(0).forEach(remove); }
+function showMenu() {
+  mode = 'menu';
+  $('menu').hidden = false; $('result').hidden = true; $('hud').hidden = true;
+  buildMenu();
+  // ship parked on the pad as a backdrop
+  debris.clear(); ship.reset();
+  s = S.createState(planet); s.y = 0; s.vy = 0; s.vx = 0; s.a = 0; s.status = 'parked';
+  ship.update(s, 0);
+}
 
-// ---------- Input ----------
-let raining = true;
-const ray = new THREE.Raycaster();
-const ndc = new THREE.Vector2();
-let downAt = null;
-renderer.domElement.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
-renderer.domElement.addEventListener('pointerup', (e) => {
-  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 6) return; // was a drag
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, camera);
-  const hit = ray.intersectObject(plate, true)[0];
-  const p = hit ? hit.point : ray.ray.at(20, new THREE.Vector3());
-  for (let i = 0; i < 5; i++) spawn(new THREE.Vector3(p.x + (Math.random() - 0.5), 10 + i * 1.3, p.z + (Math.random() - 0.5)));
-});
-const rainBtn = document.getElementById('btn-rain');
-function toggleRain() { raining = !raining; rainBtn.textContent = `Regen: ${raining ? 'an' : 'aus'}`; }
-rainBtn.addEventListener('click', toggleRain);
-document.getElementById('btn-reset').addEventListener('click', reset);
+function start(p) {
+  if (p !== planet || !world.ready) { planet = p; world.setPlanet(p); world.ready = true; }
+  debris.clear(); ship.reset();
+  s = S.createState(planet);
+  mode = 'flight';
+  $('menu').hidden = true; $('result').hidden = true; $('hud').hidden = false;
+  ship.helpers.visible = showCom;
+}
+
+function rate(st) {
+  if (st.status !== 'landed') return { stars: 0, score: 0 };
+  const fuelPct = S.fuel(st) / (2 * S.FUEL_MAX);
+  let stars = 1;
+  if (st.touch.vy <= 2.0) stars++;
+  if (st.gOverTime < 0.5 && fuelPct >= 0.15) stars++;
+  const score = Math.round(fuelPct * 1000 + (S.LAND.vy - st.touch.vy) * 150 + (S.LAND.tilt - st.touch.tilt) * 15 + (st.gOverTime < 0.5 ? 200 : 0) + (st.planet.g * 20));
+  return { stars, score };
+}
+
+function finish() {
+  mode = 'end';
+  const ok = s.status === 'landed';
+  if (!ok) { debris.explode(ship, s); cam.shake = 1.2; }
+  endTimer = ok ? 1.0 : 2.2;
+}
+
+function showResult() {
+  const ok = s.status === 'landed';
+  const { stars, score } = rate(s);
+  $('r-kicker').textContent = `${planet.name} · ${planet.g.toLocaleString('de-DE')} m/s²`;
+  $('r-title').textContent = ok ? 'Gelandet' : 'Bruchlandung';
+  $('r-title').style.color = ok ? 'var(--ok)' : 'var(--bad)';
+  $('r-reason').textContent = ok
+    ? `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}  ${score} Punkte`
+    : `Aufschlag: ${s.reason}.`;
+  const f1 = (n) => n.toLocaleString('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  const rows = [
+    ['Aufsetzen', `${f1(s.touch.vy)} m/s (max ${S.LAND.vy})`],
+    ['Drift', `${f1(s.touch.vx)} m/s (max ${S.LAND.vx})`],
+    ['Neigung', `${f1(s.touch.tilt)}° (max ${S.LAND.tilt})`],
+    ['Treibstoff übrig', `${Math.round(S.fuel(s))} kg (${Math.round((S.fuel(s) / (2 * S.FUEL_MAX)) * 100)} %)`],
+    ['Max. G-Last', `${f1(s.maxG)} g${s.gOverTime > 0.5 ? ` · ${f1(s.gOverTime)} s über Limit` : ''}`],
+    ['Batterie', `${Math.round(s.battery)} %`],
+    ['Flugzeit', `${f1(s.t)} s`],
+  ];
+  $('r-stats').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  if (ok) {
+    const prev = best(planet.id);
+    if (!prev || score > prev.score) saveBest(planet.id, { stars, score });
+  }
+  $('result').hidden = false;
+  $('r-again').focus();
+}
+
+// ---------- input ----------
 addEventListener('keydown', (e) => {
-  if (e.code === 'Space') { e.preventDefault(); toggleRain(); }
-  if (e.code === 'KeyR') reset();
+  if (e.repeat && !['Space'].includes(e.code)) return;
+  keys.add(e.code);
+  if (e.code === 'Space') e.preventDefault();
+  if (e.code === 'KeyR' && mode !== 'menu') start(planet);
+  if ((e.code === 'KeyM' || e.code === 'Escape') && mode !== 'menu') showMenu();
+  if (mode !== 'flight') return;
+  if (e.code === 'KeyT') cycleSas();
+  if (e.code === 'KeyF') cycleFeed();
+  if (e.code === 'KeyC') toggleCom();
 });
+addEventListener('keyup', (e) => keys.delete(e.code));
+addEventListener('blur', () => keys.clear());
+
+const hold = { thrust: false, left: false, right: false };
+function bindHold(id, key) {
+  const el = $(id);
+  const on = (e) => { e.preventDefault(); el.setPointerCapture?.(e.pointerId); hold[key] = true; };
+  const off = () => { hold[key] = false; };
+  el.addEventListener('pointerdown', on);
+  el.addEventListener('pointerup', off);
+  el.addEventListener('pointercancel', off);
+  el.addEventListener('lostpointercapture', off);
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+bindHold('c-thrust', 'thrust'); bindHold('c-left', 'left'); bindHold('c-right', 'right');
+$('c-limit').addEventListener('input', (e) => { s.limit = e.target.value / 100; });
+function cycleSas() { s.sas = { retro: 'up', up: false }[s.sas] ?? 'retro'; }
+function cycleFeed() { s.feed = { LR: 'L', L: 'R', R: 'LR' }[s.feed]; }
+function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
+$('c-sas').addEventListener('click', cycleSas);
+$('c-feed').addEventListener('click', cycleFeed);
+$('c-com').addEventListener('click', toggleCom);
+$('c-com').classList.add('on');
+$('r-again').addEventListener('click', () => start(planet));
+$('r-menu').addEventListener('click', showMenu);
+
+// camera orbit by dragging the canvas, zoom with the wheel
+let drag = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { drag = e.clientX; });
+addEventListener('pointerup', () => { drag = null; });
+addEventListener('pointermove', (e) => { if (drag !== null) { cam.yaw -= (e.clientX - drag) * 0.006; drag = e.clientX; } });
+renderer.domElement.addEventListener('wheel', (e) => { cam.dist = Math.min(90, Math.max(12, cam.dist * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: true });
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
 
-// ---------- Loop ----------
+// ---------- loop ----------
 const timer = new THREE.Timer();
-let rainTimer = 0;
-for (let i = 0; i < 12; i++) spawn();
+let acc = 0, time = 0;
+const focus = new THREE.Vector3();
+const STEP = 1 / 120;
+
+let autopilot = null; // optional (state) => {thrust, rcs}, used by automated tests
+function readInput(dt) {
+  if (autopilot) { Object.assign(input, autopilot(s)); return; }
+  input.thrust = keys.has('Space') || hold.thrust;
+  const l = keys.has('KeyA') || keys.has('ArrowLeft') || hold.left;
+  const r = keys.has('KeyD') || keys.has('ArrowRight') || hold.right;
+  input.rcs = (l ? 1 : 0) - (r ? 1 : 0);
+  const up = keys.has('KeyW') || keys.has('ArrowUp'), down = keys.has('KeyS') || keys.has('ArrowDown');
+  if (up || down) s.limit = Math.min(1, Math.max(0, s.limit + (up ? 0.6 : -0.6) * dt));
+}
 
 renderer.setAnimationLoop(() => {
   timer.update();
-  const dt = Math.min(timer.getDelta(), 1 / 20);
-  rainTimer += dt;
-  if (raining && rainTimer > 0.35 && objects.length < 150) { rainTimer = 0; spawn(); }
-  world.step(1 / 60, dt, 4);
-  for (let i = objects.length - 1; i >= 0; i--) {
-    const o = objects[i];
-    o.mesh.position.copy(o.body.position);
-    o.mesh.quaternion.copy(o.body.quaternion);
-    if (o.body.position.y < -25) { remove(o); objects.splice(i, 1); }
+  const raw = timer.getDelta();
+  const dt = Math.min(raw, 0.05);
+  time += dt;
+
+  if (mode === 'flight') {
+    readInput(dt);
+    acc += dt;
+    while (acc >= STEP) { S.step(s, input, STEP); acc -= STEP; }
+    if (s.status !== 'flying') finish();
+  } else if (mode === 'end' && endTimer > 0) {
+    endTimer -= raw;
+    if (endTimer <= 0) showResult();
   }
-  countEl.textContent = `${objects.length} Objekte`;
-  controls.update();
+  if (mode === 'menu') cam.yaw += dt * 0.12;
+
+  ship.update(s, time);
+  debris.update(dt);
+  if (mode !== 'menu') hud.update(s, input);
+
+  // chase camera
+  focus.set(s.x, s.y + 2.5, 0);
+  const dist = mode === 'menu' ? 22 : cam.dist;
+  camera.position.set(focus.x + Math.sin(cam.yaw) * dist, focus.y + dist * 0.16, Math.cos(cam.yaw) * dist);
+  const minY = S.terrainHeight(camera.position.x, camera.position.z) + 1.5;
+  if (camera.position.y < minY) camera.position.y = minY;
+  if (cam.shake > 0) {
+    cam.shake = Math.max(0, cam.shake - dt);
+    camera.position.add(new THREE.Vector3().randomDirection().multiplyScalar(cam.shake * 0.8));
+  }
+  camera.lookAt(focus);
+  world.update(camera, focus, time);
   renderer.render(scene, camera);
 });
 
-window.__crashland = { objects, spawn, reset };
+world.setPlanet(planet); world.ready = true;
+showMenu();
+
+// handle for automated tests
+window.__crashland = { get state() { return s; }, start: (i) => start(S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };

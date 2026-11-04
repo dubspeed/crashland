@@ -2,20 +2,91 @@
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Crashland – Prototyp</title>
-  <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #8ec5ff; font-family: system-ui, sans-serif; }
-    #hud { position: fixed; top: 12px; left: 12px; color: #fff; text-shadow: 0 1px 3px #0008; font-size: 14px; line-height: 1.5; pointer-events: none; }
-    #hud b { font-size: 20px; }
-    #ui { position: fixed; right: 12px; bottom: 12px; display: flex; gap: 8px; }
-    #ui button { font: 600 14px system-ui, sans-serif; color: #2b3a4a; background: #fffd; border: 0; border-radius: 8px; padding: 10px 14px; box-shadow: 0 2px 6px #0003; cursor: pointer; }
-    #ui button:focus-visible { outline: 3px solid #2b6cb0; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Crashland</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" />
+  <link rel="stylesheet" href="/src/style.css" />
 </head>
 <body>
-  <div id="hud"><b>Crashland</b><br/>Klick / Tippen: Objekte abwerfen · Leertaste: Regen an/aus · R: Reset<br/><span id="count"></span></div>
-  <div id="ui"><button id="btn-rain">Regen: an</button><button id="btn-reset">Reset</button></div>
+  <div id="hud" hidden>
+    <header id="top">
+      <span class="brand">CRASHLAND</span>
+      <span id="planet-tag"></span>
+    </header>
+    <div id="alert" hidden></div>
+
+    <section id="flight" class="panel" aria-label="Flugdaten">
+      <h2>Flugdaten</h2>
+      <dl>
+        <dt>Höhe</dt><dd id="v-alt"></dd>
+        <dt>Sinkrate</dt><dd id="v-vy"></dd>
+        <dt>Drift</dt><dd id="v-vx"></dd>
+        <dt>Neigung</dt><dd id="v-tilt"></dd>
+        <dt>Schub/Gewicht</dt><dd id="v-twr"></dd>
+        <dt>Masse</dt><dd id="v-mass"></dd>
+      </dl>
+      <h2>G-Last Crew</h2>
+      <div class="gline"><span id="v-g" class="big"></span><span class="lim">Limit 3,0 g</span></div>
+      <div class="bar"><i id="b-stress"></i></div>
+      <small id="v-stress"></small>
+    </section>
+
+    <section id="burn" class="panel" aria-label="Suicide-Burn-Anzeige">
+      <h2>Burn</h2>
+      <div id="burn-gauge"><div id="burn-stop"></div><div id="burn-alt"></div></div>
+      <div id="burn-label"></div>
+    </section>
+
+    <section id="parts" class="panel" aria-label="Komponenten">
+      <h2>Komponenten</h2>
+      <ul id="part-list"></ul>
+      <div class="com"><span>Schwerpunkt</span><b id="v-com"></b></div>
+      <div class="com"><span>Drehmoment</span><b id="v-torque"></b></div>
+    </section>
+
+    <div id="controls">
+      <div class="grp">
+        <button id="c-left" class="pad" aria-label="Nach links drehen">◀</button>
+        <button id="c-right" class="pad" aria-label="Nach rechts drehen">▶</button>
+      </div>
+      <div class="grp col">
+        <label for="c-limit">Schubbegrenzer <b id="v-limit"></b></label>
+        <input id="c-limit" type="range" min="0" max="100" step="1" value="100" />
+        <div class="row">
+          <button id="c-sas" class="tog"></button>
+          <button id="c-feed" class="tog"></button>
+          <button id="c-com" class="tog">Schwerpunkt</button>
+        </div>
+      </div>
+      <button id="c-thrust" class="thrust">SCHUB<small>Leertaste halten</small></button>
+    </div>
+  </div>
+
+  <div id="menu" class="overlay">
+    <div class="sheet">
+      <p class="kicker">Landeprotokoll · Version 1</p>
+      <h1>Crashland</h1>
+      <p class="lead">Dein Lander fällt antriebslos auf den Planeten. Zünde den Haupt&shy;antrieb so spät wie möglich und so kurz wie nötig: der <b>Suicide Burn</b>. Achte dabei auf Treibstoff, G-Last der Crew und Batterie.</p>
+      <div id="planets"></div>
+      <p class="keys"><kbd>Leertaste</kbd> Schub · <kbd>W</kbd>/<kbd>S</kbd> Schubbegrenzer · <kbd>A</kbd>/<kbd>D</kbd> drehen · <kbd>T</kbd> Lageregler · <kbd>F</kbd> Tankventile · <kbd>C</kbd> Schwerpunkt · <kbd>R</kbd> Neustart · <kbd>M</kbd> Menü</p>
+    </div>
+  </div>
+
+  <div id="result" class="overlay" hidden>
+    <div class="sheet small">
+      <p class="kicker" id="r-kicker"></p>
+      <h1 id="r-title"></h1>
+      <p class="lead" id="r-reason"></p>
+      <dl id="r-stats"></dl>
+      <div class="row">
+        <button id="r-again" class="primary">Nochmal <kbd>R</kbd></button>
+        <button id="r-menu">Planet wählen <kbd>M</kbd></button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
