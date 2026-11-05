@@ -343,3 +343,6 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
   .sheet.small h1 { font-size: 26px; }
   .sheet .row button { padding: 10px 8px; font-size: 13px; }
 }
+
+#td { z-index: 4; }
+@media (max-width: 400px) { #controls .tog { font-size: 10.5px; padding: 6px 7px; } #controls .toggles { gap: 5px; } }

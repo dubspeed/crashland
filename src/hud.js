@@ -56,6 +56,29 @@ export function createHud() {
     return k === 4 && fuelLeft <= 10 ? 3 : k; // no fuel, no explosion
   }
 
+  // keep the touchdown bar clear of the controls: measure where they end and sit just above them
+  const landscape = matchMedia('(max-height: 520px)');
+  function placeGauge(td) {
+    td.style.bottom = ''; td.style.top = '';
+    if (landscape.matches) return; // landscape: the bar sits at the top centre
+    const tr = td.getBoundingClientRect();
+    let top = Infinity;
+    for (const el of document.querySelectorAll('#controls .toggles, #controls .rcs, #controls .lever')) {
+      const q = el.getBoundingClientRect();
+      if (q.width && q.right > tr.left && q.left < tr.right && q.top < tr.bottom) top = Math.min(top, q.top);
+    }
+    if (!isFinite(top)) return;
+    const bottom = innerHeight - top + 16;
+    if (innerHeight - bottom - tr.height < innerHeight * 0.55) {
+      // not enough room between lander and controls (small phones): use the free sky under the crew row
+      td.style.bottom = 'auto';
+      td.style.top = 'calc(118px + env(safe-area-inset-top, 0px))';
+    } else {
+      td.style.top = '';
+      td.style.bottom = `${Math.round(bottom)}px`;
+    }
+  }
+
   const crew = createCrew($('crew-faces'), $('crew-say'));
   let tornAt;
 
@@ -178,6 +201,7 @@ export function createHud() {
     const td = $('td');
     const showTd = s.status === 'flying' && alt < 80 && s.vy < -0.2;
     td.hidden = !showTd;
+    if (showTd) placeGauge(td);
     if (showTd) {
       const v = -s.vy, z = tdZone(v, S.fuel(s));
       $('td-v').textContent = fmt(v, 1);
