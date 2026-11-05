@@ -187,7 +187,7 @@ export function createHud() {
     pb.disabled = solarGone;
     pb.classList.toggle('on', s.panels === 'in' && !solarGone);
     const solarHeat = Math.max(...['solarL', 'solarR'].filter((id) => !s.lost[id]).map((id) => heatFrac(s, id)), 0);
-    pb.classList.toggle('warn', s.panels === 'out' && solarHeat > 0.45 && !solarGone);
+    pb.classList.toggle('warn', s.panels === 'out' && solarHeat > 0.3 && !solarGone);
     const cb = $('c-chute');
     cb.textContent = { burned: 'Schirm verglüht', stowed: 'Fallschirm', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute];
     cb.disabled = s.chute === 'cut' || s.chute === 'torn' || s.chute === 'burned' || (s.chute === 'open' && !air);
@@ -234,7 +234,7 @@ export function createHud() {
     else if (s.gNow > minLimit && s.throttle > 0) { msg = 'G-LAST: CREW LEIDET'; color = 'var(--warn)'; pulse = false; }
     else if (recentLoss(s)) msg = `${recentLoss(s).toUpperCase()} VERGLÜHT`;
     else if (s.chute === 'torn' && s.t - (tornAt ??= s.t) < 3) msg = 'FALLSCHIRM GERISSEN';
-    else if (hottest(s).f > 0.75) { const h = hottest(s); msg = `HITZE: ${h.name.toUpperCase()} ${fmt(h.f * 100)} %${h.solar && s.panels === 'out' ? ' – EINKLAPPEN!' : ''}`; color = h.f > 0.9 ? 'var(--bad)' : 'var(--warn)'; pulse = h.f > 0.9; }
+    else if (hottest(s).f > (hottest(s).solar && s.panels === 'out' ? 0.5 : 0.75)) { const h = hottest(s); msg = `HITZE: ${h.name.toUpperCase()} ${fmt(h.f * 100)} %${h.solar && s.panels === 'out' ? ' – EINKLAPPEN!' : ''}`; color = h.f > 0.9 ? 'var(--bad)' : 'var(--warn)'; pulse = h.f > 0.9; }
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
     else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }

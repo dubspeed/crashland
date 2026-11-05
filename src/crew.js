@@ -244,7 +244,7 @@ export function createCrew(container, sayEl) {
       if (s.chute === 'torn') say('chute-torn', ...LINES.chuteTorn, t);
       if (s.chute === 'cut') say('chute-cut', ...LINES.chuteCut, t);
     }
-    const solarHot = s.panels === 'out' && ['solarL', 'solarR'].some((id) => !s.lost[id] && s.temp[id] > S.COMPONENTS.find((c) => c.id === id).heat[1] * 0.45);
+    const solarHot = s.panels === 'out' && ['solarL', 'solarR'].some((id) => !s.lost[id] && s.temp[id] > S.COMPONENTS.find((c) => c.id === id).heat[1] * 0.35);
     if (solarHot) say('heat', ...LINES.heat, t);
     for (const id of Object.keys(s.lost)) if (LINES.lost[id]) say(`lost-${id}`, ...LINES.lost[id], t);
     s.crew.forEach((c, i) => {

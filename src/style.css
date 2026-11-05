@@ -236,7 +236,7 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
   /* alerts: plain text, no box */
   #alert { top: calc(68px + env(safe-area-inset-top, 0px)) !important; bottom: auto !important; background: none; border: 0; padding: 0; font-size: 15px; text-shadow: 0 1px 4px #000, 0 0 10px #000; }
 }
-@media (max-width: 520px) { #hud { --burn-top: 92px; --burn-bottom: 300px; } #crew-say { top: calc(var(--face) + 4px); } #alert { top: calc(96px + env(safe-area-inset-top, 0px)) !important; } }
+@media (max-width: 520px) { #hud { --burn-top: 92px; --burn-bottom: 300px; } #crew-say { top: calc(var(--face) + 4px); } #alert { top: calc(124px + env(safe-area-inset-top, 0px)) !important; } }
 @media (max-height: 520px) { #hud { --burn-top: 80px; --burn-bottom: 110px; } }
 @media (max-width: 520px), (max-height: 520px) { #c-com { display: none; } }
 
