@@ -303,3 +303,11 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
   #flight .nav { display: grid !important; position: fixed; top: calc(84px + env(safe-area-inset-top, 0px)); left: max(24px, env(safe-area-inset-left, 0px)); font-size: 11px; text-shadow: 0 1px 3px #000, 0 0 6px #000; }
 }
 @media (max-width: 520px) { #wind-select button { padding: 6px 9px; font-size: 12px; } #wind-select button small { display: none; } }
+
+/* radar compass */
+#flight { position: relative; }
+#radar { position: absolute; top: 10px; right: 10px; width: 68px; height: 68px; border-radius: 50%; }
+@media (max-width: 520px), (max-height: 520px) {
+  #flight .nav { display: none !important; }
+  #radar { position: fixed; top: calc(84px + env(safe-area-inset-top, 0px)); left: max(24px, env(safe-area-inset-left, 0px)); right: auto; width: 60px; height: 60px; }
+}

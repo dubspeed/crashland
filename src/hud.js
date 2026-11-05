@@ -73,7 +73,65 @@ export function createHud() {
     return best;
   }
 
-  function update(s, input) {
+  // radar compass: top-down view around the lander, oriented like the camera
+  const radar = $('radar'), rctx = radar.getContext('2d');
+  function drawRadar(s, yaw) {
+    const px = Math.round(radar.clientWidth * Math.min(2, devicePixelRatio || 1));
+    if (!px) return;
+    if (radar.width !== px) radar.width = radar.height = px;
+    const c = rctx, R = px / 2;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, px, px);
+    c.translate(R, R);
+    const k = R / 50; // drawing units: radius 50
+    c.scale(k, k);
+    // world (x, z) -> radar (right, up) for a camera at yaw looking at the lander
+    const cy = Math.cos(yaw), sy = Math.sin(yaw);
+    const toR = (dx, dz) => [dx * cy - dz * sy, dx * sy + dz * cy];
+    const RANGE = 600, scale = (d) => (44 * Math.log1p(d / 25)) / Math.log1p(RANGE / 25);
+    const place = (dx, dz) => { const d = Math.hypot(dx, dz); const [x, y] = toR(dx, dz); const f = d > 0.01 ? Math.min(44, scale(d)) / d : 0; return [x * f, y * f, d]; };
+    // backdrop + rings at 70 m (flat zone size) and 300 m
+    c.beginPath(); c.arc(0, 0, 48, 0, Math.PI * 2); c.fillStyle = 'rgba(9,13,22,0.55)'; c.fill();
+    c.strokeStyle = 'rgba(160,200,255,0.25)'; c.lineWidth = 1;
+    for (const d of [70, 300]) { c.beginPath(); c.arc(0, 0, scale(d), 0, Math.PI * 2); c.stroke(); }
+    // landing pad + flat zone
+    const [padX, padY, padD] = place(-s.x, 0);
+    const far = padD > RANGE;
+    c.beginPath(); c.arc(padX, padY, Math.max(3, scale(padD + 70) - scale(padD)), 0, Math.PI * 2); c.fillStyle = 'rgba(95,224,160,0.18)'; c.fill();
+    c.beginPath();
+    for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2 + Math.PI / 8; c.lineTo(padX + Math.cos(a) * 4.5, padY + Math.sin(a) * 4.5); }
+    c.closePath(); c.fillStyle = '#f2c230'; c.fill(); c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 1.2; c.stroke();
+    // wind: arrow from the edge it comes from, pointing downwind
+    if (s.planet.rho > 0 && s.wind.speed) {
+      const [wx, wy] = toR(Math.sign(s.windNow || s.wind.dir), 0);
+      const len = 10 + Math.min(1, Math.abs(s.windNow) / 26) * 22;
+      const sx = -wx * 46, sy2 = -wy * 46, ex = sx + wx * len, ey = sy2 + wy * len;
+      c.strokeStyle = '#8fe3ff'; c.fillStyle = '#8fe3ff'; c.lineWidth = 3; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(sx, sy2); c.lineTo(ex, ey); c.stroke();
+      c.beginPath(); c.moveTo(ex + wx * 5, ey + wy * 5); c.lineTo(ex - wy * 4, ey + wx * 4); c.lineTo(ex + wy * 4, ey - wx * 4); c.closePath(); c.fill();
+    }
+    // own motion (where you drift to in the next ~10 s)
+    const [mx, my] = place(s.vx * 10, 0);
+    const ml = Math.hypot(mx, my);
+    if (ml > 2) {
+      const ux = mx / ml, uy = my / ml;
+      c.strokeStyle = '#ffffff'; c.fillStyle = '#ffffff'; c.lineWidth = 2.5;
+      c.beginPath(); c.moveTo(0, 0); c.lineTo(mx - ux * 3, my - uy * 3); c.stroke();
+      c.beginPath(); c.moveTo(mx + ux * 2, my + uy * 2); c.lineTo(mx - ux * 4 - uy * 3.5, my - uy * 4 + ux * 3.5); c.lineTo(mx - ux * 4 + uy * 3.5, my - uy * 4 - ux * 3.5); c.closePath(); c.fill();
+    }
+    // lander in the centre
+    c.beginPath(); c.moveTo(0, -5); c.lineTo(4.5, 4); c.lineTo(-4.5, 4); c.closePath(); c.fillStyle = '#ffb547'; c.fill();
+    // distance to the pad, at the bottom of the dial
+    if (padD > 10) {
+      c.font = "600 11px 'IBM Plex Mono', monospace"; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.lineWidth = 3; c.strokeStyle = 'rgba(0,0,0,0.7)'; c.fillStyle = padD > 70 ? '#ffd04d' : '#5fe0a0';
+      const txt = `${Math.round(padD)} m`;
+      c.strokeText(txt, 0, 37); c.fillText(txt, 0, 37);
+    }
+  }
+
+  function update(s, input, yaw = 0.35) {
+    drawRadar(s, yaw);
     if (s.t < 0.05) for (const k in lostAt) delete lostAt[k];
     const p = s.planet;
     const alt = Math.max(0, S.altitude(s));

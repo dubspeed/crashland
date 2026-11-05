@@ -266,7 +266,7 @@ renderer.setAnimationLoop(() => {
 
   ship.update(s, time);
   debris.update(dt);
-  if (mode !== 'menu') hud.update(s, input);
+  if (mode !== 'menu') hud.update(s, input, cam.yaw);
 
   // chase camera
   focus.set(s.x, s.y + 2.5, 0);
