@@ -10,7 +10,7 @@ export function createHud() {
   const rows = {};
   const partRows = [
     ['capsule', 'Kommandokapsel'], ['engine', 'Antrieb'], ['tankL', 'Tank L'], ['tankR', 'Tank R'],
-    ['battery', 'Batterien'], ['solar', 'Solarpaneele'], ['computer', 'Bordcomputer'], ['chute', 'Fallschirm'],
+    ['battery', 'Batterien'], ['solar', 'Solarpaneele'], ['computer', 'Bordcomputer'], ['chute', 'Fallschirm'], ['legs', 'Landebeine'],
   ];
   for (const [id, label] of partRows) {
     const li = document.createElement('li');
@@ -45,7 +45,21 @@ export function createHud() {
   const crew = createCrew($('crew-faces'), $('crew-say'));
   let tornAt;
 
+  const heatFrac = (s, id) => { const c = S.COMPONENTS.find((k) => k.id === id); return (s.temp[id] - S.T_AMB) / (c.heat[1] - S.T_AMB); };
+  const lostAt = {};
+
+  function recentLoss(s) {
+    for (const c of S.COMPONENTS) if (s.lost[c.id] && s.t - (lostAt[c.id] ??= s.t) < 3) return c.name;
+    return null;
+  }
+  function hottest(s) {
+    let best = { f: 0, name: '' };
+    for (const c of S.COMPONENTS) if (c.heat && !s.lost[c.id]) { const f = heatFrac(s, c.id); if (f > best.f) best = { f, name: c.name }; }
+    return best;
+  }
+
   function update(s, input) {
+    if (s.t < 0.05) for (const k in lostAt) delete lostAt[k];
     const p = s.planet;
     const alt = Math.max(0, S.altitude(s));
     const { m, cx, cy } = S.massProps(s);
@@ -90,14 +104,14 @@ export function createHud() {
     const d = S.stoppingDistance(s);
     const scale = Math.max(p.alt, alt) * 1.05;
     const gauge = $('burn-gauge');
-    gauge.style.opacity = s.powered ? 1 : 0.25;
+    gauge.style.opacity = s.computerOK ? 1 : 0.25;
     $('burn-stop').style.height = `${Math.min(1, d / scale) * 100}%`;
     $('burn-alt').style.bottom = `calc(${Math.min(1, alt / scale) * 100}% - 1px)`;
     const bl = $('burn-label');
     let label = '', lc = 'mute';
     if (s.status === 'landed') { label = S.GRADES[s.touch.grade].name.split(' ')[0].toUpperCase(); lc = gradeCls[s.touch.grade]; }
     else if (s.status === 'crashed') { label = 'AUFSCHLAG'; lc = 'bad'; }
-    else if (!s.powered) { label = 'OFFLINE'; lc = 'bad'; }
+    else if (!s.computerOK) { label = 'OFFLINE'; lc = 'bad'; }
     else if (s.vy >= -0.5) { label = 'SCHWEBT'; lc = ''; }
     else if (!isFinite(d)) { label = 'ZU WENIG SCHUB'; lc = 'bad'; }
     else if (alt <= d * 1.02) { label = 'BURN!'; lc = 'bad'; }
@@ -115,19 +129,34 @@ export function createHud() {
     setRow('tankR', `${fmt(s.fuelR)} kg`, s.fuelR / half, fc(s.fuelR));
     setRow('battery', `${fmt(s.battery)} %`, s.battery / S.BAT_CAP, s.battery < 20 ? 'var(--bad)' : 'var(--cyan)');
     setRow('solar', `${fmt(p.solar * 100)} % Licht`, p.solar, 'var(--cyan)');
-    setRow('computer', s.powered ? 'online' : 'offline', s.powered ? 1 : 0, 'var(--ok)');
+    setRow('computer', s.computerOK ? 'online' : 'offline', s.computerOK ? 1 : 0, 'var(--ok)');
+    setRow('legs', 'ok', 1, 'var(--ok)');
     const air = p.rho > 0;
-    const chuteText = !air ? 'keine Luft' : { stowed: s.q > S.CHUTE_QMAX ? 'zu schnell' : 'bereit', open: `offen ${fmt(s.chuteOpen * 100)} %`, cut: 'abgeworfen', torn: 'gerissen' }[s.chute];
+    const chuteText = !air ? 'keine Luft' : { burned: 'verglüht', stowed: s.q > S.CHUTE_QMAX ? 'zu schnell' : 'bereit', open: `offen ${fmt(s.chuteOpen * 100)} %`, cut: 'abgeworfen', torn: 'gerissen' }[s.chute];
     setRow('chute', chuteText, s.chute === 'open' ? s.chuteOpen : s.chute === 'stowed' && air ? Math.min(1, s.q / S.CHUTE_QMAX) : 0,
       s.chute === 'stowed' && s.q > S.CHUTE_QMAX ? 'var(--bad)' : 'var(--cyan)');
     const qEl = $('v-q');
     qEl.textContent = air ? `${fmt(s.q / 1000, 1)} kPa` : '–';
     cls(qEl, s.q > S.CHUTE_QMAX ? 'bad' : s.q > S.CHUTE_QMAX * 0.8 ? 'warn' : '');
     const cb = $('c-chute');
-    cb.textContent = { stowed: 'Fallschirm', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute];
-    cb.disabled = s.chute === 'cut' || s.chute === 'torn' || (s.chute === 'open' && !air);
+    cb.textContent = { burned: 'Schirm verglüht', stowed: 'Fallschirm', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute];
+    cb.disabled = s.chute === 'cut' || s.chute === 'torn' || s.chute === 'burned' || (s.chute === 'open' && !air);
     cb.classList.toggle('on', s.chute === 'open' && air);
     cb.classList.toggle('ready', s.chute === 'stowed' && air && s.status === 'flying' && s.q <= S.CHUTE_QMAX && s.t > 0.2);
+    // heat: hot or destroyed components override their row
+    const rowParts = { capsule: ['capsule'], engine: ['engine'], tankL: ['tankL'], tankR: ['tankR'], battery: ['battery'], solar: ['solarL', 'solarR'], computer: ['computer'], chute: ['chute'], legs: ['legs'] };
+    for (const [row, ids] of Object.entries(rowParts)) {
+      const lost = ids.filter((id) => s.lost[id]);
+      const hot = ids.filter((id) => !s.lost[id]).map((id) => ({ id, f: heatFrac(s, id) })).sort((a, b) => b.f - a.f)[0];
+      if (lost.length) setRow(row, lost.length === ids.length ? 'verglüht' : `${lost.length}/${ids.length} verglüht`, 0, 'var(--bad)');
+      else if (hot && hot.f > 0.3) {
+        rows[row].val.textContent = `${fmt(s.temp[hot.id])} °C`;
+        rows[row].bar.style.width = `${Math.min(1, hot.f) * 100}%`;
+        rows[row].bar.style.background = hot.f > 0.8 ? 'var(--bad)' : 'var(--amber)';
+      }
+      rows[row].val.style.color = lost.length || (hot && hot.f > 0.8) ? 'var(--bad)' : hot && hot.f > 0.3 ? 'var(--amber)' : '';
+    }
+
     $('v-com').textContent = `x ${cx >= 0 ? '+' : '−'}${fmt(Math.abs(cx * 100), 1)} cm · y ${fmt(cy, 2)} m`;
     const tq = $('v-torque');
     tq.textContent = `${fmt(s.torqueCom / 1000, 1)} kNm`;
@@ -153,7 +182,9 @@ export function createHud() {
     if (s.blackout) msg = 'PILOTIN BEWUSSTLOS – KEINE STEUERUNG';
     else if (s.gNow > S.G_LIMIT) msg = 'G-LAST ZU HOCH – SCHUB DROSSELN';
     else if (s.gNow > minLimit && s.throttle > 0) { msg = 'G-LAST: CREW LEIDET'; color = 'var(--warn)'; pulse = false; }
+    else if (recentLoss(s)) msg = `${recentLoss(s).toUpperCase()} VERGLÜHT`;
     else if (s.chute === 'torn' && s.t - (tornAt ??= s.t) < 3) msg = 'FALLSCHIRM GERISSEN';
+    else if (hottest(s).f > 0.75) { const h = hottest(s); msg = `HITZE: ${h.name.toUpperCase()} ${fmt(h.f * 100)} %`; color = h.f > 0.9 ? 'var(--bad)' : 'var(--warn)'; pulse = h.f > 0.9; }
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
     else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }

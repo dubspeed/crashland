@@ -26,6 +26,11 @@ export const CHUTE_QMAX = 5500;    // Pa, canopy tears above this dynamic pressu
 export const CHUTE_FMAX = 70000;   // N, reefing limits the riser load
 export const CHUTE_ARM = 3.5;      // m, riser attachment above the centre of mass (righting torque)
 
+// Aerodynamic heating (game-scaled Sutton–Graves): flux ∝ sqrt(rho) · v³
+export const HEAT_K = 55;           // K/s at rho = 1, v = 100 m/s, exposure 1
+export const HEAT_COOL = 0.12;      // 1/s, cooling towards ambient
+export const T_AMB = 20;
+
 export const LAND = { vy: [2.5, 5, 8], vx: [1, 2.5, 4], tilt: [5, 10, 18] };
 export const GRADES = [
   { id: 'soft', name: 'Sanft', color: 'var(--ok)' },
@@ -46,7 +51,7 @@ export const PLANETS = [
   { id: 'mars', name: 'Mars', g: 3.71, alt: 1500, vy: -110, vx: -4, tilt: -3, solar: 0.45, fuel: 305, rho: 0.02, H: 11000, atmo: 'sehr dünn',
     text: 'Mittlere Schwerkraft, schwache Sonne. Auf die Batterie achten.',
     sky: 0xd4a27c, fog: 0xc89670, ground: 0xb4552f, ground2: 0x7d3a22, sun: 0xffe2c4 },
-  { id: 'terra', name: 'Terra', g: 9.81, alt: 1800, vy: -150, vx: 5, tilt: 4, solar: 0.75, fuel: 200, rho: 1.225, H: 8500, atmo: 'normal',
+  { id: 'terra', name: 'Terra', g: 9.81, alt: 1800, vy: -165, vx: 5, tilt: 4, solar: 0.75, fuel: 200, rho: 1.225, H: 8500, atmo: 'normal',
     text: 'Volle Erdschwerkraft. Der Burn muss sitzen, die G-Last steigt schnell.',
     sky: 0x8ec5ff, fog: 0xa9d2ff, ground: 0x5f9a4c, ground2: 0x7a6145, sun: 0xffffff },
   { id: 'brontes', name: 'Brontes', g: 15.2, alt: 2400, vy: -90, vx: -3, tilt: -2, solar: 0.3, fuel: 230, rho: 2.8, H: 7000, atmo: 'dicht',
@@ -56,17 +61,17 @@ export const PLANETS = [
 
 // Ship components: local position (m) relative to the foot plane centre; mass in kg.
 export const COMPONENTS = [
-  { id: 'capsule',  name: 'Kommandokapsel',   model: 'capsule',  mass: 1500, pos: [0, 4.5, 0] },
-  { id: 'frame',    name: 'Rahmen',           model: 'frame',    mass: 350,  pos: [0, 2.9, 0] },
-  { id: 'engine',   name: 'Antrieb',          model: 'engine',   mass: 950,  pos: [0, 1.5, 0] },
-  { id: 'tankL',    name: 'Treibstofftank L', model: 'tank',     mass: 200,  pos: [-1.15, 2.9, 0], fuel: 'fuelL' },
-  { id: 'tankR',    name: 'Treibstofftank R', model: 'tank',     mass: 200,  pos: [1.15, 2.9, 0], fuel: 'fuelR' },
-  { id: 'solarL',   name: 'Solarpaneel L',    model: 'solar',    mass: 110,  pos: [-2.5, 4.25, 0], mirror: true },
-  { id: 'solarR',   name: 'Solarpaneel R',    model: 'solar',    mass: 110,  pos: [2.5, 4.25, 0] },
-  { id: 'computer', name: 'Bordcomputer',     model: 'computer', mass: 150,  pos: [0.35, 2.85, 0.8] },
-  { id: 'battery',  name: 'Batterien',        model: 'battery',  mass: 420,  pos: [-0.3, 2.85, -0.8] },
-  { id: 'chute',    name: 'Fallschirm',       model: 'chutepack', mass: 120, pos: [0, 5.55, 0] },
-  { id: 'legs',     name: 'Landebeine',       model: 'legs',     mass: 380,  pos: [0, 0, 0], com: [0, 0.9] },
+  { id: 'capsule',  name: 'Kommandokapsel',   model: 'capsule',  mass: 1500, pos: [0, 4.5, 0], heat: [0.1, 2000] },
+  { id: 'frame',    name: 'Rahmen',           model: 'frame',    mass: 350,  pos: [0, 2.9, 0], heat: [0.5, 1300] },
+  { id: 'engine',   name: 'Antrieb',          model: 'engine',   mass: 950,  pos: [0, 1.5, 0], heat: [1.0, 1800] },
+  { id: 'tankL',    name: 'Treibstofftank L', model: 'tank',     mass: 200,  pos: [-1.15, 2.9, 0], fuel: 'fuelL', heat: [0.6, 640] },
+  { id: 'tankR',    name: 'Treibstofftank R', model: 'tank',     mass: 200,  pos: [1.15, 2.9, 0], fuel: 'fuelR', heat: [0.6, 640] },
+  { id: 'solarL',   name: 'Solarpaneel L',    model: 'solar',    mass: 110,  pos: [-2.5, 4.25, 0], mirror: true, heat: [1.0, 560] },
+  { id: 'solarR',   name: 'Solarpaneel R',    model: 'solar',    mass: 110,  pos: [2.5, 4.25, 0], heat: [1.0, 560] },
+  { id: 'computer', name: 'Bordcomputer',     model: 'computer', mass: 150,  pos: [0.35, 2.85, 0.8], heat: [0.12, 330] },
+  { id: 'battery',  name: 'Batterien',        model: 'battery',  mass: 420,  pos: [-0.3, 2.85, -0.8], heat: [0.12, 300] },
+  { id: 'chute',    name: 'Fallschirm',       model: 'chutepack', mass: 120, pos: [0, 5.55, 0], heat: [0.28, 260] },
+  { id: 'legs',     name: 'Landebeine',       model: 'legs',     mass: 380,  pos: [0, 0, 0], com: [0, 0.9], heat: [0.9, 950] },
 ];
 
 // ---------- terrain ----------
@@ -93,14 +98,15 @@ export function createState(planet) {
     limit: 1, throttle: 0, sas: 'retro',
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
     crew: CREW.map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
-    torqueCom: 0, sasTorque: 0, chute: 'stowed', chuteT: 0, chuteInflate: 0, chuteOpen: 0, q: 0, maxQ: 0, drag: 0,
+    torqueCom: 0, sasTorque: 0, temp: Object.fromEntries(COMPONENTS.map((c) => [c.id, T_AMB])), lost: {}, events: [],
+    chute: 'stowed', chuteT: 0, chuteInflate: 0, chuteOpen: 0, q: 0, maxQ: 0, drag: 0,
     status: 'flying', reason: '', touch: null, log: [],
   };
 }
 
 export function massProps(s) {
   let m = 0, mx = 0, my = 0;
-  const parts = COMPONENTS.map((c) => {
+  const parts = COMPONENTS.filter((c) => !s.lost?.[c.id]).map((c) => {
     const mass = c.mass + (c.fuel ? s[c.fuel] : 0);
     const [px, py] = c.com || c.pos;
     m += mass; mx += mass * px; my += mass * py;
@@ -118,7 +124,7 @@ export function density(s) { return s.planet.rho * Math.exp(-Math.max(0, s.y) / 
 /** P key / button: deploy the stowed chute, or cut an open one. Returns what happened. */
 export function toggleChute(s) {
   if (s.status !== 'flying') return null;
-  if (s.chute === 'stowed') {
+  if (s.chute === 'stowed' && !s.lost.chute) {
     s.chute = 'open'; s.chuteT = 0;
     return s.planet.rho > 0 ? 'open' : 'useless';
   }
@@ -148,12 +154,24 @@ export function altitude(s) {
   return min;
 }
 
+/** A component overheated: it explodes and breaks off, with consequences. */
+export function destroy(s, id) {
+  if (s.lost[id]) return;
+  s.lost[id] = true;
+  s.events.push({ type: 'lost', id, t: s.t });
+  if (id === 'tankL') s.fuelL = 0;
+  if (id === 'tankR') s.fuelR = 0;
+  if (id === 'battery') s.battery = 0;
+  if (id === 'chute') s.chute = s.chute === 'open' ? 'torn' : 'burned';
+}
+
 /** input: { thrust: bool, rcs: -1..1 } */
 export function step(s, input, dt) {
   if (s.status !== 'flying') return;
   const p = s.planet;
   s.t += dt;
-  s.powered = s.battery > 0;
+  s.powered = s.battery > 0 && !s.lost.battery;
+  s.computerOK = s.powered && !s.lost.computer;
   s.blackout = s.crew[0].out;
 
   // --- engine ---
@@ -180,9 +198,9 @@ export function step(s, input, dt) {
   s.sasTorque = 0;
   if (!s.blackout && input.rcs) {
     tau += input.rcs * RCS_TORQUE; rcsUse = Math.abs(input.rcs);
-  } else if (s.sas && s.powered && !s.blackout) {
+  } else if (s.sas && s.computerOK && !s.blackout) {
     // 'up' holds vertical, 'retro' leans against horizontal drift (max 15°)
-    const target = s.sas === 'retro' ? Math.max(-0.26, Math.min(0.26, s.vx * 0.06)) : 0;
+    const target = s.sas === 'retro' && thr > 0 ? Math.max(-0.26, Math.min(0.26, s.vx * 0.06)) : 0;
     const want = -(2.2 * (s.a - target) + 2.6 * s.w) * I - s.torqueCom;
     s.sasTorque = Math.max(-RCS_TORQUE, Math.min(RCS_TORQUE, want));
     tau += s.sasTorque; rcsUse = Math.abs(s.sasTorque) / RCS_TORQUE;
@@ -234,8 +252,21 @@ export function step(s, input, dt) {
 
   // --- power ---
   const use = 1.0 + (s.sas ? 0.4 : 0) + 2.2 * rcsUse + 1.2 * thr;
-  const gain = 1.6 * p.solar;
+  const panels = (s.lost.solarL ? 0 : 1) + (s.lost.solarR ? 0 : 1);
+  const gain = 1.6 * p.solar * (panels / 2);
   s.battery = Math.max(0, Math.min(BAT_CAP, s.battery + (gain - use) * dt));
+
+  // --- aerodynamic heating: hot parts glow, overheated parts blow off ---
+  const flux = Math.sqrt(density(s)) * (v / 100) ** 3 * HEAT_K;
+  s.heatFlux = flux;
+  const sideways = Math.sin(s.a); // tilt exposes one side more
+  for (const c of COMPONENTS) {
+    if (s.lost[c.id] || !c.heat) continue;
+    const side = Math.sign(c.pos[0]);
+    const exp = Math.max(0, c.heat[0] * (1 + side * sideways * 2.5));
+    s.temp[c.id] += (flux * exp - HEAT_COOL * (s.temp[c.id] - T_AMB)) * dt;
+    if (s.temp[c.id] > c.heat[1]) destroy(s, c.id);
+  }
 
   // --- touchdown ---
   const alt = altitude(s);
@@ -249,6 +280,7 @@ export function step(s, input, dt) {
     if (g.vx === 3) why.push(`seitliche Drift (${drift.toFixed(1)} m/s, max ${LAND.vx[2]})`);
     if (g.tilt === 3) why.push(`zu schräg (${tilt.toFixed(0)}°, max ${LAND.tilt[2]}°)`);
     if (Math.abs(hL - hR) > 0.8) why.push('Gelände zu uneben');
+    if (s.lost.legs) why.push('Landebeine verglüht');
     const overall = why.length ? 3 : Math.max(g.vy, g.vx, g.tilt);
     // crash energy 0..1: how violent the impact was (drives the explosion size)
     const energy = Math.min(1, Math.max(0, (sink - LAND.vy[2]) / 18 + (drift - LAND.vx[2]) / 25 + 0.1));

@@ -56,13 +56,32 @@ export function createShip(models) {
   canopy.position.y = 0.2;
   chuteRig.add(canopy);
   group.add(chuteRig);
-  let loose = null; // canopy flying off after cut/tear: { v, t, torn }
+  let looseChute = null; // canopy flying off after cut/tear: { v, t, torn }
 
-  // re-entry glow under the heat shield at high dynamic pressure
-  const heat = new THREE.Mesh(new THREE.SphereGeometry(2.6, 10, 6).scale(1, 0.45, 1),
-    new THREE.MeshBasicMaterial({ color: 0xff9a40, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
-  heat.position.y = 0.4;
-  group.add(heat);
+  // heat: per-material base emissive so glowing can blend on top of it
+  for (const o of Object.values(parts)) o.traverse((m) => {
+    if (m.isMesh) m.material.userData.base = { color: m.material.emissive.clone(), i: m.material.emissiveIntensity };
+  });
+  const heatCol = new THREE.Color();
+  function heatColor(k) { // dark red -> orange -> yellow-white
+    return k < 0.5 ? heatCol.setRGB(0.55 + k * 0.9, 0.05 + k * 0.5, 0) : heatCol.setRGB(1, 0.3 + (k - 0.5) * 1.1, (k - 0.5) * 0.6);
+  }
+
+  // embers streaming off hot parts
+  const EMB = 400;
+  const embPos = new Float32Array(EMB * 3), embVel = new Float32Array(EMB * 3), embLife = new Float32Array(EMB);
+  const dot = document.createElement('canvas'); dot.width = dot.height = 32;
+  const dg = dot.getContext('2d');
+  const rg = dg.createRadialGradient(16, 16, 0, 16, 16, 16);
+  rg.addColorStop(0, '#fff'); rg.addColorStop(0.45, 'rgba(255,255,255,0.9)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+  dg.fillStyle = rg; dg.fillRect(0, 0, 32, 32);
+  const embGeo = new THREE.BufferGeometry();
+  embGeo.setAttribute('position', new THREE.BufferAttribute(embPos, 3));
+  const embers = new THREE.Points(embGeo, new THREE.PointsMaterial({ color: 0xff8a20, size: 0.6, map: new THREE.CanvasTexture(dot), transparent: true, opacity: 0.95, depthWrite: false }));
+  embers.frustumCulled = false;
+  let embNext = 0, scene = null;
+  const loose = []; // parts that blew off: { obj, v, w, t }
+  const tmpV = new THREE.Vector3();
 
   const screenMats = [];
   parts.computer.traverse((m) => { if (m.isMesh && m.material.name === 'Screen') screenMats.push(m.material); });
@@ -79,7 +98,13 @@ export function createShip(models) {
     group.userData.sink = 0;
     if (chuteRig.parent !== group) group.add(chuteRig);
     chuteRig.position.set(0, 5.72, 0); chuteRig.rotation.set(0, 0, 0); chuteRig.scale.set(1, 1, 1);
-    chuteRig.visible = false; loose = null;
+    chuteRig.visible = false; looseChute = null;
+    for (const l of loose) l.obj.parent?.remove(l.obj);
+    loose.length = 0;
+    embLife.fill(0);
+    for (const o of Object.values(parts)) o.traverse((m) => {
+      if (m.isMesh) { m.material.emissive.copy(m.material.userData.base.color); m.material.emissiveIntensity = m.material.userData.base.i; }
+    });
     flame.visible = true;
     helpers.visible = true;
   }
@@ -96,7 +121,7 @@ export function createShip(models) {
     group.position.set(s.x, s.y - (group.userData.sink || 0), 0);
     group.rotation.z = s.a;
     updateChute(s, t, dt);
-    heat.material.opacity = s.status === 'flying' ? Math.min(0.4, Math.max(0, (s.q - 6000) / 10000)) * (0.85 + Math.random() * 0.3) : 0;
+    updateHeat(s, dt);
     const thr = s.status === 'flying' ? s.throttle : 0;
     const flick = 0.9 + Math.random() * 0.2;
     flame.visible = thr > 0.01;
@@ -108,22 +133,22 @@ export function createShip(models) {
   }
 
   function updateChute(s, t, dt) {
-    if (loose) {
+    if (looseChute) {
       // detached canopy drifts away, slowly falling, collapsing if torn
-      loose.t += dt;
-      loose.v.y += (-4 - loose.v.y) * Math.min(1, dt * 1.5);
-      loose.v.x *= 1 - dt * 0.8;
-      chuteRig.position.addScaledVector(loose.v, dt);
-      chuteRig.rotation.z += dt * (loose.torn ? 1.2 : 0.4);
-      const k = Math.min(1, loose.t / 1.5);
-      canopy.scale.set(1 - k * (loose.torn ? 0.8 : 0.5), 1, 1 - k * (loose.torn ? 0.8 : 0.5));
-      if (loose.t > 10) chuteRig.visible = false;
+      looseChute.t += dt;
+      looseChute.v.y += (-4 - looseChute.v.y) * Math.min(1, dt * 1.5);
+      looseChute.v.x *= 1 - dt * 0.8;
+      chuteRig.position.addScaledVector(looseChute.v, dt);
+      chuteRig.rotation.z += dt * (looseChute.torn ? 1.2 : 0.4);
+      const k = Math.min(1, looseChute.t / 1.5);
+      canopy.scale.set(1 - k * (looseChute.torn ? 0.8 : 0.5), 1, 1 - k * (looseChute.torn ? 0.8 : 0.5));
+      if (looseChute.t > 10) chuteRig.visible = false;
       return;
     }
     if (s.chute === 'stowed') { chuteRig.visible = false; return; }
     if ((s.chute === 'cut' || s.chute === 'torn') && chuteRig.parent === group) {
       group.parent.attach(chuteRig);
-      loose = { v: new THREE.Vector3(s.vx * 0.5, s.vy * 0.4 + 6, 0), t: 0, torn: s.chute === 'torn' };
+      looseChute = { v: new THREE.Vector3(s.vx * 0.5, s.vy * 0.4 + 6, 0), t: 0, torn: s.chute === 'torn' };
       return;
     }
     if (s.status === 'crashed') { chuteRig.visible = false; return; }
@@ -146,5 +171,57 @@ export function createShip(models) {
     chuteRig.rotation.z = -s.a * 0.85 + Math.sin(t * 1.3) * 0.04 + (air ? 0 : 0.6);
   }
 
-  return { group, parts, flame, helpers, reset, update, damageLegs, chuteRig };
+  function updateHeat(s, dt) {
+    if (!scene && group.parent) { scene = group.parent; scene.add(embers); }
+    for (const c of COMPONENTS) {
+      if (!c.heat) continue;
+      const part = parts[c.id];
+      const k = Math.min(1, Math.max(0, (s.temp[c.id] - 140) / (c.heat[1] - 140)));
+      const col = heatColor(k);
+      part.traverse((m) => {
+        if (!m.isMesh) return;
+        const b = m.material.userData.base;
+        m.material.emissive.copy(b.color).lerp(col, Math.min(1, k * 1.4));
+        m.material.emissiveIntensity = Math.max(b.i, k * 2.2);
+      });
+      // embers from glowing parts that are still attached
+      if (k > 0.4 && part.parent === group && s.status === 'flying') {
+        let n = Math.random() < (k - 0.35) * 4 * dt * 60 ? 1 + Math.floor(k * 3) : 0;
+        part.getWorldPosition(tmpV);
+        while (n-- > 0) {
+          const i = embNext++ % EMB;
+          embPos[i * 3] = tmpV.x + (Math.random() - 0.5) * 1.5; embPos[i * 3 + 1] = tmpV.y - 0.3; embPos[i * 3 + 2] = tmpV.z + (Math.random() - 0.5) * 1.5;
+          embVel[i * 3] = s.vx * 0.7 + (Math.random() - 0.5) * 3; embVel[i * 3 + 1] = s.vy * 0.7 + Math.random() * 2; embVel[i * 3 + 2] = (Math.random() - 0.5) * 3;
+          embLife[i] = 0.6 + Math.random() * 0.5;
+        }
+      }
+    }
+    for (let i = 0; i < EMB; i++) {
+      if (embLife[i] <= 0) { embPos[i * 3 + 1] = -1e5; continue; }
+      embLife[i] -= dt;
+      for (let k = 0; k < 3; k++) embPos[i * 3 + k] += embVel[i * 3 + k] * dt;
+    }
+    embGeo.attributes.position.needsUpdate = true;
+    // parts that blew off: tumble away, decelerated hard by the air (they fall behind = fly up on screen)
+    for (const l of loose) {
+      l.t += dt;
+      l.v.y += (-12 - l.v.y) * Math.min(1, dt * 1.2);
+      l.v.x *= 1 - dt * 0.5;
+      l.obj.position.addScaledVector(l.v, dt);
+      l.obj.rotation.x += l.w.x * dt; l.obj.rotation.z += l.w.z * dt;
+      if (l.t > 8) l.obj.visible = false;
+    }
+  }
+
+  /** A component overheated: detach it and send it tumbling. Returns its world position. */
+  function blowOff(id, s) {
+    const part = parts[id];
+    if (part.parent !== group) return null;
+    group.parent.attach(part);
+    const side = Math.sign(part.userData.component.pos[0]) || (Math.random() - 0.5);
+    loose.push({ obj: part, t: 0, v: new THREE.Vector3(s.vx + side * (5 + Math.random() * 4), s.vy * 0.85 + 6, (Math.random() - 0.5) * 6), w: new THREE.Vector3(Math.random() * 6 - 3, 0, Math.random() * 6 - 3) });
+    return part.getWorldPosition(new THREE.Vector3());
+  }
+
+  return { group, parts, flame, helpers, reset, update, damageLegs, chuteRig, blowOff };
 }

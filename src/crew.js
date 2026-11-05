@@ -192,7 +192,11 @@ const LINES = {
   chuteUseless: ['ines', 'Ein Fallschirm. Ohne Luft. Netter Versuch.'],
   chuteTorn: ['bo', 'Der Schirm ist gerissen! Wir waren zu schnell!'],
   chuteCut: ['kira', 'Schirm abgeworfen.'],
-  heat: ['bo', 'Ganz schön heiß da draußen!'],
+  heat: ['bo', 'Die Solarpaneele glühen! Gerade halten!'],
+  lost: { solarL: ['bo', 'Solarpaneel links weggeschmolzen!'], solarR: ['bo', 'Solarpaneel rechts weggeschmolzen!'],
+    tankL: ['kira', 'Tank links explodiert!'], tankR: ['kira', 'Tank rechts explodiert!'], chute: ['ines', 'Der Fallschirm ist verbrannt!'],
+    computer: ['bo', 'Bordcomputer ist hin!'], battery: ['bo', 'Batterien durchgebrannt!'], legs: ['kira', 'Die Landebeine… sind weg.'],
+    frame: ['bo', 'Der Rahmen bricht!'], engine: ['bo', 'Triebwerk weg!'], capsule: ['ines', 'Die Kapsel!'] },
   land0: ['kira', 'Butterweich. Willkommen auf {p}!'],
   land1: ['kira', 'Gelandet. Etwas holprig.'],
   land2: ['bo', 'Das Fahrwerk… das gibt Ärger mit der Werft.'],
@@ -227,14 +231,16 @@ export function createCrew(container, sayEl) {
     }
     if (s.status !== 'flying') { sayEl.textContent = ''; return; }
     if (t < 3) say('start', ...LINES.start, t);
-    else if (t > 4 && t < 8 && s.throttle === 0 && !said.has('ignite')) say('float', ...LINES.float, t);
+    else if (t > 4 && t < 8 && s.gNow < 0.3 && !said.has('ignite')) say('float', ...LINES.float, t);
     if (s.throttle > 0) say('ignite', ...LINES.ignite, t);
     if (prev && s.chute !== prev.chute) {
       if (s.chute === 'open') say('chute-open', ...(s.planet.rho > 0 ? LINES.chuteOpen : LINES.chuteUseless), t);
       if (s.chute === 'torn') say('chute-torn', ...LINES.chuteTorn, t);
       if (s.chute === 'cut') say('chute-cut', ...LINES.chuteCut, t);
     }
-    if (s.q > 7000 && t > 1) say('heat', ...LINES.heat, t);
+    const solarHot = ['solarL', 'solarR'].some((id) => !s.lost[id] && s.temp[id] > S.COMPONENTS.find((c) => c.id === id).heat[1] * 0.7);
+    if (solarHot) say('heat', ...LINES.heat, t);
+    for (const id of Object.keys(s.lost)) if (LINES.lost[id]) say(`lost-${id}`, ...LINES.lost[id], t);
     s.crew.forEach((c, i) => {
       const p = prev?.crew[i];
       if (s.gNow > c.limit) say(`overG-${c.id}`, c.id, LINES.overG[c.id], t);

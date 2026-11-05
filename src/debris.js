@@ -25,6 +25,19 @@ export function createDebris(scene) {
     }
   }
 
+  /** small explosion where an overheated part blows off */
+  function burst(pos) {
+    const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xff7a20, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    ball.position.copy(pos); ball.userData.size = 3;
+    scene.add(ball);
+    fx.push({ obj: ball, t: 0, life: 0.5, kind: 'ball' });
+    const flash = new THREE.PointLight(0xff8a30, 0, 60, 1.6);
+    flash.position.copy(pos); flash.userData.peak = 250;
+    scene.add(flash);
+    fx.push({ obj: flash, t: 0, life: 0.6, kind: 'flash' });
+    smokeAt(pos, 5, 0.5, 0x2a2624, 1.5);
+  }
+
   /** dust ring kicked up by a hard (but survivable) landing */
   function puff(ship, s, strength) {
     const color = new THREE.Color(s.planet.ground).lerp(new THREE.Color(0xdddddd), 0.4).getHex();
@@ -56,6 +69,7 @@ export function createDebris(scene) {
     ship.group.updateMatrixWorld(true);
     const impact = new THREE.Vector3(s.x, s.y + 1, 0);
     for (const part of Object.values(ship.parts)) {
+      if (part.parent !== ship.group) continue; // already blown off
       const box = new THREE.Box3();
       part.traverse((m) => {
         if (!m.isMesh) return;
@@ -116,5 +130,5 @@ export function createDebris(scene) {
     }
   }
 
-  return { explode, puff, update, clear };
+  return { explode, puff, burst, update, clear };
 }

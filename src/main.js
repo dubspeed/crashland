@@ -90,10 +90,10 @@ function rate(st) {
   const fuelPct = S.fuel(st) / st.fuel0;
   let stars = 3 - st.touch.grade;
   const fainted = st.crew.some((c) => c.fainted > 0);
-  if (fainted || fuelPct < 0.1) stars--;
+  if (fainted || fuelPct < 0.1 || Object.keys(st.lost).length) stars--;
   stars = Math.max(1, stars);
   const score = Math.max(0, Math.round(fuelPct * 1000 + (S.LAND.vy[2] - st.touch.vy) * 60 + (S.LAND.tilt[1] - st.touch.tilt) * 10
-    - st.touch.grade * 150 + st.crew.filter((c) => !c.fainted).length * 70 + st.planet.g * 20));
+    - st.touch.grade * 150 + st.crew.filter((c) => !c.fainted).length * 70 + st.planet.g * 20 - Object.keys(st.lost).length * 120));
   return { stars, score };
 }
 
@@ -123,8 +123,9 @@ function showResult() {
     ['Neigung', `${f1(s.touch.tilt)}° · ${S.GRADES[s.touch.grades.tilt].name}`],
     ['Treibstoff übrig', `${Math.round(S.fuel(s))} kg (${Math.round((S.fuel(s) / s.fuel0) * 100)} %)`],
     ['Max. G-Last', `${f1(s.maxG)} g`],
-    ['Fallschirm', { stowed: 'nicht benutzt', open: s.planet.rho > 0 ? 'offen gelandet' : 'nutzlos (keine Luft)', cut: 'abgeworfen', torn: 'gerissen' }[s.chute]],
-    ['Crew', s.crew.some((c) => c.fainted) ? s.crew.filter((c) => c.fainted).map((c) => `${c.name} ${c.fainted}× ohnmächtig`).join(', ') : 'alle bei Bewusstsein'],
+    ['Fallschirm', { burned: 'verglüht', stowed: 'nicht benutzt', open: s.planet.rho > 0 ? 'offen gelandet' : 'nutzlos (keine Luft)', cut: 'abgeworfen', torn: 'gerissen' }[s.chute]],
+    ['Crew', !ok ? 'Kein Kontakt mehr' : s.crew.some((c) => c.fainted) ? s.crew.filter((c) => c.fainted).map((c) => `${c.name} ${c.fainted}× ohnmächtig`).join(', ') : 'alle bei Bewusstsein'],
+    ['Hitzeschäden', Object.keys(s.lost).length ? S.COMPONENTS.filter((c) => s.lost[c.id]).map((c) => c.name).join(', ') + ' verglüht' : 'keine'],
     ['Batterie', `${Math.round(s.battery)} %`],
     ['Flugzeit', `${f1(s.t)} s`],
   ];
@@ -228,6 +229,12 @@ renderer.setAnimationLoop(() => {
     readInput(dt);
     acc += dt;
     while (acc >= STEP) { S.step(s, input, STEP); acc -= STEP; }
+    for (const ev of s.events.splice(0)) {
+      if (ev.type === 'lost') {
+        const pos = ship.blowOff(ev.id, s);
+        if (pos) { debris.burst(pos); cam.shake = Math.max(cam.shake, 0.35); }
+      }
+    }
     if (s.status !== 'flying') finish();
   } else if (mode === 'end' && endTimer > 0) {
     endTimer -= raw;
