@@ -61,7 +61,8 @@ function buildWindowInfo() {
     <span><b class="ok">Sanft</b> ≤ ${f(L.vy[0])} m/s · Drift ≤ ${f(L.vx[0])} · ≤ ${L.tilt[0]}°</span>
     <span><b class="warn">Hart</b> ≤ ${f(L.vy[1])} m/s · Drift ≤ ${f(L.vx[1])} · ≤ ${L.tilt[1]}°</span>
     <span><b style="color: var(--amber)">Fahrwerk beschädigt</b> ≤ ${f(L.vy[2])} m/s · Drift ≤ ${f(L.vx[2])} · ≤ ${L.tilt[2]}°</span>
-    <span><b class="bad">Crash</b> darüber</span>`;
+    <span><b class="bad">Bruchlandung</b> ≤ ${f(S.WRECK_V)} m/s: Lander kaputt, kein Feuer, Crew überlebt</span>
+    <span><b class="bad">Explosion</b> darüber, wenn noch Treibstoff in den Tanks ist</span>`;
 }
 
 function showMenu() {
@@ -100,7 +101,7 @@ function rate(st) {
 function finish() {
   mode = 'end';
   const ok = s.status === 'landed';
-  if (!ok) { debris.explode(ship, s); cam.shake = 0.3 + s.touch.energy; }
+  if (!ok) { debris.explode(ship, s); cam.shake = s.touch.crash.kind === 'wreck' ? 0.4 : 0.5 + s.touch.energy; }
   else if (s.touch.grade >= 1) { debris.puff(ship, s, s.touch.grade); cam.shake = 0.15 * s.touch.grade; }
   if (ok && s.touch.grade === 2) ship.damageLegs();
   endTimer = ok ? 1.0 : 2.2;
@@ -111,11 +112,15 @@ function showResult() {
   const { stars, score } = rate(s);
   $('r-kicker').textContent = `${planet.name} · ${planet.g.toLocaleString('de-DE')} m/s²`;
   const g = s.touch.grade;
-  $('r-title').textContent = ['Butterweich gelandet', 'Gelandet', 'Harte Landung', 'Bruchlandung'][g];
-  $('r-title').style.color = S.GRADES[g].color;
+  const crash = s.touch.crash;
+  $('r-title').textContent = ok ? ['Butterweich gelandet', 'Gelandet', 'Harte Landung'][g]
+    : !crash.crew ? 'Totalverlust' : crash.kind === 'wreck' ? 'Bruchlandung' : 'Explosion';
+  $('r-title').style.color = ok ? S.GRADES[g].color : crash.kind === 'wreck' && crash.crew ? 'var(--amber)' : 'var(--bad)';
   $('r-reason').textContent = ok
     ? `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}  ${score} Punkte${g === 2 ? ' · Fahrwerk beschädigt' : g === 1 ? ' · etwas unsanft' : ''}`
-    : `Aufschlag: ${s.reason}.`;
+    : `Aufschlag: ${s.reason}. ${crash.kind === 'wreck' ? (crash.crew ? 'Der Lander ist Schrott, aber kein Feuer: die Crew ist unverletzt.' : 'Kein Feuer, aber der Aufprall war zu hart für die Kapsel.')
+      : crash.crew ? `${Math.round(crash.fuelBurned)} kg Treibstoff sind explodiert. Die Crew konnte sich aus der Kapsel retten.`
+      : `${Math.round(crash.fuelBurned)} kg Treibstoff sind explodiert.`}`;
   const f1 = (n) => n.toLocaleString('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
   const rows = [
     ['Aufsetzen', `${f1(s.touch.vy)} m/s · ${S.GRADES[s.touch.grades.vy].name}`],
@@ -124,7 +129,7 @@ function showResult() {
     ['Treibstoff übrig', `${Math.round(S.fuel(s))} kg (${Math.round((S.fuel(s) / s.fuel0) * 100)} %)`],
     ['Max. G-Last', `${f1(s.maxG)} g`],
     ['Fallschirm', { burned: 'verglüht', stowed: 'nicht benutzt', open: s.planet.rho > 0 ? 'offen gelandet' : 'nutzlos (keine Luft)', cut: 'abgeworfen', torn: 'gerissen' }[s.chute]],
-    ['Crew', !ok ? 'Kein Kontakt mehr' : s.crew.some((c) => c.fainted) ? s.crew.filter((c) => c.fainted).map((c) => `${c.name} ${c.fainted}× ohnmächtig`).join(', ') : 'alle bei Bewusstsein'],
+    ['Crew', !ok ? (s.touch.crash.crew ? 'überlebt' : 'Kein Kontakt mehr') : s.crew.some((c) => c.fainted) ? s.crew.filter((c) => c.fainted).map((c) => `${c.name} ${c.fainted}× ohnmächtig`).join(', ') : 'alle bei Bewusstsein'],
     ['Hitzeschäden', Object.keys(s.lost).length ? S.COMPONENTS.filter((c) => s.lost[c.id]).map((c) => c.name).join(', ') + ' verglüht' : 'keine'],
     ['Batterie', `${Math.round(s.battery)} %`],
     ['Flugzeit', `${f1(s.t)} s`],

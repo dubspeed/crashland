@@ -229,6 +229,10 @@ export function createCrew(container, sayEl) {
       say('land', w, txt.replace('{p}', s.planet.name), t);
       return;
     }
+    if (s.status === 'crashed' && s.touch.crash.crew) {
+      say('crash', ...(s.touch.crash.kind === 'wreck' ? ['kira', 'Alle in Ordnung? … Der Lander ist Schrott.'] : ['bo', 'Raus hier, es brennt!']), t);
+      return;
+    }
     if (s.status !== 'flying') { sayEl.textContent = ''; return; }
     if (t < 3) say('start', ...LINES.start, t);
     else if (t > 4 && t < 8 && s.gNow < 0.3 && !said.has('ignite')) say('float', ...LINES.float, t);
@@ -255,7 +259,7 @@ export function createCrew(container, sayEl) {
   }
 
   function moodFor(s, c, alt, crashGrade) {
-    if (s.status === 'crashed') return 'nosignal';
+    if (s.status === 'crashed') return s.touch.crash.crew ? 'dizzy' : 'nosignal';
     if (c.out) return 'out';
     if (s.status === 'landed') return ['joy', 'relief', 'dizzy'][s.touch.grade];
     if (alt < 80 && crashGrade && s.throttle < 0.5) return 'scared';

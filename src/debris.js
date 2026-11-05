@@ -61,15 +61,20 @@ export function createDebris(scene) {
     world.allowSleep = true;
     const mat = new CANNON.Material();
     world.defaultContactMaterial = new CANNON.ContactMaterial(mat, mat, { friction: 0.5, restitution: 0.25 });
-    const ground = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: mat });
+    const ground = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: mat, collisionFilterGroup: 1, collisionFilterMask: 2 });
     ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
     ground.position.set(0, terrainHeight(s.x), 0);
     world.addBody(ground);
 
     ship.group.updateMatrixWorld(true);
     const impact = new THREE.Vector3(s.x, s.y + 1, 0);
+    const crash = s.touch?.crash ?? { kind: 'explosion', fuelBurned: s.fuelL + s.fuelR };
+    const wreck = crash.kind === 'wreck';
+    // wreck: only the fragile bits break off, the hull stays in one piece and topples over
+    const breaksOff = wreck ? new Set(['legs', 'solarL', 'solarR', 'chute']) : null;
     for (const part of Object.values(ship.parts)) {
       if (part.parent !== ship.group) continue; // already blown off
+      if (breaksOff && !breaksOff.has(part.userData.component.id)) continue;
       const box = new THREE.Box3();
       part.traverse((m) => {
         if (!m.isMesh) return;
@@ -80,13 +85,13 @@ export function createDebris(scene) {
       const center = box.getCenter(new THREE.Vector3());
       scene.attach(part); // keep world transform
       const c = part.userData.component;
-      const body = new CANNON.Body({ mass: Math.max(20, c.mass + (c.fuel ? s[c.fuel] : 0)), material: mat, linearDamping: 0.05, angularDamping: 0.1 });
+      const body = new CANNON.Body({ mass: Math.max(20, c.mass + (c.fuel ? s[c.fuel] : 0)), material: mat, linearDamping: 0.05, angularDamping: 0.1, collisionFilterGroup: 2, collisionFilterMask: 1 });
       body.addShape(new CANNON.Box(new CANNON.Vec3(size.x, size.y, size.z)), new CANNON.Vec3(center.x, center.y, center.z));
       body.position.copy(part.position);
       body.quaternion.copy(part.quaternion);
       const dir = part.position.clone().sub(impact).setZ((Math.random() - 0.5) * 2).normalize();
-      const pow = (1 + Math.random() * 2) + e * (4 + Math.random() * 9);
-      body.velocity.set(s.vx * 0.4 + dir.x * pow, 0.5 + e * (3 + Math.random() * 7), dir.z * pow);
+      const pow = wreck ? 1 + Math.random() * 2.5 : (1 + Math.random() * 2) + e * (4 + Math.random() * 9);
+      body.velocity.set(s.vx * 0.4 + dir.x * pow, wreck ? 0.5 + Math.random() * 2 : 0.5 + e * (3 + Math.random() * 7), dir.z * pow);
       const spin = 1.5 + e * 6.5;
       body.angularVelocity.set((Math.random() - 0.5) * spin, (Math.random() - 0.5) * spin, (Math.random() - 0.5) * spin);
       world.addBody(body);
@@ -95,10 +100,27 @@ export function createDebris(scene) {
     ship.flame.visible = false;
     ship.helpers.visible = false;
 
-    // fireball + flash scale with impact energy and the fuel still on board
-    const fuelFrac = Math.min(1, (s.fuelL + s.fuelR) / 900);
-    const boom = e * (0.4 + 0.6 * fuelFrac);
-    if (boom > 0.3) {
+    if (wreck) {
+      // hull as one rigid box (capsule, frame, engine, tanks) that settles onto the engine bell and tips over
+      const hull = new CANNON.Body({ mass: 3500, material: mat, linearDamping: 0.1, angularDamping: 0.15, collisionFilterGroup: 2, collisionFilterMask: 1 });
+      hull.addShape(new CANNON.Box(new CANNON.Vec3(1.3, 2.3, 1.1)), new CANNON.Vec3(0, 3.0, 0));
+      hull.position.copy(ship.group.position);
+      hull.quaternion.copy(ship.group.quaternion);
+      hull.velocity.set(s.vx * 0.5, 0, 0);
+      const side = Math.sign(s.a || s.vx || Math.random() - 0.5);
+      hull.angularVelocity.set(0, 0, side * (0.8 + Math.min(2, s.touch.vx * 0.2)) + (Math.random() - 0.5) * 0.4);
+      world.addBody(hull);
+      ship.group.userData.physics = true;
+      bodies.push({ body: hull, obj: ship.group });
+      puff(ship, s, 3);
+      smokeAt(impact, 6, 0.7, new THREE.Color(s.planet.ground).lerp(new THREE.Color(0xcccccc), 0.4).getHex());
+      return;
+    }
+
+    // fireball + flash scale with the fuel that burns (and the impact energy for the spread)
+    const fuelFrac = Math.min(1, (crash.fuelBurned ?? 0) / 300);
+    const boom = Math.max(0.35, fuelFrac);
+    {
       const ball = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshBasicMaterial({ color: 0xff7a20, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
       ball.position.copy(impact);
       ball.userData.size = 2 + boom * 9;

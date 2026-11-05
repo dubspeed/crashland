@@ -16,16 +16,16 @@ Your lander falls toward a planet without power. Light the main engine as late a
 - **Re-entry heat**: every component has its own temperature (heating ∝ √ρ · v³, game-scaled). Hot parts glow dark red → orange → yellow and shed sparks; above their limit they explode and break off, with consequences: solar panel → less charging, tank → its fuel is gone (and the centre of mass shifts), parachute pack → no parachute, computer → no attitude control or burn display, battery → no power, legs → no landing. On Terra the extended solar panels burn off during entry; fold them in (E / button, ~1 s, no charging while folded) and keep the lander upright, since tilting exposes one side more. The attitude controller only leans into the drift while the engine is firing.
 - **Planets**: Luna (1.62 m/s²), Mars (3.71), Terra (9.81), Brontes (15.2: super-Earth, dense air, little thrust reserve).
 
-Landing window (same on all planets, shown live in the HUD):
+Landing window (same on all planets). Below 80 m a large gauge shows the sink rate on a scale with exactly these limits:
 
-| Grade | Sink rate | Drift | Tilt |
-|-------|-----------|-------|------|
-| Soft | ≤ 2.5 m/s | ≤ 1 m/s | ≤ 5° |
-| Hard | ≤ 5 m/s | ≤ 2.5 m/s | ≤ 10° |
-| Landing gear damaged (still landed) | ≤ 8 m/s | ≤ 4 m/s | ≤ 18° |
-| Crash | above that | | |
+| Grade | Sink rate | Drift | Tilt | Result |
+|-------|-----------|-------|------|--------|
+| Soft | ≤ 2.5 m/s | ≤ 1 m/s | ≤ 5° | landed ★★★ |
+| Hard | ≤ 5 m/s | ≤ 2.5 m/s | ≤ 10° | landed |
+| Damage | ≤ 8 m/s | ≤ 4 m/s | ≤ 18° | landed, landing gear buckles |
+| Crash landing | ≤ 15 m/s (or tipped over) | | | legs and panels break off, hull topples, **no fire, crew survives** |
+| Explosion | above that | | | tanks rupture; only the **remaining fuel** explodes (fireball scales with it). Crew survives up to 24 m/s unless a big fuel fire engulfs the capsule. No fuel, no explosion. |
 
-On a crash the ship breaks into its components; the explosion scales with impact speed and the fuel still on board.
 
 ## Controls
 

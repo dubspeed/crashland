@@ -42,6 +42,20 @@ export function createHud() {
     lw[key] = { val: el.querySelector('b'), mark: el.querySelector('.lw-bar i'), unit, max };
   }
 
+  // big touchdown gauge: sink-rate scale with the exact limits, shown close to the ground
+  const TD_MAX = 18;
+  const tdStops = [0, ...S.LAND.vy, S.WRECK_V, TD_MAX];
+  const tdNames = ['Sanft', 'Hart', 'Schaden', 'Bruch', 'Explosion'];
+  const tdColors = ['var(--ok)', 'var(--warn)', 'var(--amber)', 'var(--bad)', '#8e1d16'];
+  $('td-scale').style.background = `linear-gradient(90deg, ${tdColors.map((c, i) => `${c} ${(tdStops[i] / TD_MAX) * 100}% ${(tdStops[i + 1] / TD_MAX) * 100}%`).join(', ')})`;
+  $('td-ticks').innerHTML = tdStops.slice(1, -1).map((v) => `<span style="left:${(v / TD_MAX) * 100}%">${fmt(v, v % 1 ? 1 : 0)}</span>`).join('')
+    + tdNames.map((n, i) => `<em style="left:${((tdStops[i] + tdStops[i + 1]) / 2 / TD_MAX) * 100}%">${n}</em>`).join('');
+  function tdZone(v, fuelLeft) {
+    const i = [...S.LAND.vy, S.WRECK_V].findIndex((l) => v <= l);
+    const k = i < 0 ? 4 : i;
+    return k === 4 && fuelLeft <= 10 ? 3 : k; // no fuel, no explosion
+  }
+
   const crew = createCrew($('crew-faces'), $('crew-say'));
   let tornAt;
 
@@ -81,6 +95,22 @@ export function createHud() {
     const twr = (S.F_MAX * s.limit) / (m * p.g);
     const tw = $('v-twr'); tw.textContent = fmt(twr, 2); cls(tw, twr > 1.15 ? '' : 'bad');
     $('v-mass').textContent = `${fmt(m)} kg`;
+
+    // touchdown gauge
+    const td = $('td');
+    const showTd = s.status === 'flying' && alt < 80 && s.vy < -0.2;
+    td.hidden = !showTd;
+    if (showTd) {
+      const v = -s.vy, z = tdZone(v, S.fuel(s));
+      $('td-v').textContent = fmt(v, 1);
+      $('td-v').style.color = tdColors[z];
+      $('td-grade').textContent = tdNames[z].toUpperCase();
+      $('td-grade').style.color = tdColors[z];
+      $('td-mark').style.left = `${Math.min(1, v / TD_MAX) * 100}%`;
+      td.classList.toggle('danger', z >= 3);
+      const sub = (label, val, g) => `<span style="color:${S.GRADES[g].color}">${label} ${val}</span>`;
+      $('td-sub').innerHTML = `<span>${fmt(alt, alt < 10 ? 1 : 0)} m</span>` + sub('Drift', `${fmt(live.vx, 1)} m/s`, gr.vx) + sub('Neigung', `${fmt(live.tilt, 0)}°`, gr.tilt);
+    }
 
     // crew: faces, g-load, tunnel vision from the pilot's strain
     const g = $('v-g'); g.textContent = `${fmt(s.status === 'flying' ? s.gNow : 0, 2)} g`;
@@ -196,12 +226,6 @@ export function createHud() {
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
     else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
-    else if (alt < 40 && s.vy < -0.3) {
-      const worst = Math.max(gr.vy, gr.vx, gr.tilt);
-      const what = gr.vy === worst ? `${fmt(live.vy, 1)} m/s` : gr.vx === worst ? `Drift ${fmt(live.vx, 1)} m/s` : `Neigung ${fmt(live.tilt, 0)}°`;
-      msg = `AUFSETZEN: ${what} · ${S.GRADES[worst].name.toUpperCase()}`;
-      color = S.GRADES[worst].color; pulse = worst === 3;
-    }
     else if (s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
     else if (s.battery < 20) { msg = 'BATTERIE SCHWACH'; color = 'var(--warn)'; pulse = false; }
     else if (s.chute === 'stowed' && p.rho > 0 && alt > 120 && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= burnAlt)) {

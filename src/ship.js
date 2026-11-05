@@ -96,6 +96,8 @@ export function createShip(models) {
       o.scale.set(1, 1, 1);
     }
     group.userData.sink = 0;
+    group.userData.physics = false;
+    group.quaternion.identity();
     if (chuteRig.parent !== group) group.add(chuteRig);
     chuteRig.position.set(0, 5.72, 0); chuteRig.rotation.set(0, 0, 0); chuteRig.scale.set(1, 1, 1);
     chuteRig.visible = false; looseChute = null;
@@ -118,8 +120,10 @@ export function createShip(models) {
   let lastT = 0;
   function update(s, t) {
     const dt = Math.min(0.05, Math.max(0, t - lastT)); lastT = t;
-    group.position.set(s.x, s.y - (group.userData.sink || 0), 0);
-    group.rotation.z = s.a;
+    if (!group.userData.physics) {
+      group.position.set(s.x, s.y - (group.userData.sink || 0), 0);
+      group.rotation.set(0, 0, s.a);
+    }
     updateChute(s, t, dt);
     // solar wings fold up around their root at the frame (root is 1.25 m inboard of the panel centre)
     const th = s.panelFold * 1.45;

@@ -198,6 +198,18 @@ export function altitude(s) {
   return min;
 }
 
+/** Below WRECK_V the lander breaks up without fire; above it the tanks rupture and burn
+ *  whatever fuel is left. The capsule survives up to CAPSULE_V unless a big fuel fire engulfs it. */
+export const WRECK_V = 15;
+export const CAPSULE_V = 24;
+function classifyCrash(s, sink, drift) {
+  const fuelLeft = fuel(s);
+  const rupture = sink > WRECK_V || (sink > LAND.vy[2] + 3 && drift > 6);
+  const fire = rupture && fuelLeft > 10;
+  const crew = sink <= CAPSULE_V && !(fire && fuelLeft > 120 && sink > WRECK_V + 4);
+  return { kind: fire ? 'explosion' : 'wreck', crew, fuelBurned: fire ? fuelLeft : 0 };
+}
+
 /** A component overheated: it explodes and breaks off, with consequences. */
 export function destroy(s, id) {
   if (s.lost[id]) return;
@@ -328,9 +340,10 @@ export function step(s, input, dt) {
     if (Math.abs(hL - hR) > 0.8) why.push('Gelände zu uneben');
     if (s.lost.legs) why.push('Landebeine verglüht');
     const overall = why.length ? 3 : Math.max(g.vy, g.vx, g.tilt);
-    // crash energy 0..1: how violent the impact was (drives the explosion size)
+    // crash energy 0..1: how violent the impact was (drives debris and explosion size)
     const energy = Math.min(1, Math.max(0, (sink - LAND.vy[2]) / 18 + (drift - LAND.vx[2]) / 25 + 0.1));
     s.touch = { vy: sink, vx: drift, tilt, grades: g, grade: overall, energy };
+    if (overall === 3) s.touch.crash = classifyCrash(s, sink, drift);
     s.status = overall === 3 ? 'crashed' : 'landed';
     s.reason = why.join(', ');
     s.y -= alt; // snap to ground
