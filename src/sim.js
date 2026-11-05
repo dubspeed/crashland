@@ -275,6 +275,37 @@ export function destroy(s, id) {
   if (id === 'chute') s.chute = s.chute === 'open' ? 'torn' : 'burned';
 }
 
+/** Retro 2: surface-retrograde with wind feed-forward. Returns [roll, pitch] targets.
+ *  Free fall: thrust axis opposite the velocity over ground. Burning: lean so the thrust's sideways part
+ *  kills the ground drift in ~1.25 s and holds against the current air force (wind). Capped at 20°. */
+export const RETRO2_MAX = 0.35; // rad
+function retro2Targets(s, F, m, dt) {
+  if (F > 0) s.r2BurnT = s.t;
+  const burning = s.t - (s.r2BurnT ?? -99) < 1.5; // stay in burn mode through short throttle gaps
+  let hx = 0, hz = 0; // wanted horizontal component of the thrust axis
+  if (s.chute === 'open' && s.planet.rho > 0) {
+    // under the canopy: hang straight, the chute does the work
+  } else if (burning) {
+    const Fe = Math.max(F, F_MAX * Math.max(s.limit, 0.3));
+    // lead the drift by the attitude lag (~0.4 s) so the lean is gone when the drift is
+    const ax = (s.vx - (s.r2vx ?? s.vx)) / Math.max(dt, 1e-3), az = (s.vz - (s.r2vz ?? s.vz)) / Math.max(dt, 1e-3);
+    const px = s.vx + ax * 0.4, pz = s.vz + az * 0.4;
+    hx = (-px * 0.6 * m - (s.dragX || 0)) / Fe;
+    hz = (-pz * 0.6 * m - (s.dragZ || 0)) / Fe;
+  } else {
+    const v = Math.hypot(s.vx, s.vy, s.vz) || 1;
+    hx = -s.vx / v; hz = -s.vz / v;
+  }
+  const h = Math.hypot(hx, hz), cap = Math.sin(RETRO2_MAX);
+  if (h > cap) { hx *= cap / h; hz *= cap / h; }
+  // smooth the target so mode switches don't kick the attitude (u.x = -sin a, u.z ≈ sin b)
+  s.r2vx = s.vx; s.r2vz = s.vz;
+  const k = Math.min(1, dt * (burning ? 8 : 2.5));
+  s.r2a = (s.r2a ?? s.a) + (-Math.asin(hx) - (s.r2a ?? s.a)) * k;
+  s.r2b = (s.r2b ?? s.b) + (Math.asin(hz) - (s.r2b ?? s.b)) * k;
+  return [s.r2a, s.r2b];
+}
+
 /** Attitude control for one tilt axis. cmd = pilot input (-1..1, + turns the angle up), target = angle for
  *  'retro'/'up'. Stores the jet torque in s._tau{A|B} and returns how hard the jets work (0..1). */
 function controlAxis(s, ang, rate, holdKey, integKey, cmd, target, comTorque, I, dt) {
@@ -336,8 +367,11 @@ export function step(s, input, dt) {
   const aThr = F / m;
   // retro leans so the thrust's sideways part kills the drift in about a second
   const lean = (v) => Math.max(-0.17, Math.min(0.17, Math.asin(Math.max(-1, Math.min(1, (v * 0.8) / Math.max(aThr, 1))))));
-  const ra = controlAxis(s, 'a', 'w', 'holdA', 'sasI', input.rcs || 0, s.sas === 'retro' && thr > 0 ? lean(s.vx) : 0, s.torqueCom, I, dt);
-  const rb = controlAxis(s, 'b', 'wb', 'holdB', 'sasIB', input.rcsZ || 0, s.sas === 'retro' && thr > 0 ? -lean(s.vz) : 0, s.torqueComB, I, dt);
+  let tA = s.sas === 'retro' && thr > 0 ? lean(s.vx) : 0;
+  let tB = s.sas === 'retro' && thr > 0 ? -lean(s.vz) : 0;
+  if (s.sas === 'retro2') [tA, tB] = retro2Targets(s, F, m, dt);
+  const ra = controlAxis(s, 'a', 'w', 'holdA', 'sasI', input.rcs || 0, tA, s.torqueCom, I, dt);
+  const rb = controlAxis(s, 'b', 'wb', 'holdB', 'sasIB', input.rcsZ || 0, tB, s.torqueComB, I, dt);
   const rcsUse = Math.max(ra, rb);
   s.w += ((s.torqueCom + s._tauA) / I) * dt;
   s.wb += ((s.torqueComB + s._tauB) / I) * dt;
@@ -364,6 +398,7 @@ export function step(s, input, dt) {
   s.drag = Fd;
   const k = v > 0.01 ? -Fd / v : 0;
   const dx = k * rx, dy = k * s.vy, dz = k * rz;
+  s.dragX = dx; s.dragZ = dz; // horizontal air force, used by Retro 2 as feed-forward
   // side force acts above the CoM and tips the lander downwind (body drag only, the canopy hangs free)
   const ks = v > 0.01 ? (-s.q * BODY_CDA) / v : 0;
   const arm = WIND_ARM + (WIND_ARM_PANELS - WIND_ARM) * (1 - s.panelFold) * ((s.lost.solarL && s.lost.solarR) ? 0 : 1);

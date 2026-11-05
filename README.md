@@ -43,7 +43,7 @@ Landing window (same on all planets). Below 80 m a slim gauge bar shows the sink
 | W A S D, arrows | **Tilt pad** (left, four-way): press towards where you want to tip; up = away from the camera; further out = faster | Tilt (RCS) on both axes, relative to the camera |
 | P | Fallschirm | Deploy / cut away the parachute |
 | E | Paneele | Fold the solar panels in / out |
-| T | Lageregler | Attitude control: **Hold** (default) / Retro / Vertical / Off |
+| T | Lageregler | Attitude control: **Hold** (default) / Retro / Retro 2 / Vertical / Off |
 | C | Schwerpunkt | Show centre of mass and thrust axis |
 | V | Ansicht | Camera: behind the lander / top-down (screen-up stays the tilt pad's "up") |
 | R / M | buttons | Restart / planet select |
@@ -56,6 +56,7 @@ The flight computer's burn point includes air drag and the parachute and adds a 
 
 - **Hold** (default, like the Apollo LM's attitude hold with rate command): the rotate pad / A–D sets a turn rate (up to ~23°/s, proportional on the pad); let go and the computer stops the rotation and holds that angle, with an integral term against steady wind torque.
 - **Retro**: holds upright in free fall, leans up to 10° against the drift while the engine is firing.
+- **Retro 2** (experimental, to compare): surface-retrograde. In free fall the thrust axis points against the velocity over ground; while burning it leans so the thrust kills the ground drift (with a short lead for the attitude lag) and holds against the current wind force (feed-forward from the measured air drag), up to 20°. Under an open parachute it hangs straight. In the sim it lands Terra in a storm with ~1 m/s drift from every wind direction where Retro drifts 4–8 m/s.
 - **Vertical**: always back to 0°.
 - **Off**: the pad fires the jets directly; a rotation keeps going until you counter it (as in vacuum).
 

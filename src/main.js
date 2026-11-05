@@ -244,7 +244,7 @@ bindPointer($('c-rcs'), (e, r) => {
   touch.px = shape((e.clientX - (r.left + r.width / 2)) / (r.width / 2));
   touch.py = shape(((r.top + r.height / 2) - e.clientY) / (r.height / 2));
 }, () => { touch.px = 0; touch.py = 0; });
-function cycleSas() { s.sas = { hold: 'retro', retro: 'up', up: false }[s.sas] ?? 'hold'; s.holdA = s.a; s.holdB = s.b; }
+function cycleSas() { s.sas = { hold: 'retro', retro: 'retro2', retro2: 'up', up: false }[s.sas] ?? 'hold'; s.holdA = s.a; s.holdB = s.b; }
 function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
 $('c-sas').addEventListener('click', cycleSas);
 $('c-chute').addEventListener('click', () => S.toggleChute(s));
