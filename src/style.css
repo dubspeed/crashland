@@ -321,3 +321,9 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 .rcs .ar { position: absolute; font-size: 13px; color: var(--ink); opacity: 0.75; pointer-events: none; transform: translate(-50%, -50%); }
 .rcs .ar.u { left: 50%; top: 11%; } .rcs .ar.d { left: 50%; top: 89%; } .rcs .ar.l { left: 11%; top: 50%; } .rcs .ar.r { left: 89%; top: 50%; }
 .rcs .knob { width: 30px; height: 30px; margin: -15px 0 0 -15px; }
+/* desktop: toggles in two columns next to the tilt pad */
+@media (min-width: 521px) and (min-height: 521px) {
+  .left { flex-direction: row-reverse; align-items: flex-end; }
+  .toggles { display: grid; grid-template-columns: auto auto; max-width: none; }
+}
+@media (max-height: 520px) { .toggles { display: grid; grid-template-columns: auto auto; flex-direction: initial; } }

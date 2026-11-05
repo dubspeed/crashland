@@ -6,7 +6,7 @@ Low-poly lander game in the browser: **Three.js** (rendering), **cannon-es** (cr
 
 ## Flight model
 
-Full 3D: the lander moves in x/y/z and has two tilt axes (roll about z, pitch about x); thrust points along its axis. Wind can come from any direction, the start point lies upwind somewhere around the pad. Controls are relative to the camera, so "up" on the tilt pad always tips the lander away from you.
+Full 3D: the lander moves in x/y/z and has two tilt axes (roll about z, pitch about x); thrust points along its axis. Wind can come from any direction, the start point lies upwind somewhere around the pad. Controls are relative to the camera, so "up" on the tilt pad always tips the lander away from you. Aiming aids on the ground: a ring right below the lander and a cross where it would hit if it kept falling; in the top-down view these and the pad are easy to line up.
 
 ## Idea (version 1)
 
@@ -45,6 +45,7 @@ Landing window (same on all planets). Below 80 m a slim gauge bar shows the sink
 | E | Paneele | Fold the solar panels in / out |
 | T | Lageregler | Attitude control: **Hold** (default) / Retro / Vertical / Off |
 | C | Schwerpunkt | Show centre of mass and thrust axis |
+| V | Ansicht | Camera: behind the lander / top-down (screen-up stays the tilt pad's "up") |
 | R / M | buttons | Restart / planet select |
 
 Lever and rotate pad each track their own touch point, so both work at the same time with two thumbs. The layout adapts to desktop, phone portrait and phone landscape.

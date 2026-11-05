@@ -23,6 +23,29 @@ const world = createWorld(scene, models);
 const ship = createShip(models);
 scene.add(ship.group);
 const debris = createDebris(scene);
+
+// aiming aids on the ground: ring right below the lander, cross where it would hit if it kept falling
+const markMat = new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.85, depthWrite: false });
+const belowRing = new THREE.Mesh(new THREE.RingGeometry(2.1, 2.5, 32).rotateX(-Math.PI / 2), markMat);
+const impact = new THREE.Group();
+for (const r of [0, Math.PI / 2]) {
+  const bar = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.45).rotateX(-Math.PI / 2).rotateY(r + Math.PI / 4), new THREE.MeshBasicMaterial({ color: 0xffb547, transparent: true, opacity: 0.9, depthWrite: false }));
+  impact.add(bar);
+}
+scene.add(belowRing, impact);
+function updateMarkers() {
+  const on = mode === 'flight' && s.status === 'flying';
+  belowRing.visible = impact.visible = on;
+  if (!on) return;
+  belowRing.position.set(s.x, S.terrainHeight(s.x, s.z) + 0.15, s.z);
+  const alt = Math.max(0, S.altitude(s));
+  const tHit = alt / Math.max(1, -s.vy);
+  const ix = s.x + s.vx * tHit, iz = s.z + s.vz * tHit;
+  impact.position.set(ix, S.terrainHeight(ix, iz) + 0.2, iz);
+  const k = Math.min(6, 1 + alt / 120); // grow with height so it stays visible from above
+  impact.scale.setScalar(k); belowRing.scale.setScalar(Math.min(4, 1 + alt / 200));
+}
+let fogBase = 1400;
 const hud = createHud();
 
 // ---------- game state ----------
@@ -33,7 +56,19 @@ let endTimer = 0;
 const input = { thrust: false, rcs: 0, limitDir: 0 };
 const keys = new Set();
 let showCom = true;
-let cam = { yaw: 0.35, dist: 28, shake: 0 };
+let cam = { yaw: 0.35, dist: 28, shake: 0, view: 'chase' };
+try { if (localStorage.getItem('crashland.view') === 'top') cam.view = 'top'; } catch { /* storage unavailable */ }
+function toggleView() {
+  cam.view = cam.view === 'chase' ? 'top' : 'chase';
+  try { localStorage.setItem('crashland.view', cam.view); } catch { /* storage unavailable */ }
+  viewButton();
+}
+function viewButton() {
+  const b = document.getElementById('c-view');
+  b.textContent = cam.view === 'top' ? 'Ansicht: Oben' : 'Ansicht: Hinten';
+  b.classList.toggle('on', cam.view === 'top');
+}
+viewButton();
 
 let windLevel = 0;
 try { windLevel = Math.min(S.WIND_LEVELS.length - 1, Math.max(0, +localStorage.getItem('crashland.wind') || 0)); } catch { /* storage unavailable */ }
@@ -91,7 +126,7 @@ function showMenu() {
 }
 
 function start(p) {
-  if (p !== planet || !world.ready) { planet = p; world.setPlanet(p); world.ready = true; }
+  if (p !== planet || !world.ready) { planet = p; world.setPlanet(p); world.ready = true; fogBase = scene.fog.far; }
   debris.clear(); ship.reset();
   s = S.createState(planet, { wind: windLevel });
   hud.reset();
@@ -167,6 +202,7 @@ addEventListener('keydown', (e) => {
   if ((e.code === 'KeyM' || e.code === 'Escape') && mode !== 'menu') showMenu();
   if (mode !== 'flight') return;
   if (e.code === 'KeyT') cycleSas();
+  if (e.code === 'KeyV') toggleView();
   const digit = /^(Digit|Numpad)(\d)$/.exec(e.code);
   if (digit) s.limit = digit[2] === '0' ? 1 : +digit[2] / 10;
   if (e.code === 'KeyP') S.toggleChute(s);
@@ -211,6 +247,7 @@ function cycleSas() { s.sas = { hold: 'retro', retro: 'up', up: false }[s.sas] ?
 function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
 $('c-sas').addEventListener('click', cycleSas);
 $('c-chute').addEventListener('click', () => S.toggleChute(s));
+$('c-view').addEventListener('click', toggleView);
 $('c-panels').addEventListener('click', () => S.togglePanels(s));
 $('c-com').addEventListener('click', toggleCom);
 $('c-com').classList.add('on');
@@ -280,22 +317,33 @@ renderer.setAnimationLoop(() => {
   debris.update(dt);
   if (mode !== 'menu') hud.update(s, input, cam.yaw);
 
-  // chase camera
+  updateMarkers();
   focus.set(s.x, s.y + 2.5, s.z);
   const dist = mode === 'menu' ? 22 : cam.dist * (camera.aspect < 0.8 ? 1.25 : 1);
-  camera.position.set(focus.x + Math.sin(cam.yaw) * dist, focus.y + dist * 0.16, focus.z + Math.cos(cam.yaw) * dist);
+  const top = cam.view === 'top' && mode !== 'menu';
+  if (top) {
+    // overhead: straight down onto the lander, screen-up = the camera's forward direction (matches the tilt pad)
+    const alt = Math.max(0, S.altitude(s));
+    camera.position.set(focus.x, focus.y + dist * 1.8, focus.z);
+    camera.up.set(-Math.sin(cam.yaw), 0, -Math.cos(cam.yaw));
+    scene.fog.far = fogBase + alt * 1.5 + dist * 2;
+  } else {
+    camera.up.set(0, 1, 0);
+    camera.position.set(focus.x + Math.sin(cam.yaw) * dist, focus.y + dist * 0.16, focus.z + Math.cos(cam.yaw) * dist);
+    if (scene.fog) scene.fog.far = fogBase;
+  }
   const minY = S.terrainHeight(camera.position.x, camera.position.z) + 1.5;
   if (camera.position.y < minY) camera.position.y = minY;
   if (cam.shake > 0) {
     cam.shake = Math.max(0, cam.shake - dt);
     camera.position.add(new THREE.Vector3().randomDirection().multiplyScalar(cam.shake * 0.8));
   }
-  camera.lookAt(focus);
+  if (top) camera.lookAt(focus.x, focus.y - 10, focus.z); else camera.lookAt(focus);
   world.update(camera, focus, time, mode === 'menu' ? { x: 0, z: 0 } : { x: s.windX, z: s.windZ }, dt);
   renderer.render(scene, camera);
 });
 
-world.setPlanet(planet); world.ready = true;
+world.setPlanet(planet); world.ready = true; fogBase = scene.fog.far;
 showMenu();
 
 // handle for automated tests
