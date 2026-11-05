@@ -18,6 +18,14 @@ export const BAT_CAP = 100;       // %
 export const FUEL_MAX = 600;     // kg capacity per tank (each mission loads planet.fuel in total)
 export const FOOT_X = 2.0;        // m, half span of landing legs
 // Touchdown window: upper bounds for grade 0 (sanft), 1 (hart), 2 (Fahrwerk beschädigt); above = crash.
+// Atmosphere & parachute
+export const BODY_CDA = 11;        // m², lander broadside drag area × Cd
+export const CHUTE_CDA = 110;      // m², fully inflated canopy
+export const CHUTE_INFLATE = 2.2;  // s to full inflation
+export const CHUTE_QMAX = 5500;    // Pa, canopy tears above this dynamic pressure
+export const CHUTE_FMAX = 70000;   // N, reefing limits the riser load
+export const CHUTE_ARM = 3.5;      // m, riser attachment above the centre of mass (righting torque)
+
 export const LAND = { vy: [2.5, 5, 8], vx: [1, 2.5, 4], tilt: [5, 10, 18] };
 export const GRADES = [
   { id: 'soft', name: 'Sanft', color: 'var(--ok)' },
@@ -32,16 +40,16 @@ export function grade(value, limits) {
 }
 
 export const PLANETS = [
-  { id: 'luna', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0, fuel: 175,
+  { id: 'luna', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0, fuel: 175, rho: 0, H: 1, atmo: 'keine',
     text: 'Geringe Schwerkraft. Viel Zeit, wenig Risiko. Gut zum Üben.',
     sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true },
-  { id: 'mars', name: 'Mars', g: 3.71, alt: 1200, vy: -95, vx: -4, tilt: -3, solar: 0.45, fuel: 305,
+  { id: 'mars', name: 'Mars', g: 3.71, alt: 1500, vy: -110, vx: -4, tilt: -3, solar: 0.45, fuel: 305, rho: 0.02, H: 11000, atmo: 'sehr dünn',
     text: 'Mittlere Schwerkraft, schwache Sonne. Auf die Batterie achten.',
     sky: 0xd4a27c, fog: 0xc89670, ground: 0xb4552f, ground2: 0x7d3a22, sun: 0xffe2c4 },
-  { id: 'terra', name: 'Terra', g: 9.81, alt: 1600, vy: -140, vx: 5, tilt: 4, solar: 0.75, fuel: 620,
+  { id: 'terra', name: 'Terra', g: 9.81, alt: 1800, vy: -150, vx: 5, tilt: 4, solar: 0.75, fuel: 200, rho: 1.225, H: 8500, atmo: 'normal',
     text: 'Volle Erdschwerkraft. Der Burn muss sitzen, die G-Last steigt schnell.',
     sky: 0x8ec5ff, fog: 0xa9d2ff, ground: 0x5f9a4c, ground2: 0x7a6145, sun: 0xffffff },
-  { id: 'brontes', name: 'Brontes', g: 15.2, alt: 1800, vy: -120, vx: -3, tilt: -2, solar: 0.3, fuel: 880,
+  { id: 'brontes', name: 'Brontes', g: 15.2, alt: 2400, vy: -90, vx: -3, tilt: -2, solar: 0.3, fuel: 230, rho: 2.8, H: 7000, atmo: 'dicht',
     text: 'Supererde. Kaum Schubreserve, wenig Licht. Nur für Profis.',
     sky: 0x3b2f5c, fog: 0x463868, ground: 0x2f6e6a, ground2: 0x1f4442, sun: 0xd8c8ff },
 ];
@@ -57,6 +65,7 @@ export const COMPONENTS = [
   { id: 'solarR',   name: 'Solarpaneel R',    model: 'solar',    mass: 110,  pos: [2.5, 4.25, 0] },
   { id: 'computer', name: 'Bordcomputer',     model: 'computer', mass: 150,  pos: [0.35, 2.85, 0.8] },
   { id: 'battery',  name: 'Batterien',        model: 'battery',  mass: 420,  pos: [-0.3, 2.85, -0.8] },
+  { id: 'chute',    name: 'Fallschirm',       model: 'chutepack', mass: 120, pos: [0, 5.55, 0] },
   { id: 'legs',     name: 'Landebeine',       model: 'legs',     mass: 380,  pos: [0, 0, 0], com: [0, 0.9] },
 ];
 
@@ -84,7 +93,7 @@ export function createState(planet) {
     limit: 1, throttle: 0, sas: 'retro',
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
     crew: CREW.map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
-    torqueCom: 0, sasTorque: 0,
+    torqueCom: 0, sasTorque: 0, chute: 'stowed', chuteT: 0, chuteInflate: 0, chuteOpen: 0, q: 0, maxQ: 0, drag: 0,
     status: 'flying', reason: '', touch: null, log: [],
   };
 }
@@ -101,6 +110,20 @@ export function massProps(s) {
   let I = 0;
   for (const [mass, px, py] of parts) I += mass * ((px - cx) ** 2 + (py - cy) ** 2 + 0.4);
   return { m, cx, cy, I };
+}
+
+/** Air density at the lander's height. */
+export function density(s) { return s.planet.rho * Math.exp(-Math.max(0, s.y) / s.planet.H); }
+
+/** P key / button: deploy the stowed chute, or cut an open one. Returns what happened. */
+export function toggleChute(s) {
+  if (s.status !== 'flying') return null;
+  if (s.chute === 'stowed') {
+    s.chute = 'open'; s.chuteT = 0;
+    return s.planet.rho > 0 ? 'open' : 'useless';
+  }
+  if (s.chute === 'open') { s.chute = 'cut'; return 'cut'; }
+  return null;
 }
 
 export function fuel(s) { return s.fuelL + s.fuelR; }
@@ -167,14 +190,38 @@ export function step(s, input, dt) {
   s.w += (tau / I) * dt;
   s.a += s.w * dt;
 
+  // --- aerodynamics: body drag + parachute ---
+  const v = Math.hypot(s.vx, s.vy);
+  s.q = 0.5 * density(s) * v * v;
+  s.maxQ = Math.max(s.maxQ, s.q);
+  if (s.chute === 'open') {
+    s.chuteT += dt;
+    const k = Math.min(1, s.chuteT / CHUTE_INFLATE);
+    s.chuteInflate = k * k * (3 - 2 * k);
+    if (s.planet.rho > 0 && s.q > CHUTE_QMAX && s.chuteInflate > 0.2) s.chute = 'torn';
+  } else s.chuteInflate = Math.max(0, s.chuteInflate - dt * 2);
+  // reefed canopy: opens only as far as the riser load allows
+  const chuteCda = s.chute === 'open' && s.planet.rho > 0 ? Math.min(CHUTE_CDA * s.chuteInflate, CHUTE_FMAX / Math.max(s.q, 1)) : 0;
+  s.chuteOpen = chuteCda / CHUTE_CDA; // 0..1 how far the canopy is actually open
+  const cda = BODY_CDA + chuteCda;
+  const Fd = s.q * cda;
+  s.drag = Fd;
+  const dx = v > 0.01 ? (-Fd * s.vx) / v : 0, dy = v > 0.01 ? (-Fd * s.vy) / v : 0;
+  if (s.chute === 'open' && s.planet.rho > 0 && s.chuteInflate > 0.05) {
+    // canopy hangs above the CoM and pulls the lander upright
+    const pull = s.q * CHUTE_CDA * Math.min(s.chuteInflate, CHUTE_FMAX / Math.max(s.q, 1) / CHUTE_CDA) * CHUTE_ARM;
+    s.w += ((-Math.sin(s.a) * pull - s.w * pull * 0.6) / I) * dt;
+  }
+
   // --- translation ---
-  s.vx += (F / m) * ux * dt;
-  s.vy += ((F / m) * uy - p.g) * dt;
+  s.vx += ((F * ux + dx) / m) * dt;
+  s.vy += ((F * uy + dy) / m - p.g) * dt;
   s.x += s.vx * dt;
   s.y += s.vy * dt;
 
   // --- crew g-load ---
-  s.gNow = F / m / G0;
+  // felt load = all non-gravitational acceleration (engine + air)
+  s.gNow = Math.hypot(F * ux + dx, F * uy + dy) / m / G0;
   s.maxG = Math.max(s.maxG, s.gNow);
   for (const c of s.crew) {
     if (s.gNow > c.limit) c.stress += (s.gNow - c.limit) * 0.35 * dt;

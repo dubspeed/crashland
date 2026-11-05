@@ -8,11 +8,12 @@ Low-poly lander game in the browser: **Three.js** (rendering), **cannon-es** (cr
 
 Your lander falls toward a planet without power. Light the main engine as late as possible and only as long as needed: the **suicide burn**. Along the way:
 
-- **Fuel**: loaded per mission (Luna 175 kg, Mars 305, Terra 620, Brontes 880), so that a clean suicide burn leaves about 20–25 % reserve. Burning early, hovering or correcting drift eats into that. Both tanks drain evenly; the mass drops during the burn, so the thrust-to-weight ratio rises.
+- **Fuel**: loaded per mission (Luna 175 kg, Mars 305, Terra 200, Brontes 230). With a well-timed parachute plenty is left over (Terra ~40 %); without one it gets tight (Terra ~7 %). Burning early, hovering or correcting drift eats into that. Both tanks drain evenly; the mass drops during the burn, so the thrust-to-weight ratio rises.
 - **Crew & g-load**: three crew members with their own tolerance: pilot Kira 3.2 g, engineer Bo 2.9 g, scientist Ines 2.6 g. Above that, strain builds up until they pass out; they come round again after a few seconds below the limit. If Kira passes out, nobody steers (no thrust, no attitude control). Anyone passing out costs a star. A late hard burn saves fuel but strains the crew; an earlier, gentler one costs fuel. The crew sits as low-poly helmet portraits in the HUD (`src/crew.js`) and reacts live: weightless in free fall, focused, strained (face pulled down, pale, sweating), unconscious, panicking when the ground comes too fast, cheering or dazed after landing. Speech bubbles on events; a grey-out vignette shows the pilot's strain.
 - **Centre of mass**: computed live from all components (marker + thrust axis in 3D). If it sits off the thrust axis, the engine creates torque that attitude control has to compensate.
 - **Power**: the battery feeds the flight computer, attitude control and the fuel pumps. Solar panels recharge depending on planet. Empty battery → computer offline, pumps off, max. 60 % thrust.
-- **Planets**: Luna (1.62 m/s²), Mars (3.71), Terra (9.81), Brontes (15.2: super-Earth, little thrust reserve).
+- **Atmosphere & parachute**: air density per planet (Luna none, Mars very thin, Terra normal, Brontes dense) slows the lander (drag, terminal velocity). The parachute (P / button) inflates over ~2 s and is reefed: the riser load is capped (~70 kN), so it never jerks harder than ~2.5 g and opens fully only as the lander slows down. Above 5.5 kPa dynamic pressure it tears. Air drag counts as g-load for the crew. On Terra you can deploy once the lander has slowed to terminal velocity; on Brontes its terminal velocity is already too fast for the canopy, so you have to brake with the engine first. It can be cut away again; on Luna it is useless.
+- **Planets**: Luna (1.62 m/s²), Mars (3.71), Terra (9.81), Brontes (15.2: super-Earth, dense air, little thrust reserve).
 
 Landing window (same on all planets, shown live in the HUD):
 
@@ -32,6 +33,7 @@ On a crash the ship breaks into its components; the explosion scales with impact
 | Space (hold) | **Throttle lever** (right): touching = burn, height = thrust (top = 100 %) | Main engine |
 | W / S, ↑ / ↓ | throttle lever | Thrust limiter |
 | A / D, ← / → | **Rotate pad** (left): press left/right of centre, further out = stronger | Rotate (RCS), analog |
+| P | Fallschirm | Deploy / cut away the parachute |
 | T | Lageregler | Attitude control: Retro (leans against drift) / Vertical / Off |
 | C | Schwerpunkt | Show centre of mass and thrust axis |
 | R / M | buttons | Restart / planet select |

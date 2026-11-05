@@ -10,7 +10,7 @@ export function createHud() {
   const rows = {};
   const partRows = [
     ['capsule', 'Kommandokapsel'], ['engine', 'Antrieb'], ['tankL', 'Tank L'], ['tankR', 'Tank R'],
-    ['battery', 'Batterien'], ['solar', 'Solarpaneele'], ['computer', 'Bordcomputer'],
+    ['battery', 'Batterien'], ['solar', 'Solarpaneele'], ['computer', 'Bordcomputer'], ['chute', 'Fallschirm'],
   ];
   for (const [id, label] of partRows) {
     const li = document.createElement('li');
@@ -43,6 +43,7 @@ export function createHud() {
   }
 
   const crew = createCrew($('crew-faces'), $('crew-say'));
+  let tornAt;
 
   function update(s, input) {
     const p = s.planet;
@@ -115,6 +116,18 @@ export function createHud() {
     setRow('battery', `${fmt(s.battery)} %`, s.battery / S.BAT_CAP, s.battery < 20 ? 'var(--bad)' : 'var(--cyan)');
     setRow('solar', `${fmt(p.solar * 100)} % Licht`, p.solar, 'var(--cyan)');
     setRow('computer', s.powered ? 'online' : 'offline', s.powered ? 1 : 0, 'var(--ok)');
+    const air = p.rho > 0;
+    const chuteText = !air ? 'keine Luft' : { stowed: s.q > S.CHUTE_QMAX ? 'zu schnell' : 'bereit', open: `offen ${fmt(s.chuteOpen * 100)} %`, cut: 'abgeworfen', torn: 'gerissen' }[s.chute];
+    setRow('chute', chuteText, s.chute === 'open' ? s.chuteOpen : s.chute === 'stowed' && air ? Math.min(1, s.q / S.CHUTE_QMAX) : 0,
+      s.chute === 'stowed' && s.q > S.CHUTE_QMAX ? 'var(--bad)' : 'var(--cyan)');
+    const qEl = $('v-q');
+    qEl.textContent = air ? `${fmt(s.q / 1000, 1)} kPa` : '–';
+    cls(qEl, s.q > S.CHUTE_QMAX ? 'bad' : s.q > S.CHUTE_QMAX * 0.8 ? 'warn' : '');
+    const cb = $('c-chute');
+    cb.textContent = { stowed: 'Fallschirm', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute];
+    cb.disabled = s.chute === 'cut' || s.chute === 'torn' || (s.chute === 'open' && !air);
+    cb.classList.toggle('on', s.chute === 'open' && air);
+    cb.classList.toggle('ready', s.chute === 'stowed' && air && s.status === 'flying' && s.q <= S.CHUTE_QMAX && s.t > 0.2);
     $('v-com').textContent = `x ${cx >= 0 ? '+' : '−'}${fmt(Math.abs(cx * 100), 1)} cm · y ${fmt(cy, 2)} m`;
     const tq = $('v-torque');
     tq.textContent = `${fmt(s.torqueCom / 1000, 1)} kNm`;
@@ -140,6 +153,7 @@ export function createHud() {
     if (s.blackout) msg = 'PILOTIN BEWUSSTLOS – KEINE STEUERUNG';
     else if (s.gNow > S.G_LIMIT) msg = 'G-LAST ZU HOCH – SCHUB DROSSELN';
     else if (s.gNow > minLimit && s.throttle > 0) { msg = 'G-LAST: CREW LEIDET'; color = 'var(--warn)'; pulse = false; }
+    else if (s.chute === 'torn' && s.t - (tornAt ??= s.t) < 3) msg = 'FALLSCHIRM GERISSEN';
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
     else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
@@ -151,6 +165,10 @@ export function createHud() {
     }
     else if (s.powered && s.vy < -0.5 && isFinite(d) && alt <= d * 1.02 && s.throttle < 0.95 * s.limit) msg = 'BURN!';
     else if (s.battery < 20) { msg = 'BATTERIE SCHWACH'; color = 'var(--warn)'; pulse = false; }
+    else if (s.chute === 'stowed' && p.rho > 0 && alt > 120 && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= d * 1.02)) {
+      if (s.q <= S.CHUTE_QMAX * 0.95) { msg = 'FALLSCHIRM MÖGLICH'; color = 'var(--cyan)'; pulse = false; }
+    }
+    if (s.chute !== 'torn') tornAt = undefined;
     al.hidden = !msg || s.status !== 'flying';
     if (msg) { al.textContent = msg; al.style.color = color; al.classList.toggle('pulse', pulse); }
   }

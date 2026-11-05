@@ -188,6 +188,11 @@ const LINES = {
   brake: ['bo', 'BREMSEN!!'],
   fuel: ['bo', 'Tank fast leer!'],
   power: ['bo', 'Strom weg! Pumpen aus!'],
+  chuteOpen: ['kira', 'Schirm offen!'],
+  chuteUseless: ['ines', 'Ein Fallschirm. Ohne Luft. Netter Versuch.'],
+  chuteTorn: ['bo', 'Der Schirm ist gerissen! Wir waren zu schnell!'],
+  chuteCut: ['kira', 'Schirm abgeworfen.'],
+  heat: ['bo', 'Ganz schön heiß da draußen!'],
   land0: ['kira', 'Butterweich. Willkommen auf {p}!'],
   land1: ['kira', 'Gelandet. Etwas holprig.'],
   land2: ['bo', 'Das Fahrwerk… das gibt Ärger mit der Werft.'],
@@ -224,6 +229,12 @@ export function createCrew(container, sayEl) {
     if (t < 3) say('start', ...LINES.start, t);
     else if (t > 4 && t < 8 && s.throttle === 0 && !said.has('ignite')) say('float', ...LINES.float, t);
     if (s.throttle > 0) say('ignite', ...LINES.ignite, t);
+    if (prev && s.chute !== prev.chute) {
+      if (s.chute === 'open') say('chute-open', ...(s.planet.rho > 0 ? LINES.chuteOpen : LINES.chuteUseless), t);
+      if (s.chute === 'torn') say('chute-torn', ...LINES.chuteTorn, t);
+      if (s.chute === 'cut') say('chute-cut', ...LINES.chuteCut, t);
+    }
+    if (s.q > 7000 && t > 1) say('heat', ...LINES.heat, t);
     s.crew.forEach((c, i) => {
       const p = prev?.crew[i];
       if (s.gNow > c.limit) say(`overG-${c.id}`, c.id, LINES.overG[c.id], t);
@@ -264,7 +275,7 @@ export function createCrew(container, sayEl) {
       card.bar.style.background = c.stress > 0.6 ? 'var(--bad)' : 'var(--warn)';
       card.el.classList.toggle('out', c.out);
     });
-    prev = { crew: s.crew.map((c) => ({ ...c })) };
+    prev = { crew: s.crew.map((c) => ({ ...c })), chute: s.chute };
   }
 
   return { update, reset };

@@ -48,6 +48,22 @@ export function createShip(models) {
   const helpers = new THREE.Group(); helpers.add(com, axis);
   group.add(helpers);
 
+  // parachute: rig hangs from the capsule top; canopy model has its origin at the riser confluence
+  const chuteRig = new THREE.Group();
+  const canopy = models.parachute.clone(true);
+  const canopyMats = [];
+  canopy.traverse((m) => { if (m.isMesh) { m.material = m.material.clone(); m.material.side = THREE.DoubleSide; m.material.transparent = true; canopyMats.push(m.material); } });
+  canopy.position.y = 0.2;
+  chuteRig.add(canopy);
+  group.add(chuteRig);
+  let loose = null; // canopy flying off after cut/tear: { v, t, torn }
+
+  // re-entry glow under the heat shield at high dynamic pressure
+  const heat = new THREE.Mesh(new THREE.SphereGeometry(2.6, 10, 6).scale(1, 0.45, 1),
+    new THREE.MeshBasicMaterial({ color: 0xff9a40, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  heat.position.y = 0.4;
+  group.add(heat);
+
   const screenMats = [];
   parts.computer.traverse((m) => { if (m.isMesh && m.material.name === 'Screen') screenMats.push(m.material); });
 
@@ -61,6 +77,9 @@ export function createShip(models) {
       o.scale.set(1, 1, 1);
     }
     group.userData.sink = 0;
+    if (chuteRig.parent !== group) group.add(chuteRig);
+    chuteRig.position.set(0, 5.72, 0); chuteRig.rotation.set(0, 0, 0); chuteRig.scale.set(1, 1, 1);
+    chuteRig.visible = false; loose = null;
     flame.visible = true;
     helpers.visible = true;
   }
@@ -71,9 +90,13 @@ export function createShip(models) {
     group.userData.sink = 0.45;
   }
 
+  let lastT = 0;
   function update(s, t) {
+    const dt = Math.min(0.05, Math.max(0, t - lastT)); lastT = t;
     group.position.set(s.x, s.y - (group.userData.sink || 0), 0);
     group.rotation.z = s.a;
+    updateChute(s, t, dt);
+    heat.material.opacity = s.status === 'flying' ? Math.min(0.4, Math.max(0, (s.q - 6000) / 10000)) * (0.85 + Math.random() * 0.3) : 0;
     const thr = s.status === 'flying' ? s.throttle : 0;
     const flick = 0.9 + Math.random() * 0.2;
     flame.visible = thr > 0.01;
@@ -84,5 +107,44 @@ export function createShip(models) {
     for (const m of screenMats) m.emissiveIntensity = s.powered ? 1 : 0;
   }
 
-  return { group, parts, flame, helpers, reset, update, damageLegs };
+  function updateChute(s, t, dt) {
+    if (loose) {
+      // detached canopy drifts away, slowly falling, collapsing if torn
+      loose.t += dt;
+      loose.v.y += (-4 - loose.v.y) * Math.min(1, dt * 1.5);
+      loose.v.x *= 1 - dt * 0.8;
+      chuteRig.position.addScaledVector(loose.v, dt);
+      chuteRig.rotation.z += dt * (loose.torn ? 1.2 : 0.4);
+      const k = Math.min(1, loose.t / 1.5);
+      canopy.scale.set(1 - k * (loose.torn ? 0.8 : 0.5), 1, 1 - k * (loose.torn ? 0.8 : 0.5));
+      if (loose.t > 10) chuteRig.visible = false;
+      return;
+    }
+    if (s.chute === 'stowed') { chuteRig.visible = false; return; }
+    if ((s.chute === 'cut' || s.chute === 'torn') && chuteRig.parent === group) {
+      group.parent.attach(chuteRig);
+      loose = { v: new THREE.Vector3(s.vx * 0.5, s.vy * 0.4 + 6, 0), t: 0, torn: s.chute === 'torn' };
+      return;
+    }
+    if (s.status === 'crashed') { chuteRig.visible = false; return; }
+    chuteRig.visible = true;
+    for (const m of canopyMats) m.opacity = 1;
+    const deploy = Math.min(1, s.chuteT / 0.5); // pulled out of the pack before it inflates
+    const air = s.planet.rho > 0;
+    let w = air ? 0.12 + 0.88 * s.chuteOpen : 0.06;
+    let h = deploy * (air ? 1 : 0.55);
+    let fade = 1;
+    if (s.status === 'landed') {
+      // canopy collapses and sinks away after touchdown
+      const k = Math.min(1, (t - (chuteRig.userData.landT ??= t)) / 1.8);
+      h *= 1 - k * 0.7; w *= 1 - k * 0.5; fade = 1 - k;
+    } else chuteRig.userData.landT = undefined;
+    for (const m of canopyMats) m.opacity = fade;
+    chuteRig.visible = fade > 0.01;
+    canopy.scale.set(w, h, w);
+    // the canopy stays roughly vertical in the world while the lander swings below it
+    chuteRig.rotation.z = -s.a * 0.85 + Math.sin(t * 1.3) * 0.04 + (air ? 0 : 0.6);
+  }
+
+  return { group, parts, flame, helpers, reset, update, damageLegs, chuteRig };
 }

@@ -90,6 +90,9 @@ dd { white-space: nowrap; }
 .toggles { display: flex; gap: 6px; flex-wrap: wrap; }
 .tog { background: var(--glass); border: 1px solid var(--glass-edge); border-radius: 8px; padding: 8px 10px; font-size: 12px; min-height: 36px; }
 .tog.on { border-color: var(--cyan); color: var(--cyan); }
+.tog:disabled { opacity: 0.4; cursor: default; }
+.tog.chute { border-color: rgba(255,181,71,0.5); }
+.tog.chute.ready { border-color: var(--amber); color: var(--amber); box-shadow: 0 0 10px rgba(255,181,71,0.35); }
 
 /* analog rotate pad: press left/right of centre, further out = stronger */
 .rcs { position: relative; width: var(--rcs-w, 220px); height: var(--rcs-h, 76px); border-radius: 14px; background: linear-gradient(90deg, rgba(143,227,255,0.16), rgba(9,13,22,0.7) 35% 65%, rgba(143,227,255,0.16)), var(--glass); border: 1px solid var(--glass-edge); cursor: ew-resize; }
@@ -234,3 +237,4 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 }
 @media (max-width: 520px) { #hud { --burn-top: 92px; --burn-bottom: 300px; } #crew-say { top: calc(var(--face) + 4px); } #alert { top: calc(96px + env(safe-area-inset-top, 0px)) !important; } }
 @media (max-height: 520px) { #hud { --burn-top: 80px; --burn-bottom: 110px; } }
+@media (max-width: 520px), (max-height: 520px) { #c-com { display: none; } }

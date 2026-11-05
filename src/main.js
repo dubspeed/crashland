@@ -48,7 +48,7 @@ function buildMenu() {
     const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
     b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
       <b>${p.name}</b><span class="g">${p.g.toLocaleString('de-DE')} m/s² · ${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span>
-      <p>${p.text}</p><p>Start: ${p.alt} m · ${-p.vy} m/s<br>Treibstoff: ${p.fuel} kg</p>
+      <p>${p.text}</p><p>Start: ${p.alt} m · ${-p.vy} m/s<br>Atmosphäre: ${p.atmo} · Treibstoff: ${p.fuel} kg</p>
       <span class="best">${rec ? `Bestwert: ${'★'.repeat(rec.stars)}${'☆'.repeat(3 - rec.stars)} · ${rec.score} Punkte` : ''}</span>`;
     b.addEventListener('click', () => start(p));
     wrap.append(b);
@@ -123,6 +123,7 @@ function showResult() {
     ['Neigung', `${f1(s.touch.tilt)}° · ${S.GRADES[s.touch.grades.tilt].name}`],
     ['Treibstoff übrig', `${Math.round(S.fuel(s))} kg (${Math.round((S.fuel(s) / s.fuel0) * 100)} %)`],
     ['Max. G-Last', `${f1(s.maxG)} g`],
+    ['Fallschirm', { stowed: 'nicht benutzt', open: s.planet.rho > 0 ? 'offen gelandet' : 'nutzlos (keine Luft)', cut: 'abgeworfen', torn: 'gerissen' }[s.chute]],
     ['Crew', s.crew.some((c) => c.fainted) ? s.crew.filter((c) => c.fainted).map((c) => `${c.name} ${c.fainted}× ohnmächtig`).join(', ') : 'alle bei Bewusstsein'],
     ['Batterie', `${Math.round(s.battery)} %`],
     ['Flugzeit', `${f1(s.t)} s`],
@@ -145,6 +146,7 @@ addEventListener('keydown', (e) => {
   if ((e.code === 'KeyM' || e.code === 'Escape') && mode !== 'menu') showMenu();
   if (mode !== 'flight') return;
   if (e.code === 'KeyT') cycleSas();
+  if (e.code === 'KeyP') S.toggleChute(s);
   if (e.code === 'KeyC') toggleCom();
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
@@ -182,6 +184,7 @@ bindPointer($('c-rcs'), (e, r) => {
 function cycleSas() { s.sas = { retro: 'up', up: false }[s.sas] ?? 'retro'; }
 function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
 $('c-sas').addEventListener('click', cycleSas);
+$('c-chute').addEventListener('click', () => S.toggleChute(s));
 $('c-com').addEventListener('click', toggleCom);
 $('c-com').classList.add('on');
 $('r-again').addEventListener('click', () => start(planet));

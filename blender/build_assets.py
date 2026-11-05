@@ -172,6 +172,40 @@ for i in range(4):
     cyl(0.32, 0.1, (c * 2.0, s * 2.0, 0.05), 8, GREY(), r2=0.22)  # pad
 finish("legs")
 
+# ---------------- Fallschirm-Paket (sits on the capsule's docking port) ----------------
+reset()
+cyl(0.36, 0.34, (0, 0, 0), 8, mat("Pack", (0.85, 0.42, 0.12), 0.8))
+cyl(0.38, 0.06, (0, 0, 0.17), 8, DARK())
+cyl(0.38, 0.06, (0, 0, -0.17), 8, DARK())
+finish("chutepack")
+
+# ---------------- Fallschirm (origin = riser confluence, canopy above) ----------------
+reset()
+GORES = 12
+R, TOP, RIM = 6.0, 9.5, 7.0       # canopy radius, apex height, rim height above the confluence
+bm = bmesh.new()
+ring_r = [R, R * 0.93, R * 0.72, R * 0.38, R * 0.12]
+ring_z = [RIM, RIM + 1.2, RIM + 2.2, RIM + 2.8, TOP]
+rings = []
+for r, z in zip(ring_r, ring_z):
+    rings.append([bm.verts.new((math.cos(2 * math.pi * i / GORES) * r, math.sin(2 * math.pi * i / GORES) * r, z)) for i in range(GORES)])
+orange = mat("ChuteA", (0.95, 0.4, 0.1), 0.85)
+white = mat("ChuteB", (0.95, 0.94, 0.9), 0.85)
+for k in range(len(rings) - 1):
+    for i in range(GORES):
+        j = (i + 1) % GORES
+        f = bm.faces.new((rings[k][i], rings[k][j], rings[k + 1][j], rings[k + 1][i]))
+        f.material_index = i % 2
+mesh = bpy.data.meshes.new("Canopy")
+bm.to_mesh(mesh); bm.free()
+canopy = bpy.data.objects.new("Canopy", mesh)
+bpy.context.collection.objects.link(canopy)
+canopy.data.materials.append(orange); canopy.data.materials.append(white)
+for i in range(0, GORES, 2):                                   # suspension lines
+    a = 2 * math.pi * i / GORES
+    strut((0, 0, 0), (math.cos(a) * R, math.sin(a) * R, RIM), 0.025, mat("Line", (0.9, 0.9, 0.85), 0.9), 3)
+finish("parachute")
+
 # ---------------- Felsbrocken ----------------
 reset()
 bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=0.5)
