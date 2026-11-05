@@ -35,20 +35,34 @@ const keys = new Set();
 let showCom = true;
 let cam = { yaw: 0.35, dist: 28, shake: 0 };
 
+let windLevel = 0;
+try { windLevel = Math.min(S.WIND_LEVELS.length - 1, Math.max(0, +localStorage.getItem('crashland.wind') || 0)); } catch { /* storage unavailable */ }
+function setWind(i) {
+  windLevel = i;
+  try { localStorage.setItem('crashland.wind', String(i)); } catch { /* storage unavailable */ }
+  buildMenu();
+}
+function buildWindSelect() {
+  const box = $('wind-select');
+  box.innerHTML = S.WIND_LEVELS.map((w, i) => `<button role="radio" aria-checked="${i === windLevel}" class="${i === windLevel ? 'on' : ''}" data-i="${i}">${w.name}${w.speed ? `<small>${w.speed} m/s · ×${w.bonus.toLocaleString('de-DE')}</small>` : '<small>ruhig</small>'}</button>`).join('');
+  box.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setWind(+b.dataset.i)));
+}
+const bestKey = (id) => `${id}${windLevel ? `.wind${windLevel}` : ''}`;
 function best(id) { try { return JSON.parse(localStorage.getItem(`crashland.best.${id}`)); } catch { return null; } }
 function saveBest(id, v) { try { localStorage.setItem(`crashland.best.${id}`, JSON.stringify(v)); } catch { /* storage unavailable */ } }
 
 function buildMenu() {
   const wrap = $('planets');
   wrap.innerHTML = '';
+  buildWindSelect();
   for (const p of S.PLANETS) {
     const b = document.createElement('button');
     b.className = 'planet';
-    const rec = best(p.id);
+    const rec = best(bestKey(p.id));
     const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
     b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
       <b>${p.name}</b><span class="g">${p.g.toLocaleString('de-DE')} m/s² · ${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span>
-      <p>${p.text}</p><p>Start: ${p.alt} m · ${-p.vy} m/s<br>Atmosphäre: ${p.atmo} · Treibstoff: ${p.fuel} kg</p>
+      <p>${p.text}</p><p>Start: ${p.alt} m · ${-p.vy} m/s<br>Atmosphäre: ${p.atmo} · Treibstoff: ${p.fuel} kg${p.rho === 0 && windLevel ? '<br>Kein Wind ohne Luft' : ''}</p>
       <span class="best">${rec ? `Bestwert: ${'★'.repeat(rec.stars)}${'☆'.repeat(3 - rec.stars)} · ${rec.score} Punkte` : ''}</span>`;
     b.addEventListener('click', () => start(p));
     wrap.append(b);
@@ -79,7 +93,7 @@ function showMenu() {
 function start(p) {
   if (p !== planet || !world.ready) { planet = p; world.setPlanet(p); world.ready = true; }
   debris.clear(); ship.reset();
-  s = S.createState(planet);
+  s = S.createState(planet, { wind: windLevel });
   hud.reset();
   mode = 'flight';
   $('menu').hidden = true; $('result').hidden = true; $('hud').hidden = false;
@@ -94,7 +108,8 @@ function rate(st) {
   if (fainted || fuelPct < 0.1 || Object.keys(st.lost).length) stars--;
   stars = Math.max(1, stars);
   const score = Math.max(0, Math.round(fuelPct * 1000 + (S.LAND.vy[2] - st.touch.vy) * 60 + (S.LAND.tilt[1] - st.touch.tilt) * 10
-    - st.touch.grade * 150 + st.crew.filter((c) => !c.fainted).length * 70 + st.planet.g * 20 - Object.keys(st.lost).length * 120));
+    - st.touch.grade * 150 + st.crew.filter((c) => !c.fainted).length * 70 + st.planet.g * 20 - Object.keys(st.lost).length * 120)
+    * (st.planet.rho > 0 ? st.wind.bonus : 1));
   return { stars, score };
 }
 
@@ -110,7 +125,7 @@ function finish() {
 function showResult() {
   const ok = s.status === 'landed';
   const { stars, score } = rate(s);
-  $('r-kicker').textContent = `${planet.name} · ${planet.g.toLocaleString('de-DE')} m/s²`;
+  $('r-kicker').textContent = `${planet.name} · ${planet.g.toLocaleString('de-DE')} m/s²${s.wind.speed && planet.rho > 0 ? ` · Wind ${s.wind.name} ×${s.wind.bonus.toLocaleString('de-DE')}` : ''}`;
   const g = s.touch.grade;
   const crash = s.touch.crash;
   $('r-title').textContent = ok ? ['Butterweich gelandet', 'Gelandet', 'Harte Landung'][g]
@@ -136,8 +151,8 @@ function showResult() {
   ];
   $('r-stats').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
   if (ok) {
-    const prev = best(planet.id);
-    if (!prev || score > prev.score) saveBest(planet.id, { stars, score });
+    const prev = best(bestKey(planet.id));
+    if (!prev || score > prev.score) saveBest(bestKey(planet.id), { stars, score });
   }
   $('result').hidden = false;
   $('r-again').focus();
@@ -264,7 +279,7 @@ renderer.setAnimationLoop(() => {
     camera.position.add(new THREE.Vector3().randomDirection().multiplyScalar(cam.shake * 0.8));
   }
   camera.lookAt(focus);
-  world.update(camera, focus, time);
+  world.update(camera, focus, time, mode === 'menu' ? 0 : s.windNow, dt);
   renderer.render(scene, camera);
 });
 

@@ -85,6 +85,26 @@ export function createWorld(scene, models) {
     }
     ground.userData.lamps = lamps;
 
+    // windsock at the pad edge: pole + striped cone hanging from a pivot
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 7, 6), new THREE.MeshStandardMaterial({ color: 0xc8ccd4, metalness: 0.4, roughness: 0.5 }));
+    pole.position.set(14, 3.5, -8);
+    const sock = new THREE.Group();
+    sock.position.set(14, 6.9, -8);
+    for (let i = 0; i < 4; i++) {
+      const seg = new THREE.Mesh(new THREE.CylinderGeometry(0.45 - i * 0.07, 0.38 - i * 0.07, 0.75, 8, 1, true).rotateZ(0).translate(0, -0.4 - i * 0.75, 0),
+        new THREE.MeshStandardMaterial({ color: i % 2 ? 0xffffff : 0xff6a1a, side: THREE.DoubleSide, roughness: 0.8 }));
+      seg.castShadow = true;
+      sock.add(seg);
+    }
+    ground.add(pole, sock);
+    ground.userData.sock = sock;
+
+    // faint light column above the pad so it can be found from high up
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 600, 8, 1, true).translate(0, 300, 0),
+      new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+    ground.add(beam);
+    ground.userData.beam = beam;
+
     // rocks
     const rnd = (n) => hash(n * 1.7, n * 9.3);
     for (let i = 0; i < 220; i++) {
@@ -115,7 +135,16 @@ export function createWorld(scene, models) {
     buildGround(p);
   }
 
-  function update(camera, focus, t) {
+  function update(camera, focus, t, wind = 0, dt = 0) {
+    for (let i = 0; i < DUST; i++) dustPos[i * 3] += wind * dt;
+    const beam = ground?.userData.beam;
+    if (beam) beam.material.opacity = 0.12 * Math.min(1, Math.max(0, (Math.hypot(camera.position.x, camera.position.y) - 90) / 400));
+    const sock = ground?.userData.sock;
+    if (sock) {
+      // sock lifts from hanging (0) to horizontal (strong wind) and points downwind, with a little flutter
+      const k = Math.min(1, Math.abs(wind) / 12);
+      sock.rotation.z = Math.sign(wind || 1) * (0.15 + k * 1.35 + Math.sin(t * 7) * 0.05 * k);
+    }
     sun.position.set(focus.x + 30, focus.y + 60, focus.z + 25);
     sun.target.position.copy(focus);
     stars.position.copy(camera.position);

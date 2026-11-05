@@ -96,6 +96,18 @@ export function createHud() {
     const tw = $('v-twr'); tw.textContent = fmt(twr, 2); cls(tw, twr > 1.15 ? '' : 'bad');
     $('v-mass').textContent = `${fmt(m)} kg`;
 
+    // navigation: wind and where the pad is
+    const vw = $('v-wind');
+    if (p.rho > 0 && s.wind.speed) {
+      const w = s.windNow, gust = Math.abs(w) > s.wind.speed * (0.35 + 0.65 * Math.min(1, Math.max(0, alt) / 300)) * 1.25;
+      vw.innerHTML = `Wind <b>${w >= 0 ? '→' : '←'} ${fmt(Math.abs(w), 0)} m/s</b>${gust ? ' <em>Böe</em>' : ''}`;
+      vw.hidden = false;
+    } else vw.hidden = true;
+    const dxPad = -s.x;
+    const vp = $('v-pad');
+    vp.innerHTML = Math.abs(dxPad) < 10 ? 'Landeplatz <b>unter dir</b>' : `Landeplatz <b>${dxPad > 0 ? '→' : '←'} ${fmt(Math.abs(dxPad), 0)} m</b>`;
+    vp.className = Math.abs(dxPad) < 10 ? 'ok' : Math.abs(dxPad) > 70 ? 'warn' : '';
+
     // touchdown gauge
     const td = $('td');
     const showTd = s.status === 'flying' && alt < 80 && s.vy < -0.2;
@@ -228,7 +240,8 @@ export function createHud() {
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
     else if (s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
     else if (s.battery < 20) { msg = 'BATTERIE SCHWACH'; color = 'var(--warn)'; pulse = false; }
-    else if (s.chute === 'stowed' && p.rho > 0 && alt > 120 && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= burnAlt)) {
+    else if (s.panels === 'in' && !(s.lost.solarL && s.lost.solarR) && s.heatFlux < 4 && s.battery < 45 && s.t > 6) { msg = 'PANEELE AUSKLAPPEN – BATTERIE LÄDT NICHT'; color = 'var(--cyan)'; pulse = false; }
+    else if (s.chute === 'stowed' && p.rho > 0 && alt > 120 && alt < 1200 && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= burnAlt)) {
       if (s.q <= S.CHUTE_QMAX * S.CHUTE_SAFE) { msg = 'FALLSCHIRM MÖGLICH'; color = 'var(--cyan)'; pulse = false; }
     }
     if (s.chute !== 'torn') tornAt = undefined;

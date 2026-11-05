@@ -31,6 +31,27 @@ export const HEAT_K = 55;           // K/s at rho = 1, v = 100 m/s, exposure 1
 export const HEAT_COOL = 0.12;      // 1/s, cooling towards ambient
 export const T_AMB = 20;
 
+// Wind: base speed at altitude per setting, gusts on top, weaker near the ground (shear)
+export const WIND_LEVELS = [
+  { id: 'off', name: 'Aus', speed: 0, gust: 0, bonus: 1 },
+  { id: 'light', name: 'Leicht', speed: 5, gust: 0.25, bonus: 1.1 },
+  { id: 'medium', name: 'Mittel', speed: 10, gust: 0.35, bonus: 1.25 },
+  { id: 'strong', name: 'Stark', speed: 17, gust: 0.45, bonus: 1.5 },
+  { id: 'storm', name: 'Sturm', speed: 26, gust: 0.55, bonus: 1.8 },
+];
+export const WIND_ARM = 0.45;       // m, side-force centre of pressure above the CoM (panels folded)
+export const WIND_ARM_PANELS = 1.1; // m, with the solar wings out
+
+/** Horizontal air velocity (m/s, + = to the right) at the lander's position and time. */
+export function windAt(s, alt = altitude(s), t = s.t) {
+  const W = s.wind;
+  if (!W || !W.speed || s.planet.rho <= 0) return 0;
+  const k = W.seed;
+  const gust = Math.sin(t * 0.55 + k) * 0.55 + Math.sin(t * 1.37 + k * 2.1) * 0.3 + Math.sin(t * 3.1 + k * 3.7) * 0.15;
+  const shear = 0.35 + 0.65 * Math.min(1, Math.max(0, alt) / 300);
+  return W.dir * W.speed * shear * (1 + W.gust * gust);
+}
+
 export const LAND = { vy: [2.5, 5, 8], vx: [1, 2.5, 4], tilt: [5, 10, 18] };
 export const GRADES = [
   { id: 'soft', name: 'Sanft', color: 'var(--ok)' },
@@ -45,16 +66,16 @@ export function grade(value, limits) {
 }
 
 export const PLANETS = [
-  { id: 'luna', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0, fuel: 175, rho: 0, H: 1, atmo: 'keine',
+  { id: 'luna', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0, fuel: 175, rho: 0, H: 1, atmo: 'keine', drift: 0,
     text: 'Geringe Schwerkraft. Viel Zeit, wenig Risiko. Gut zum Üben.',
     sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true },
-  { id: 'mars', name: 'Mars', g: 3.71, alt: 1500, vy: -110, vx: -4, tilt: -3, solar: 0.45, fuel: 305, rho: 0.02, H: 11000, atmo: 'sehr dünn',
+  { id: 'mars', name: 'Mars', g: 3.71, alt: 1500, vy: -110, vx: -4, tilt: -3, solar: 0.45, fuel: 305, rho: 0.02, H: 11000, atmo: 'sehr dünn', drift: 4,
     text: 'Mittlere Schwerkraft, schwache Sonne. Auf die Batterie achten.',
     sky: 0xd4a27c, fog: 0xc89670, ground: 0xb4552f, ground2: 0x7d3a22, sun: 0xffe2c4 },
-  { id: 'terra', name: 'Terra', g: 9.81, alt: 1800, vy: -165, vx: 5, tilt: 4, solar: 0.75, fuel: 200, rho: 1.225, H: 8500, atmo: 'normal',
+  { id: 'terra', name: 'Terra', g: 9.81, alt: 1800, vy: -165, vx: 5, tilt: 4, solar: 0.75, fuel: 200, rho: 1.225, H: 8500, atmo: 'normal', drift: 17,
     text: 'Volle Erdschwerkraft. Der Burn muss sitzen, die G-Last steigt schnell.',
     sky: 0x8ec5ff, fog: 0xa9d2ff, ground: 0x5f9a4c, ground2: 0x7a6145, sun: 0xffffff },
-  { id: 'brontes', name: 'Brontes', g: 15.2, alt: 2400, vy: -90, vx: -3, tilt: -2, solar: 0.3, fuel: 230, rho: 2.8, H: 7000, atmo: 'dicht',
+  { id: 'brontes', name: 'Brontes', g: 15.2, alt: 1800, vy: -90, vx: -3, tilt: -2, solar: 0.3, fuel: 230, rho: 2.8, H: 7000, atmo: 'dicht', drift: 20,
     text: 'Supererde. Kaum Schubreserve, wenig Licht. Nur für Profis.',
     sky: 0x3b2f5c, fog: 0x463868, ground: 0x2f6e6a, ground2: 0x1f4442, sun: 0xd8c8ff },
 ];
@@ -75,7 +96,7 @@ export const COMPONENTS = [
 ];
 
 // ---------- terrain ----------
-const PAD_R = 45;
+const PAD_R = 70;
 function noise(x, z) {
   return Math.sin(x * 0.021 + 1.3) * Math.cos(z * 0.017) * 14
        + Math.sin(x * 0.067 + z * 0.041) * 5
@@ -89,10 +110,16 @@ export function terrainHeight(x, z = 0) {
 }
 
 // ---------- state ----------
-export function createState(planet) {
+export function createState(planet, opts = {}) {
+  const lvl = WIND_LEVELS[opts.wind ?? 0] ?? WIND_LEVELS[0];
+  const dir = opts.windDir ?? (Math.random() < 0.5 ? -1 : 1);
   return {
     planet, t: 0,
-    x: 0, y: planet.alt, vx: planet.vx, vy: planet.vy,
+    wind: { level: WIND_LEVELS.indexOf(lvl), name: lvl.name, speed: lvl.speed, gust: lvl.gust, bonus: lvl.bonus,
+      dir, seed: opts.windSeed ?? Math.random() * 100 },
+    windNow: 0, windTorque: 0,
+    // start upwind so the wind carries the lander roughly towards the pad
+    x: planet.rho > 0 ? -dir * lvl.speed * planet.drift : 0, y: planet.alt, vx: planet.vx, vy: planet.vy,
     a: (planet.tilt * Math.PI) / 180, w: 0,
     fuel0: planet.fuel, fuelL: planet.fuel / 2, fuelR: planet.fuel / 2, battery: BAT_CAP,
     limit: 1, throttle: 0, sas: 'retro',
@@ -256,7 +283,9 @@ export function step(s, input, dt) {
     tau += input.rcs * RCS_TORQUE; rcsUse = Math.abs(input.rcs);
   } else if (s.sas && s.computerOK && !s.blackout) {
     // 'up' holds vertical, 'retro' leans against horizontal drift (max 15°)
-    const target = s.sas === 'retro' && thr > 0 ? Math.max(-0.26, Math.min(0.26, s.vx * 0.06)) : 0;
+    // lean so the thrust's sideways part kills the drift in about a second (scaled by thrust acceleration)
+    const aThr = (thr * F_MAX) / massProps(s).m;
+    const target = s.sas === 'retro' && thr > 0 ? Math.max(-0.17, Math.min(0.17, Math.asin(Math.max(-1, Math.min(1, (s.vx * 0.8) / Math.max(aThr, 1)))))) : 0;
     const want = -(2.2 * (s.a - target) + 2.6 * s.w) * I - s.torqueCom;
     s.sasTorque = Math.max(-RCS_TORQUE, Math.min(RCS_TORQUE, want));
     tau += s.sasTorque; rcsUse = Math.abs(s.sasTorque) / RCS_TORQUE;
@@ -265,7 +294,11 @@ export function step(s, input, dt) {
   s.a += s.w * dt;
 
   // --- aerodynamics: body drag + parachute ---
-  const v = Math.hypot(s.vx, s.vy);
+  // airflow relative to the lander (wind blows along x)
+  const wind = windAt(s);
+  s.windNow = wind;
+  const rx = s.vx - wind;
+  const v = Math.hypot(rx, s.vy);
   s.q = 0.5 * density(s) * v * v;
   s.maxQ = Math.max(s.maxQ, s.q);
   if (s.chute === 'open') {
@@ -280,7 +313,12 @@ export function step(s, input, dt) {
   const cda = BODY_CDA + chuteCda;
   const Fd = s.q * cda;
   s.drag = Fd;
-  const dx = v > 0.01 ? (-Fd * s.vx) / v : 0, dy = v > 0.01 ? (-Fd * s.vy) / v : 0;
+  const dx = v > 0.01 ? (-Fd * rx) / v : 0, dy = v > 0.01 ? (-Fd * s.vy) / v : 0;
+  // side force acts above the CoM and tips the lander downwind (body drag only, the canopy hangs free)
+  const sideF = v > 0.01 ? (-s.q * BODY_CDA * rx) / v : 0;
+  const arm = WIND_ARM + (WIND_ARM_PANELS - WIND_ARM) * (1 - s.panelFold) * ((s.lost.solarL && s.lost.solarR) ? 0 : 1);
+  s.windTorque = -arm * sideF;
+  s.w += (s.windTorque / I) * dt;
   if (s.chute === 'open' && s.planet.rho > 0 && s.chuteInflate > 0.05) {
     // canopy hangs above the CoM and pulls the lander upright
     const pull = s.q * CHUTE_CDA * Math.min(s.chuteInflate, CHUTE_FMAX / Math.max(s.q, 1) / CHUTE_CDA) * CHUTE_ARM;
@@ -307,7 +345,7 @@ export function step(s, input, dt) {
   s.gStress = s.crew[0].stress;
 
   // --- power ---
-  const use = 1.0 + (s.sas ? 0.4 : 0) + 2.2 * rcsUse + 1.2 * thr;
+  const use = 0.55 + (s.sas ? 0.25 : 0) + 2.2 * rcsUse + 1.2 * thr;
   s.panelFold = Math.max(0, Math.min(1, s.panelFold + (s.panels === 'in' ? dt : -dt) / 1.2));
   const panels = (s.lost.solarL ? 0 : 1) + (s.lost.solarR ? 0 : 1);
   const gain = 1.6 * p.solar * (panels / 2) * (1 - s.panelFold);

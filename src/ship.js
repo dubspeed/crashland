@@ -182,7 +182,8 @@ export function createShip(models) {
     chuteRig.visible = fade > 0.01;
     canopy.scale.set(w, h, w);
     // the canopy stays roughly vertical in the world while the lander swings below it
-    chuteRig.rotation.z = -s.a * 0.85 + Math.sin(t * 1.3) * 0.04 + (air ? 0 : 0.6);
+    const flow = air ? Math.atan2(s.windNow - s.vx, Math.max(3, -s.vy)) : 0; // canopy lies along the relative airflow
+    chuteRig.rotation.z = -s.a * 0.85 - flow * 0.9 + Math.sin(t * 1.3) * 0.04 + (air ? 0 : 0.6);
   }
 
   function updateHeat(s, dt) {
