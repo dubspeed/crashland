@@ -47,6 +47,7 @@ export function createHud() {
 
   const heatFrac = (s, id) => { const c = S.COMPONENTS.find((k) => k.id === id); return (s.temp[id] - S.T_AMB) / (c.heat[1] - S.T_AMB); };
   const lostAt = {};
+  const ttb = { at: undefined, v: 0 };
 
   function recentLoss(s) {
     for (const c of S.COMPONENTS) if (s.lost[c.id] && s.t - (lostAt[c.id] ??= s.t) < 3) return c.name;
@@ -54,7 +55,7 @@ export function createHud() {
   }
   function hottest(s) {
     let best = { f: 0, name: '' };
-    for (const c of S.COMPONENTS) if (c.heat && !s.lost[c.id]) { const f = heatFrac(s, c.id); if (f > best.f) best = { f, name: c.name }; }
+    for (const c of S.COMPONENTS) if (c.heat && !s.lost[c.id]) { const f = heatFrac(s, c.id); if (f > best.f) best = { f, name: c.name, solar: c.model === 'solar' }; }
     return best;
   }
 
@@ -102,10 +103,11 @@ export function createHud() {
 
     // burn gauge: altitude vs stopping distance on one scale
     const d = S.stoppingDistance(s);
+    const burnAlt = S.burnAltitude(s);
     const scale = Math.max(p.alt, alt) * 1.05;
     const gauge = $('burn-gauge');
     gauge.style.opacity = s.computerOK ? 1 : 0.25;
-    $('burn-stop').style.height = `${Math.min(1, d / scale) * 100}%`;
+    $('burn-stop').style.height = `${Math.min(1, burnAlt / scale) * 100}%`;
     $('burn-alt').style.bottom = `calc(${Math.min(1, alt / scale) * 100}% - 1px)`;
     const bl = $('burn-label');
     let label = '', lc = 'mute';
@@ -114,9 +116,8 @@ export function createHud() {
     else if (!s.computerOK) { label = 'OFFLINE'; lc = 'bad'; }
     else if (s.vy >= -0.5) { label = 'SCHWEBT'; lc = ''; }
     else if (!isFinite(d)) { label = 'ZU WENIG SCHUB'; lc = 'bad'; }
-    else if (alt <= d * 1.02) { label = 'BURN!'; lc = 'bad'; }
-    else if (alt <= d * 1.35) { label = 'BEREIT'; lc = 'warn'; }
-    else { label = `in ${fmt(Math.max(0, (alt - d) / -s.vy), 0)} s`; lc = 'ok'; }
+    else if (alt <= burnAlt) { label = 'BURN!'; lc = 'bad'; }
+    else { if (!(s.t - (ttb.at ?? -1) < 0.2 && ttb.at <= s.t)) { ttb.v = S.timeToBurn(s); ttb.at = s.t; } const tb = ttb.v; if (tb < 3) { label = 'BEREIT'; lc = 'warn'; } else { label = `in ${fmt(tb, 0)} s`; lc = 'ok'; } }
     bl.textContent = label; cls(bl, lc);
 
     // components
@@ -128,7 +129,7 @@ export function createHud() {
     setRow('tankL', `${fmt(s.fuelL)} kg`, s.fuelL / half, fc(s.fuelL));
     setRow('tankR', `${fmt(s.fuelR)} kg`, s.fuelR / half, fc(s.fuelR));
     setRow('battery', `${fmt(s.battery)} %`, s.battery / S.BAT_CAP, s.battery < 20 ? 'var(--bad)' : 'var(--cyan)');
-    setRow('solar', `${fmt(p.solar * 100)} % Licht`, p.solar, 'var(--cyan)');
+    setRow('solar', s.panels === 'in' ? 'eingeklappt' : `${fmt(p.solar * 100)} % Licht`, s.panels === 'in' ? 0 : p.solar, 'var(--cyan)');
     setRow('computer', s.computerOK ? 'online' : 'offline', s.computerOK ? 1 : 0, 'var(--ok)');
     setRow('legs', 'ok', 1, 'var(--ok)');
     const air = p.rho > 0;
@@ -138,11 +139,18 @@ export function createHud() {
     const qEl = $('v-q');
     qEl.textContent = air ? `${fmt(s.q / 1000, 1)} kPa` : '–';
     cls(qEl, s.q > S.CHUTE_QMAX ? 'bad' : s.q > S.CHUTE_QMAX * 0.8 ? 'warn' : '');
+    const pb = $('c-panels');
+    const solarGone = s.lost.solarL && s.lost.solarR;
+    pb.textContent = solarGone ? 'Paneele weg' : s.panels === 'out' ? 'Paneele einklappen' : 'Paneele ausklappen';
+    pb.disabled = solarGone;
+    pb.classList.toggle('on', s.panels === 'in' && !solarGone);
+    const solarHeat = Math.max(...['solarL', 'solarR'].filter((id) => !s.lost[id]).map((id) => heatFrac(s, id)), 0);
+    pb.classList.toggle('warn', s.panels === 'out' && solarHeat > 0.45 && !solarGone);
     const cb = $('c-chute');
     cb.textContent = { burned: 'Schirm verglüht', stowed: 'Fallschirm', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute];
     cb.disabled = s.chute === 'cut' || s.chute === 'torn' || s.chute === 'burned' || (s.chute === 'open' && !air);
     cb.classList.toggle('on', s.chute === 'open' && air);
-    cb.classList.toggle('ready', s.chute === 'stowed' && air && s.status === 'flying' && s.q <= S.CHUTE_QMAX && s.t > 0.2);
+    cb.classList.toggle('ready', s.chute === 'stowed' && air && s.status === 'flying' && s.q <= S.CHUTE_QMAX * S.CHUTE_SAFE && s.t > 0.2);
     // heat: hot or destroyed components override their row
     const rowParts = { capsule: ['capsule'], engine: ['engine'], tankL: ['tankL'], tankR: ['tankR'], battery: ['battery'], solar: ['solarL', 'solarR'], computer: ['computer'], chute: ['chute'], legs: ['legs'] };
     for (const [row, ids] of Object.entries(rowParts)) {
@@ -184,7 +192,7 @@ export function createHud() {
     else if (s.gNow > minLimit && s.throttle > 0) { msg = 'G-LAST: CREW LEIDET'; color = 'var(--warn)'; pulse = false; }
     else if (recentLoss(s)) msg = `${recentLoss(s).toUpperCase()} VERGLÜHT`;
     else if (s.chute === 'torn' && s.t - (tornAt ??= s.t) < 3) msg = 'FALLSCHIRM GERISSEN';
-    else if (hottest(s).f > 0.75) { const h = hottest(s); msg = `HITZE: ${h.name.toUpperCase()} ${fmt(h.f * 100)} %`; color = h.f > 0.9 ? 'var(--bad)' : 'var(--warn)'; pulse = h.f > 0.9; }
+    else if (hottest(s).f > 0.75) { const h = hottest(s); msg = `HITZE: ${h.name.toUpperCase()} ${fmt(h.f * 100)} %${h.solar && s.panels === 'out' ? ' – EINKLAPPEN!' : ''}`; color = h.f > 0.9 ? 'var(--bad)' : 'var(--warn)'; pulse = h.f > 0.9; }
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
     else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
@@ -194,10 +202,10 @@ export function createHud() {
       msg = `AUFSETZEN: ${what} · ${S.GRADES[worst].name.toUpperCase()}`;
       color = S.GRADES[worst].color; pulse = worst === 3;
     }
-    else if (s.powered && s.vy < -0.5 && isFinite(d) && alt <= d * 1.02 && s.throttle < 0.95 * s.limit) msg = 'BURN!';
+    else if (s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
     else if (s.battery < 20) { msg = 'BATTERIE SCHWACH'; color = 'var(--warn)'; pulse = false; }
-    else if (s.chute === 'stowed' && p.rho > 0 && alt > 120 && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= d * 1.02)) {
-      if (s.q <= S.CHUTE_QMAX * 0.95) { msg = 'FALLSCHIRM MÖGLICH'; color = 'var(--cyan)'; pulse = false; }
+    else if (s.chute === 'stowed' && p.rho > 0 && alt > 120 && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= burnAlt)) {
+      if (s.q <= S.CHUTE_QMAX * S.CHUTE_SAFE) { msg = 'FALLSCHIRM MÖGLICH'; color = 'var(--cyan)'; pulse = false; }
     }
     if (s.chute !== 'torn') tornAt = undefined;
     al.hidden = !msg || s.status !== 'flying';

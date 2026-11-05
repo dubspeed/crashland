@@ -66,8 +66,8 @@ export const COMPONENTS = [
   { id: 'engine',   name: 'Antrieb',          model: 'engine',   mass: 950,  pos: [0, 1.5, 0], heat: [1.0, 1800] },
   { id: 'tankL',    name: 'Treibstofftank L', model: 'tank',     mass: 200,  pos: [-1.15, 2.9, 0], fuel: 'fuelL', heat: [0.6, 640] },
   { id: 'tankR',    name: 'Treibstofftank R', model: 'tank',     mass: 200,  pos: [1.15, 2.9, 0], fuel: 'fuelR', heat: [0.6, 640] },
-  { id: 'solarL',   name: 'Solarpaneel L',    model: 'solar',    mass: 110,  pos: [-2.5, 4.25, 0], mirror: true, heat: [1.0, 560] },
-  { id: 'solarR',   name: 'Solarpaneel R',    model: 'solar',    mass: 110,  pos: [2.5, 4.25, 0], heat: [1.0, 560] },
+  { id: 'solarL',   name: 'Solarpaneel L',    model: 'solar',    mass: 110,  pos: [-2.5, 4.25, 0], mirror: true, heat: [1.0, 480] },
+  { id: 'solarR',   name: 'Solarpaneel R',    model: 'solar',    mass: 110,  pos: [2.5, 4.25, 0], heat: [1.0, 480] },
   { id: 'computer', name: 'Bordcomputer',     model: 'computer', mass: 150,  pos: [0.35, 2.85, 0.8], heat: [0.12, 330] },
   { id: 'battery',  name: 'Batterien',        model: 'battery',  mass: 420,  pos: [-0.3, 2.85, -0.8], heat: [0.12, 300] },
   { id: 'chute',    name: 'Fallschirm',       model: 'chutepack', mass: 120, pos: [0, 5.55, 0], heat: [0.28, 260] },
@@ -99,6 +99,7 @@ export function createState(planet) {
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
     crew: CREW.map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
     torqueCom: 0, sasTorque: 0, temp: Object.fromEntries(COMPONENTS.map((c) => [c.id, T_AMB])), lost: {}, events: [],
+    panels: 'out', panelFold: 0,
     chute: 'stowed', chuteT: 0, chuteInflate: 0, chuteOpen: 0, q: 0, maxQ: 0, drag: 0,
     status: 'flying', reason: '', touch: null, log: [],
   };
@@ -121,6 +122,12 @@ export function massProps(s) {
 /** Air density at the lander's height. */
 export function density(s) { return s.planet.rho * Math.exp(-Math.max(0, s.y) / s.planet.H); }
 
+/** Fold the solar panels in (protected from heat, no charging) or out again. */
+export function togglePanels(s) {
+  if (s.status !== 'flying') return;
+  s.panels = s.panels === 'out' ? 'in' : 'out';
+}
+
 /** P key / button: deploy the stowed chute, or cut an open one. Returns what happened. */
 export function toggleChute(s) {
   if (s.status !== 'flying') return null;
@@ -134,14 +141,51 @@ export function toggleChute(s) {
 
 export function fuel(s) { return s.fuelL + s.fuelR; }
 
-/** Bordcomputer: stopping distance at the current throttle limit (m), Infinity if impossible. */
+/** Bordcomputer burn point: stopping distance plus a reaction reserve (≈ 1 s of descent + 15 %). */
+export function burnAltitude(s) {
+  const d = stoppingDistance(s);
+  return isFinite(d) ? d * 1.15 + Math.max(0, -s.vy) * 0.8 + 2 : d;
+}
+
+/** Seconds of free fall (with drag) until the burn point is reached. */
+export function timeToBurn(s) {
+  const { m } = massProps(s);
+  const rho = density(s);
+  const chuteK = s.chute === 'open' && s.planet.rho > 0 ? s.chuteInflate : 0;
+  let v = -s.vy, alt = altitude(s), t = 0;
+  const h = 0.1;
+  const probe = { ...s };
+  for (let i = 0; i < 600; i++) {
+    probe.vy = -v; probe.y = s.y - (altitude(s) - alt);
+    if (alt <= burnAltitude(probe)) return t;
+    const q = 0.5 * rho * v * v;
+    const drag = q * BODY_CDA + Math.min(q * CHUTE_CDA * chuteK, chuteK > 0 ? CHUTE_FMAX : 0);
+    v += (s.planet.g - drag / m) * h;
+    alt -= v * h; t += h;
+  }
+  return t;
+}
+export const CHUTE_SAFE = 0.95; // deploy hint/button below this share of CHUTE_QMAX
+
+/** Bordcomputer: stopping distance (m) burning at the current throttle limit, including air drag
+ *  and the parachute as it is right now. Infinity if the engine cannot stop the descent. */
 export function stoppingDistance(s) {
+  if (s.vy >= 0) return 0;
   const { m } = massProps(s);
   const maxFrac = s.powered ? 1 : 0.6;
-  const acc = (F_MAX * Math.min(s.limit, maxFrac) / m) * Math.cos(s.a) - s.planet.g;
-  if (s.vy >= 0) return 0;
-  if (acc <= 0) return Infinity;
-  return (s.vy * s.vy) / (2 * acc);
+  const aThr = ((F_MAX * Math.min(s.limit, maxFrac)) / m) * Math.cos(s.a);
+  if (aThr <= s.planet.g) return Infinity;
+  const rho = density(s);
+  const chuteK = s.chute === 'open' && s.planet.rho > 0 ? s.chuteInflate : 0;
+  let v = -s.vy, d = 0;
+  const h = 0.02;
+  for (let i = 0; i < 20000 && v > 0; i++) {
+    const q = 0.5 * rho * v * v;
+    const drag = q * BODY_CDA + Math.min(q * CHUTE_CDA * chuteK, CHUTE_FMAX * (chuteK > 0 ? 1 : 0));
+    v -= (aThr + drag / m - s.planet.g) * h;
+    d += Math.max(0, v) * h;
+  }
+  return d;
 }
 
 export function altitude(s) {
@@ -252,8 +296,9 @@ export function step(s, input, dt) {
 
   // --- power ---
   const use = 1.0 + (s.sas ? 0.4 : 0) + 2.2 * rcsUse + 1.2 * thr;
+  s.panelFold = Math.max(0, Math.min(1, s.panelFold + (s.panels === 'in' ? dt : -dt) / 1.2));
   const panels = (s.lost.solarL ? 0 : 1) + (s.lost.solarR ? 0 : 1);
-  const gain = 1.6 * p.solar * (panels / 2);
+  const gain = 1.6 * p.solar * (panels / 2) * (1 - s.panelFold);
   s.battery = Math.max(0, Math.min(BAT_CAP, s.battery + (gain - use) * dt));
 
   // --- aerodynamic heating: hot parts glow, overheated parts blow off ---
@@ -263,7 +308,8 @@ export function step(s, input, dt) {
   for (const c of COMPONENTS) {
     if (s.lost[c.id] || !c.heat) continue;
     const side = Math.sign(c.pos[0]);
-    const exp = Math.max(0, c.heat[0] * (1 + side * sideways * 2.5));
+    let exp = Math.max(0, c.heat[0] * (1 + side * sideways * 2.5));
+    if (c.model === 'solar') exp *= 1 - 0.88 * s.panelFold; // folded panels sit in the lee of the frame
     s.temp[c.id] += (flux * exp - HEAT_COOL * (s.temp[c.id] - T_AMB)) * dt;
     if (s.temp[c.id] > c.heat[1]) destroy(s, c.id);
   }

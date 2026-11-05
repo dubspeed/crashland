@@ -148,6 +148,7 @@ addEventListener('keydown', (e) => {
   if (mode !== 'flight') return;
   if (e.code === 'KeyT') cycleSas();
   if (e.code === 'KeyP') S.toggleChute(s);
+  if (e.code === 'KeyE') S.togglePanels(s);
   if (e.code === 'KeyC') toggleCom();
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
@@ -186,6 +187,7 @@ function cycleSas() { s.sas = { retro: 'up', up: false }[s.sas] ?? 'retro'; }
 function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
 $('c-sas').addEventListener('click', cycleSas);
 $('c-chute').addEventListener('click', () => S.toggleChute(s));
+$('c-panels').addEventListener('click', () => S.togglePanels(s));
 $('c-com').addEventListener('click', toggleCom);
 $('c-com').classList.add('on');
 $('r-again').addEventListener('click', () => start(planet));

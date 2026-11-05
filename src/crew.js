@@ -192,7 +192,7 @@ const LINES = {
   chuteUseless: ['ines', 'Ein Fallschirm. Ohne Luft. Netter Versuch.'],
   chuteTorn: ['bo', 'Der Schirm ist gerissen! Wir waren zu schnell!'],
   chuteCut: ['kira', 'Schirm abgeworfen.'],
-  heat: ['bo', 'Die Solarpaneele glühen! Gerade halten!'],
+  heat: ['bo', 'Die Solarpaneele glühen! Einklappen!'],
   lost: { solarL: ['bo', 'Solarpaneel links weggeschmolzen!'], solarR: ['bo', 'Solarpaneel rechts weggeschmolzen!'],
     tankL: ['kira', 'Tank links explodiert!'], tankR: ['kira', 'Tank rechts explodiert!'], chute: ['ines', 'Der Fallschirm ist verbrannt!'],
     computer: ['bo', 'Bordcomputer ist hin!'], battery: ['bo', 'Batterien durchgebrannt!'], legs: ['kira', 'Die Landebeine… sind weg.'],
@@ -238,7 +238,7 @@ export function createCrew(container, sayEl) {
       if (s.chute === 'torn') say('chute-torn', ...LINES.chuteTorn, t);
       if (s.chute === 'cut') say('chute-cut', ...LINES.chuteCut, t);
     }
-    const solarHot = ['solarL', 'solarR'].some((id) => !s.lost[id] && s.temp[id] > S.COMPONENTS.find((c) => c.id === id).heat[1] * 0.7);
+    const solarHot = s.panels === 'out' && ['solarL', 'solarR'].some((id) => !s.lost[id] && s.temp[id] > S.COMPONENTS.find((c) => c.id === id).heat[1] * 0.45);
     if (solarHot) say('heat', ...LINES.heat, t);
     for (const id of Object.keys(s.lost)) if (LINES.lost[id]) say(`lost-${id}`, ...LINES.lost[id], t);
     s.crew.forEach((c, i) => {

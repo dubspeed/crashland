@@ -13,7 +13,7 @@ Your lander falls toward a planet without power. Light the main engine as late a
 - **Centre of mass**: computed live from all components (marker + thrust axis in 3D). If it sits off the thrust axis, the engine creates torque that attitude control has to compensate.
 - **Power**: the battery feeds the flight computer, attitude control and the fuel pumps. Solar panels recharge depending on planet. Empty battery → computer offline, pumps off, max. 60 % thrust.
 - **Atmosphere & parachute**: air density per planet (Luna none, Mars very thin, Terra normal, Brontes dense) slows the lander (drag, terminal velocity). The parachute (P / button) inflates over ~2 s and is reefed: the riser load is capped (~70 kN), so it never jerks harder than ~2.5 g and opens fully only as the lander slows down. Above 5.5 kPa dynamic pressure it tears. Air drag counts as g-load for the crew. On Terra you can deploy once the lander has slowed to terminal velocity; on Brontes its terminal velocity is already too fast for the canopy, so you have to brake with the engine first. It can be cut away again; on Luna it is useless.
-- **Re-entry heat**: every component has its own temperature (heating ∝ √ρ · v³, game-scaled). Hot parts glow dark red → orange → yellow and shed sparks; above their limit they explode and break off, with consequences: solar panel → less charging, tank → its fuel is gone (and the centre of mass shifts), parachute pack → no parachute, computer → no attitude control or burn display, battery → no power, legs → no landing. On Terra the solar panels get close to their limit even when upright; tilting the lander during entry exposes one side and burns that panel off. The attitude controller only leans into the drift while the engine is firing.
+- **Re-entry heat**: every component has its own temperature (heating ∝ √ρ · v³, game-scaled). Hot parts glow dark red → orange → yellow and shed sparks; above their limit they explode and break off, with consequences: solar panel → less charging, tank → its fuel is gone (and the centre of mass shifts), parachute pack → no parachute, computer → no attitude control or burn display, battery → no power, legs → no landing. On Terra the extended solar panels burn off during entry; fold them in (E / button, ~1 s, no charging while folded) and keep the lander upright, since tilting exposes one side more. The attitude controller only leans into the drift while the engine is firing.
 - **Planets**: Luna (1.62 m/s²), Mars (3.71), Terra (9.81), Brontes (15.2: super-Earth, dense air, little thrust reserve).
 
 Landing window (same on all planets, shown live in the HUD):
@@ -35,11 +35,14 @@ On a crash the ship breaks into its components; the explosion scales with impact
 | W / S, ↑ / ↓ | throttle lever | Thrust limiter |
 | A / D, ← / → | **Rotate pad** (left): press left/right of centre, further out = stronger | Rotate (RCS), analog |
 | P | Fallschirm | Deploy / cut away the parachute |
+| E | Paneele | Fold the solar panels in / out |
 | T | Lageregler | Attitude control: Retro (leans against drift) / Vertical / Off |
 | C | Schwerpunkt | Show centre of mass and thrust axis |
 | R / M | buttons | Restart / planet select |
 
 Lever and rotate pad each track their own touch point, so both work at the same time with two thumbs. The layout adapts to desktop, phone portrait and phone landscape.
+
+The flight computer's burn point includes air drag and the parachute and adds a reaction reserve (~15 % + about 1 s of descent); the countdown before it is a short look-ahead with drag.
 
 ## Structure
 

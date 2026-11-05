@@ -90,6 +90,7 @@ dd { white-space: nowrap; }
 .toggles { display: flex; gap: 6px; flex-wrap: wrap; }
 .tog { background: var(--glass); border: 1px solid var(--glass-edge); border-radius: 8px; padding: 8px 10px; font-size: 12px; min-height: 36px; }
 .tog.on { border-color: var(--cyan); color: var(--cyan); }
+.tog.warn { border-color: var(--bad); color: var(--bad); animation: pulse 0.6s steps(2) infinite; }
 .tog:disabled { opacity: 0.4; cursor: default; }
 .tog.chute { border-color: rgba(255,181,71,0.5); }
 .tog.chute.ready { border-color: var(--amber); color: var(--amber); box-shadow: 0 0 10px rgba(255,181,71,0.35); }

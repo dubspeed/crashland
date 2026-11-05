@@ -121,6 +121,16 @@ export function createShip(models) {
     group.position.set(s.x, s.y - (group.userData.sink || 0), 0);
     group.rotation.z = s.a;
     updateChute(s, t, dt);
+    // solar wings fold up around their root at the frame (root is 1.25 m inboard of the panel centre)
+    const th = s.panelFold * 1.45;
+    for (const id of ['solarL', 'solarR']) {
+      const part = parts[id];
+      if (part.parent !== group) continue;
+      const c = part.userData.component, side = Math.sign(c.pos[0]);
+      const rootX = c.pos[0] - side * 1.25;
+      part.position.set(rootX + side * 1.25 * Math.cos(th), c.pos[1] + 1.25 * Math.sin(th), c.pos[2]);
+      part.rotation.z = side * th;
+    }
     updateHeat(s, dt);
     const thr = s.status === 'flying' ? s.throttle : 0;
     const flick = 0.9 + Math.random() * 0.2;
