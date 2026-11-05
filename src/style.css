@@ -270,3 +270,17 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
   #td { top: calc(10px + env(safe-area-inset-top, 0px)); bottom: auto; width: 320px; }
   #alert { top: calc(108px + env(safe-area-inset-top, 0px)) !important; }
 }
+
+/* slim touchdown gauge: just the bar, marker and limit ticks */
+#td { background: none; border: 0; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; padding: 0; width: min(380px, calc(100vw - 48px)); }
+#td.danger { box-shadow: none; }
+#td .td-top, #td .td-sub, #td .td-ticks em { display: none !important; }
+#td .td-wrap { margin: 0; padding-bottom: 16px; }
+#td .td-scale { height: 10px; border-radius: 5px; box-shadow: 0 1px 6px rgba(0,0,0,0.6); }
+#td.danger .td-scale { animation: tdglow 0.5s ease-in-out infinite alternate; }
+@keyframes tdglow { to { box-shadow: 0 0 14px rgba(255,93,82,0.9), 0 1px 6px rgba(0,0,0,0.6); } }
+#td .td-scale i { top: -5px; width: 5px; height: 20px; margin-left: -2.5px; }
+#td .td-ticks span { top: 13px; font-size: 10px; text-shadow: 0 1px 3px #000, 0 0 6px #000; }
+@media (max-width: 520px) { #td { width: calc(100vw - 48px); bottom: calc(var(--lever-h, 200px) + 22px + env(safe-area-inset-bottom, 0px)); } }
+@media (max-height: 520px) { #td { width: 300px; top: calc(14px + env(safe-area-inset-top, 0px)); } #alert { top: calc(68px + env(safe-area-inset-top, 0px)) !important; } }
+@media (prefers-reduced-motion: reduce) { #td.danger .td-scale { animation: none; box-shadow: 0 0 10px rgba(255,93,82,0.8); } }

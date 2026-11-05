@@ -16,7 +16,7 @@ Your lander falls toward a planet without power. Light the main engine as late a
 - **Re-entry heat**: every component has its own temperature (heating ∝ √ρ · v³, game-scaled). Hot parts glow dark red → orange → yellow and shed sparks; above their limit they explode and break off, with consequences: solar panel → less charging, tank → its fuel is gone (and the centre of mass shifts), parachute pack → no parachute, computer → no attitude control or burn display, battery → no power, legs → no landing. On Terra the extended solar panels burn off during entry; fold them in (E / button, ~1 s, no charging while folded) and keep the lander upright, since tilting exposes one side more. The attitude controller only leans into the drift while the engine is firing.
 - **Planets**: Luna (1.62 m/s²), Mars (3.71), Terra (9.81), Brontes (15.2: super-Earth, dense air, little thrust reserve).
 
-Landing window (same on all planets). Below 80 m a large gauge shows the sink rate on a scale with exactly these limits:
+Landing window (same on all planets). Below 80 m a slim gauge bar shows the sink rate on a scale with exactly these limits (glows red in the crash range):
 
 | Grade | Sink rate | Drift | Tilt | Result |
 |-------|-----------|-------|------|--------|
