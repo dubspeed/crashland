@@ -86,7 +86,7 @@ function showMenu() {
   buildMenu();
   // ship parked on the pad as a backdrop
   debris.clear(); ship.reset();
-  s = S.createState(planet); s.y = 0; s.vy = 0; s.vx = 0; s.a = 0; s.status = 'parked';
+  s = S.createState(planet); s.x = 0; s.z = 0; s.y = 0; s.vy = 0; s.vx = 0; s.vz = 0; s.a = 0; s.b = 0; s.status = 'parked';
   ship.update(s, 0);
 }
 
@@ -167,6 +167,8 @@ addEventListener('keydown', (e) => {
   if ((e.code === 'KeyM' || e.code === 'Escape') && mode !== 'menu') showMenu();
   if (mode !== 'flight') return;
   if (e.code === 'KeyT') cycleSas();
+  const digit = /^(Digit|Numpad)(\d)$/.exec(e.code);
+  if (digit) s.limit = digit[2] === '0' ? 1 : +digit[2] / 10;
   if (e.code === 'KeyP') S.toggleChute(s);
   if (e.code === 'KeyE') S.togglePanels(s);
   if (e.code === 'KeyC') toggleCom();
@@ -192,18 +194,20 @@ function bindPointer(el, onMove, onEnd) {
   el.addEventListener('lostpointercapture', end);
   el.addEventListener('contextmenu', (e) => e.preventDefault());
 }
-const touch = { lever: false, rcs: 0 };
+const touch = { lever: false, px: 0, py: 0 };
 bindPointer($('c-lever'), (e, r) => {
   touch.lever = true;
   // top 12 % snaps to full thrust so a quick thumb press near the top is 100 %
   const f = (r.bottom - e.clientY) / r.height;
   s.limit = Math.min(1, Math.max(0.05, f >= 0.88 ? 1 : f / 0.88));
 }, () => { touch.lever = false; });
+// tilt pad: two axes, relative to the screen (right / away from the camera); further out = faster
 bindPointer($('c-rcs'), (e, r) => {
-  const dx = (r.left + r.width / 2 - e.clientX) / (r.width / 2); // + = left
-  touch.rcs = Math.abs(dx) < 0.12 ? 0 : Math.max(-1, Math.min(1, (dx - Math.sign(dx) * 0.12) / 0.7));
-}, () => { touch.rcs = 0; });
-function cycleSas() { s.sas = { hold: 'retro', retro: 'up', up: false }[s.sas] ?? 'hold'; s.holdA = s.a; }
+  const shape = (d) => (Math.abs(d) < 0.12 ? 0 : Math.max(-1, Math.min(1, (d - Math.sign(d) * 0.12) / 0.7)));
+  touch.px = shape((e.clientX - (r.left + r.width / 2)) / (r.width / 2));
+  touch.py = shape(((r.top + r.height / 2) - e.clientY) / (r.height / 2));
+}, () => { touch.px = 0; touch.py = 0; });
+function cycleSas() { s.sas = { hold: 'retro', retro: 'up', up: false }[s.sas] ?? 'hold'; s.holdA = s.a; s.holdB = s.b; }
 function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
 $('c-sas').addEventListener('click', cycleSas);
 $('c-chute').addEventListener('click', () => S.toggleChute(s));
@@ -234,10 +238,18 @@ let autopilot = null; // optional (state) => {thrust, rcs}, used by automated te
 function readInput(dt) {
   if (autopilot) { Object.assign(input, autopilot(s)); return; }
   input.thrust = keys.has('Space') || touch.lever;
-  const l = keys.has('KeyA') || keys.has('ArrowLeft');
-  const r = keys.has('KeyD') || keys.has('ArrowRight');
-  input.rcs = l || r ? (l ? 1 : 0) - (r ? 1 : 0) : touch.rcs;
-  const up = keys.has('KeyW') || keys.has('ArrowUp'), down = keys.has('KeyS') || keys.has('ArrowDown');
+  // tilt: WASD / arrows or the pad, in screen terms (px right, py away from the camera)
+  const kx = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
+  const ky = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
+  const px = kx || touch.px, py = ky || touch.py;
+  input.padX = px; input.padY = py;
+  // screen direction -> world tilt direction (camera right / forward on the ground plane)
+  const dxw = px * Math.cos(cam.yaw) - py * Math.sin(cam.yaw);
+  const dzw = -px * Math.sin(cam.yaw) - py * Math.cos(cam.yaw);
+  input.rcs = -dxw;  // roll: + tips the top to -x
+  input.rcsZ = dzw;  // pitch: + tips the top to +z
+  // thrust limiter: + / - (hold) or digits 1..9, 0 = 100 %
+  const up = keys.has('Equal') || keys.has('NumpadAdd'), down = keys.has('Minus') || keys.has('NumpadSubtract');
   if (up || down) s.limit = Math.min(1, Math.max(0, s.limit + (up ? 0.6 : -0.6) * dt));
 }
 
@@ -269,9 +281,9 @@ renderer.setAnimationLoop(() => {
   if (mode !== 'menu') hud.update(s, input, cam.yaw);
 
   // chase camera
-  focus.set(s.x, s.y + 2.5, 0);
+  focus.set(s.x, s.y + 2.5, s.z);
   const dist = mode === 'menu' ? 22 : cam.dist * (camera.aspect < 0.8 ? 1.25 : 1);
-  camera.position.set(focus.x + Math.sin(cam.yaw) * dist, focus.y + dist * 0.16, Math.cos(cam.yaw) * dist);
+  camera.position.set(focus.x + Math.sin(cam.yaw) * dist, focus.y + dist * 0.16, focus.z + Math.cos(cam.yaw) * dist);
   const minY = S.terrainHeight(camera.position.x, camera.position.z) + 1.5;
   if (camera.position.y < minY) camera.position.y = minY;
   if (cam.shake > 0) {
@@ -279,7 +291,7 @@ renderer.setAnimationLoop(() => {
     camera.position.add(new THREE.Vector3().randomDirection().multiplyScalar(cam.shake * 0.8));
   }
   camera.lookAt(focus);
-  world.update(camera, focus, time, mode === 'menu' ? 0 : s.windNow, dt);
+  world.update(camera, focus, time, mode === 'menu' ? { x: 0, z: 0 } : { x: s.windX, z: s.windZ }, dt);
   renderer.render(scene, camera);
 });
 

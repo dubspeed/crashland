@@ -73,6 +73,13 @@ export function createHud() {
     return best;
   }
 
+  /** Arrow glyph for a world direction (x, z) as seen on screen (up = away from the camera). */
+  function screenArrow(dx, dz, yaw) {
+    const right = dx * Math.cos(yaw) - dz * Math.sin(yaw), fwd = -dx * Math.sin(yaw) - dz * Math.cos(yaw);
+    const i = Math.round(Math.atan2(right, fwd) / (Math.PI / 4));
+    return ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'][(i + 8) % 8];
+  }
+
   // radar compass: top-down view around the lander, oriented like the camera
   const radar = $('radar'), rctx = radar.getContext('2d');
   function drawRadar(s, yaw) {
@@ -95,7 +102,7 @@ export function createHud() {
     c.strokeStyle = 'rgba(160,200,255,0.25)'; c.lineWidth = 1;
     for (const d of [70, 300]) { c.beginPath(); c.arc(0, 0, scale(d), 0, Math.PI * 2); c.stroke(); }
     // landing pad + flat zone
-    const [padX, padY, padD] = place(-s.x, 0);
+    const [padX, padY, padD] = place(-s.x, -s.z);
     const far = padD > RANGE;
     c.beginPath(); c.arc(padX, padY, Math.max(3, scale(padD + 70) - scale(padD)), 0, Math.PI * 2); c.fillStyle = 'rgba(95,224,160,0.18)'; c.fill();
     c.beginPath();
@@ -103,7 +110,8 @@ export function createHud() {
     c.closePath(); c.fillStyle = '#f2c230'; c.fill(); c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 1.2; c.stroke();
     // wind: arrow from the edge it comes from, pointing downwind
     if (s.planet.rho > 0 && s.wind.speed) {
-      const [wx, wy] = toR(Math.sign(s.windNow || s.wind.dir), 0);
+      const ws = Math.hypot(s.windX, s.windZ) || 1;
+      const [wx, wy] = s.windNow > 0.1 ? toR(s.windX / ws, s.windZ / ws) : toR(Math.cos(s.wind.heading), Math.sin(s.wind.heading));
       const len = 10 + Math.min(1, Math.abs(s.windNow) / 26) * 22;
       const sx = -wx * 46, sy2 = -wy * 46, ex = sx + wx * len, ey = sy2 + wy * len;
       c.strokeStyle = '#8fe3ff'; c.fillStyle = '#8fe3ff'; c.lineWidth = 3; c.lineCap = 'round';
@@ -111,7 +119,7 @@ export function createHud() {
       c.beginPath(); c.moveTo(ex + wx * 5, ey + wy * 5); c.lineTo(ex - wy * 4, ey + wx * 4); c.lineTo(ex + wy * 4, ey - wx * 4); c.closePath(); c.fill();
     }
     // own motion (where you drift to in the next ~10 s)
-    const [mx, my] = place(s.vx * 10, 0);
+    const [mx, my] = place(s.vx * 10, s.vz * 10);
     const ml = Math.hypot(mx, my);
     if (ml > 2) {
       const ux = mx / ml, uy = my / ml;
@@ -136,11 +144,11 @@ export function createHud() {
     const p = s.planet;
     const alt = Math.max(0, S.altitude(s));
     const { m, cx, cy } = S.massProps(s);
-    const tilt = (s.a * 180) / Math.PI;
+    const tilt = S.tiltDeg(s);
 
     $('planet-tag').textContent = `${p.name} · ${fmt(p.g, 2)} m/s² · ${fmt(p.g / S.G0, 2)} g`;
     $('v-alt').textContent = `${fmt(alt, alt < 100 ? 1 : 0)} m`;
-    const live = { vy: Math.max(0, -s.vy), vx: Math.abs(s.vx), tilt: Math.abs(tilt) };
+    const live = { vy: Math.max(0, -s.vy), vx: S.drift(s), tilt };
     if (s.touch) Object.assign(live, { vy: s.touch.vy, vx: s.touch.vx, tilt: s.touch.tilt });
     const gr = { vy: S.grade(live.vy, S.LAND.vy), vx: S.grade(live.vx, S.LAND.vx), tilt: S.grade(live.tilt, S.LAND.tilt) };
     for (const k of Object.keys(lw)) {
@@ -158,13 +166,13 @@ export function createHud() {
     const vw = $('v-wind');
     if (p.rho > 0 && s.wind.speed) {
       const w = s.windNow, gust = Math.abs(w) > s.wind.speed * (0.35 + 0.65 * Math.min(1, Math.max(0, alt) / 300)) * 1.25;
-      vw.innerHTML = `Wind <b>${w >= 0 ? '→' : '←'} ${fmt(Math.abs(w), 0)} m/s</b>${gust ? ' <em>Böe</em>' : ''}`;
+      vw.innerHTML = `Wind <b>${screenArrow(s.windX, s.windZ, yaw)} ${fmt(Math.abs(w), 0)} m/s</b>${gust ? ' <em>Böe</em>' : ''}`;
       vw.hidden = false;
     } else vw.hidden = true;
-    const dxPad = -s.x;
+    const padDist = Math.hypot(s.x, s.z);
     const vp = $('v-pad');
-    vp.innerHTML = Math.abs(dxPad) < 10 ? 'Landeplatz <b>unter dir</b>' : `Landeplatz <b>${dxPad > 0 ? '→' : '←'} ${fmt(Math.abs(dxPad), 0)} m</b>`;
-    vp.className = Math.abs(dxPad) < 10 ? 'ok' : Math.abs(dxPad) > 70 ? 'warn' : '';
+    vp.innerHTML = padDist < 10 ? 'Landeplatz <b>unter dir</b>' : `Landeplatz <b>${screenArrow(-s.x, -s.z, yaw)} ${fmt(padDist, 0)} m</b>`;
+    vp.className = padDist < 10 ? 'ok' : padDist > 70 ? 'warn' : '';
 
     // touchdown gauge
     const td = $('td');
@@ -281,8 +289,9 @@ export function createHud() {
     sas.classList.toggle('on', !!s.sas);
     lever.classList.toggle('on', s.throttle > 0);
     const rcs = $('c-rcs');
-    rcs.classList.toggle('on', input.rcs !== 0);
-    rcs.querySelector('.knob').style.transform = `translateX(${-input.rcs * (rcs.clientWidth / 2 - 22)}px)`;
+    rcs.classList.toggle('on', !!(input.padX || input.padY));
+    const reach = rcs.clientWidth / 2 - 20;
+    rcs.querySelector('.knob').style.transform = `translate(${(input.padX || 0) * reach}px, ${-(input.padY || 0) * reach}px)`;
 
     // alerts, most important first
     const al = $('alert');

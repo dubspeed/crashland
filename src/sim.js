@@ -1,4 +1,7 @@
-// Pure 2D flight model (x = horizontal, y = up, angle a = tilt, CCW positive).
+// Flight model in 3D: position x/y/z (y up), attitude as two tilts:
+//   a = roll about the z axis (positive tips the top towards -x), w = its rate
+//   b = pitch about the x axis (positive tips the top towards +z), wb = its rate
+// Ship orientation = Rx(b) · Rz(a), so the thrust axis is u = (-sin a, cos a cos b, cos a sin b).
 // No three.js here so it can be tuned and tested in node.
 
 export const G0 = 9.81;
@@ -43,14 +46,16 @@ export const WIND_LEVELS = [
 export const WIND_ARM = 0.45;       // m, side-force centre of pressure above the CoM (panels folded)
 export const WIND_ARM_PANELS = 1.1; // m, with the solar wings out
 
-/** Horizontal air velocity (m/s, + = to the right) at the lander's position and time. */
+/** Air velocity {x, z, speed} at the lander's position and time; W.heading = direction the wind blows to. */
 export function windAt(s, alt = altitude(s), t = s.t) {
   const W = s.wind;
-  if (!W || !W.speed || s.planet.rho <= 0) return 0;
+  if (!W || !W.speed || s.planet.rho <= 0) return { x: 0, z: 0, speed: 0 };
   const k = W.seed;
   const gust = Math.sin(t * 0.55 + k) * 0.55 + Math.sin(t * 1.37 + k * 2.1) * 0.3 + Math.sin(t * 3.1 + k * 3.7) * 0.15;
   const shear = 0.35 + 0.65 * Math.min(1, Math.max(0, alt) / 300);
-  return W.dir * W.speed * shear * (1 + W.gust * gust);
+  const speed = W.speed * shear * (1 + W.gust * gust);
+  const h = W.heading + Math.sin(t * 0.21 + k) * 0.12; // slow veer of a few degrees
+  return { x: Math.cos(h) * speed, z: Math.sin(h) * speed, speed };
 }
 
 export const LAND = { vy: [2.5, 5, 8], vx: [1, 2.5, 4], tilt: [5, 10, 18] };
@@ -113,20 +118,26 @@ export function terrainHeight(x, z = 0) {
 // ---------- state ----------
 export function createState(planet, opts = {}) {
   const lvl = WIND_LEVELS[opts.wind ?? 0] ?? WIND_LEVELS[0];
-  const dir = opts.windDir ?? (Math.random() < 0.5 ? -1 : 1);
+  // wind heading: opts.windHeading (rad), or the old ±1 along x, or random
+  const heading = opts.windHeading ?? (opts.windDir === -1 ? Math.PI : opts.windDir === 1 ? 0 : Math.random() * Math.PI * 2);
+  const rnd = opts.rnd ?? Math.random;
+  const off = planet.rho > 0 ? lvl.speed * planet.drift : 0;
+  const t0 = (planet.tilt * Math.PI) / 180, b0 = opts.pitch0 ?? (rnd() - 0.5) * 0.06;
+  const side = rnd() < 0.5 ? -1 : 1;
   return {
     planet, t: 0,
     wind: { level: WIND_LEVELS.indexOf(lvl), name: lvl.name, speed: lvl.speed, gust: lvl.gust, bonus: lvl.bonus,
-      dir, seed: opts.windSeed ?? Math.random() * 100 },
-    windNow: 0, windTorque: 0,
+      heading, dir: Math.cos(heading) >= 0 ? 1 : -1, seed: opts.windSeed ?? rnd() * 100 },
+    windNow: 0, windX: 0, windZ: 0, windTorque: 0, windTorqueB: 0,
     // start upwind so the wind carries the lander roughly towards the pad
-    x: planet.rho > 0 ? -dir * lvl.speed * planet.drift : 0, y: planet.alt, vx: planet.vx, vy: planet.vy,
-    a: (planet.tilt * Math.PI) / 180, w: 0,
+    x: -Math.cos(heading) * off, z: -Math.sin(heading) * off, y: planet.alt,
+    vx: planet.vx, vy: planet.vy, vz: opts.vz0 ?? side * Math.abs(planet.vx) * 0.7,
+    a: t0, w: 0, b: b0, wb: 0,
     fuel0: planet.fuel, fuelL: planet.fuel / 2, fuelR: planet.fuel / 2, battery: BAT_CAP,
-    limit: 1, throttle: 0, sas: 'hold', holdA: (planet.tilt * Math.PI) / 180,
+    limit: 1, throttle: 0, sas: 'hold', holdA: t0, holdB: b0, sasI: 0, sasIB: 0,
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
     crew: CREW.map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
-    torqueCom: 0, sasTorque: 0, temp: Object.fromEntries(COMPONENTS.map((c) => [c.id, T_AMB])), lost: {}, events: [],
+    torqueCom: 0, torqueComB: 0, sasTorque: 0, temp: Object.fromEntries(COMPONENTS.map((c) => [c.id, T_AMB])), lost: {}, events: [],
     panels: 'out', panelFold: 0,
     chute: 'stowed', chuteT: 0, chuteInflate: 0, chuteOpen: 0, q: 0, maxQ: 0, drag: 0,
     status: 'flying', reason: '', touch: null, log: [],
@@ -134,18 +145,28 @@ export function createState(planet, opts = {}) {
 }
 
 export function massProps(s) {
-  let m = 0, mx = 0, my = 0;
+  let m = 0, mx = 0, my = 0, mz = 0;
   const parts = COMPONENTS.filter((c) => !s.lost?.[c.id]).map((c) => {
     const mass = c.mass + (c.fuel ? s[c.fuel] : 0);
-    const [px, py] = c.com || c.pos;
-    m += mass; mx += mass * px; my += mass * py;
+    const [px, py, pz = 0] = c.com || c.pos;
+    m += mass; mx += mass * px; my += mass * py; mz += mass * pz;
     return [mass, px, py];
   });
-  const cx = mx / m, cy = my / m;
-  let I = 0;
+  const cx = mx / m, cy = my / m, cz = mz / m;
+  let I = 0; // same inertia assumed about both tilt axes
   for (const [mass, px, py] of parts) I += mass * ((px - cx) ** 2 + (py - cy) ** 2 + 0.4);
-  return { m, cx, cy, I };
+  return { m, cx, cy, cz, I };
 }
+
+/** Thrust axis (unit vector) for the current attitude. */
+export function upVector(s) {
+  const ca = Math.cos(s.a);
+  return { x: -Math.sin(s.a), y: ca * Math.cos(s.b || 0), z: ca * Math.sin(s.b || 0) };
+}
+/** Total tilt from vertical in degrees. */
+export function tiltDeg(s) { return (Math.acos(Math.min(1, Math.cos(s.a) * Math.cos(s.b || 0))) * 180) / Math.PI; }
+/** Horizontal speed over ground. */
+export function drift(s) { return Math.hypot(s.vx, s.vz || 0); }
 
 /** Air density at the lander's height. */
 export function density(s) { return s.planet.rho * Math.exp(-Math.max(0, s.y) / s.planet.H); }
@@ -201,7 +222,7 @@ export function stoppingDistance(s) {
   if (s.vy >= 0) return 0;
   const { m } = massProps(s);
   const maxFrac = s.powered ? 1 : 0.6;
-  const aThr = ((F_MAX * Math.min(s.limit, maxFrac)) / m) * Math.cos(s.a);
+  const aThr = ((F_MAX * Math.min(s.limit, maxFrac)) / m) * upVector(s).y;
   if (aThr <= s.planet.g) return Infinity;
   const rho = density(s);
   const chuteK = s.chute === 'open' && s.planet.rho > 0 ? s.chuteInflate : 0;
@@ -216,13 +237,18 @@ export function stoppingDistance(s) {
   return d;
 }
 
+const FEET = [[-FOOT_X, 0], [FOOT_X, 0], [0, -FOOT_X], [0, FOOT_X]];
+/** World position of each foot pad: [x, y, z, groundHeight]. */
+export function feet(s) {
+  const ca = Math.cos(s.a), sa = Math.sin(s.a), cb = Math.cos(s.b || 0), sb = Math.sin(s.b || 0);
+  return FEET.map(([fx, fz]) => {
+    const x = s.x + fx * ca, y = s.y + fx * sa * cb - fz * sb, z = (s.z || 0) + fx * sa * sb + fz * cb;
+    return [x, y, z, terrainHeight(x, z)];
+  });
+}
 export function altitude(s) {
-  const c = Math.cos(s.a), sn = Math.sin(s.a);
   let min = Infinity;
-  for (const fx of [-FOOT_X, FOOT_X]) {
-    const wx = s.x + fx * c, wy = s.y + fx * sn;
-    min = Math.min(min, wy - terrainHeight(wx));
-  }
+  for (const [, y, , h] of feet(s)) min = Math.min(min, y - h);
   return min;
 }
 
@@ -249,7 +275,36 @@ export function destroy(s, id) {
   if (id === 'chute') s.chute = s.chute === 'open' ? 'torn' : 'burned';
 }
 
-/** input: { thrust: bool, rcs: -1..1 } */
+/** Attitude control for one tilt axis. cmd = pilot input (-1..1, + turns the angle up), target = angle for
+ *  'retro'/'up'. Stores the jet torque in s._tau{A|B} and returns how hard the jets work (0..1). */
+function controlAxis(s, ang, rate, holdKey, integKey, cmd, target, comTorque, I, dt) {
+  const tauKey = ang === 'a' ? '_tauA' : '_tauB';
+  const clamp = (t) => Math.max(-RCS_TORQUE, Math.min(RCS_TORQUE, t));
+  s[tauKey] = 0;
+  if (s.blackout) return 0;
+  const A = s[ang], W = s[rate];
+  if (cmd && s.sas === 'hold' && s.computerOK) {
+    // rate command (Apollo LM style): the pad sets a turn rate, the computer fires the jets to match it
+    s[tauKey] = clamp((cmd * MAX_RATE - W) * 6 * I - comTorque);
+    s[holdKey] = null; s[integKey] = 0;
+  } else if (cmd) {
+    s[tauKey] = cmd * RCS_TORQUE; // jets fire directly
+    s[holdKey] = null; s[integKey] = 0;
+    return Math.abs(cmd);
+  } else if (s.sas === 'hold' && s.computerOK) {
+    // attitude hold: first stop the rotation, then keep that angle (integral cancels steady wind torque)
+    if (s[holdKey] === null && Math.abs(W) < 0.02) { s[holdKey] = A; s[integKey] = 0; }
+    if (s[holdKey] !== null && Math.abs(A - s[holdKey]) < 0.1) s[integKey] = Math.max(-0.5, Math.min(0.5, s[integKey] + (A - s[holdKey]) * dt));
+    s[tauKey] = clamp((s[holdKey] === null ? -3.0 * W : -(2.2 * (A - s[holdKey]) + 2.6 * W + 1.2 * s[integKey])) * I - comTorque);
+  } else if (s.sas && s.computerOK) {
+    // 'up' holds vertical, 'retro' leans against the drift; integrate only near the target (no windup)
+    if (Math.abs(A - target) < 0.1) s[integKey] = Math.max(-0.5, Math.min(0.5, s[integKey] + (A - target) * dt));
+    s[tauKey] = clamp(-(2.2 * (A - target) + 2.6 * W + 1.2 * s[integKey]) * I - comTorque);
+  }
+  return Math.abs(s[tauKey]) / RCS_TORQUE;
+}
+
+/** input: { thrust: bool, rcs: -1..1 (roll, + tips the top to -x), rcsZ: -1..1 (pitch, + tips the top to +z) } */
 export function step(s, input, dt) {
   if (s.status !== 'flying') return;
   const p = s.planet;
@@ -271,50 +326,29 @@ export function step(s, input, dt) {
   s.fuelR = Math.max(0, s.fuelR - takeR);
   s.throttle = thr;
 
-  const { m, cx, I } = massProps(s);
+  const { m, cx, cz, I } = massProps(s);
   const F = thr * F_MAX;
-  const ux = -Math.sin(s.a), uy = Math.cos(s.a);
+  const u = upVector(s);
 
-  // --- attitude ---
+  // --- attitude: the same controller on both tilt axes ---
   s.torqueCom = -cx * F; // thrust through the engine axis, CoM off-axis -> torque
-  let tau = s.torqueCom;
-  let rcsUse = 0;
-  s.sasTorque = 0;
-  if (!s.blackout && input.rcs && s.sas === 'hold' && s.computerOK) {
-    // rate command (Apollo LM style): the pad sets a turn rate, the computer fires the jets to match it
-    const want = ((input.rcs * MAX_RATE - s.w) * 6 * I) - s.torqueCom;
-    s.sasTorque = Math.max(-RCS_TORQUE, Math.min(RCS_TORQUE, want));
-    tau += s.sasTorque; rcsUse = Math.abs(s.sasTorque) / RCS_TORQUE;
-    s.holdA = null; s.sasI = 0;
-  } else if (!s.blackout && input.rcs) {
-    tau += input.rcs * RCS_TORQUE; rcsUse = Math.abs(input.rcs);
-    s.holdA = null; s.sasI = 0; // pilot is steering: pick up the new attitude once they let go
-  } else if (s.sas === 'hold' && s.computerOK && !s.blackout) {
-    // attitude hold (like the Apollo LM): first stop the rotation, then keep that angle
-    if (s.holdA === null && Math.abs(s.w) < 0.02) { s.holdA = s.a; s.sasI = 0; }
-    if (s.holdA !== null && Math.abs(s.a - s.holdA) < 0.1) s.sasI = Math.max(-0.5, Math.min(0.5, (s.sasI || 0) + (s.a - s.holdA) * dt)); // integral: cancels steady wind torque
-    const want = (s.holdA === null ? -3.0 * s.w : -(2.2 * (s.a - s.holdA) + 2.6 * s.w + 1.2 * s.sasI)) * I - s.torqueCom;
-    s.sasTorque = Math.max(-RCS_TORQUE, Math.min(RCS_TORQUE, want));
-    tau += s.sasTorque; rcsUse = Math.abs(s.sasTorque) / RCS_TORQUE;
-  } else if (s.sas && s.computerOK && !s.blackout) {
-    // 'up' holds vertical, 'retro' leans against horizontal drift (max 10°)
-    // lean so the thrust's sideways part kills the drift in about a second (scaled by thrust acceleration)
-    const aThr = (thr * F_MAX) / massProps(s).m;
-    const target = s.sas === 'retro' && thr > 0 ? Math.max(-0.17, Math.min(0.17, Math.asin(Math.max(-1, Math.min(1, (s.vx * 0.8) / Math.max(aThr, 1)))))) : 0;
-    if (Math.abs(s.a - target) < 0.1) s.sasI = Math.max(-0.5, Math.min(0.5, (s.sasI || 0) + (s.a - target) * dt)); // integrate only near the target (no windup)
-    const want = -(2.2 * (s.a - target) + 2.6 * s.w + 1.2 * s.sasI) * I - s.torqueCom;
-    s.sasTorque = Math.max(-RCS_TORQUE, Math.min(RCS_TORQUE, want));
-    tau += s.sasTorque; rcsUse = Math.abs(s.sasTorque) / RCS_TORQUE;
-  }
-  s.w += (tau / I) * dt;
+  s.torqueComB = cz * F;
+  const aThr = F / m;
+  // retro leans so the thrust's sideways part kills the drift in about a second
+  const lean = (v) => Math.max(-0.17, Math.min(0.17, Math.asin(Math.max(-1, Math.min(1, (v * 0.8) / Math.max(aThr, 1))))));
+  const ra = controlAxis(s, 'a', 'w', 'holdA', 'sasI', input.rcs || 0, s.sas === 'retro' && thr > 0 ? lean(s.vx) : 0, s.torqueCom, I, dt);
+  const rb = controlAxis(s, 'b', 'wb', 'holdB', 'sasIB', input.rcsZ || 0, s.sas === 'retro' && thr > 0 ? -lean(s.vz) : 0, s.torqueComB, I, dt);
+  const rcsUse = Math.max(ra, rb);
+  s.w += ((s.torqueCom + s._tauA) / I) * dt;
+  s.wb += ((s.torqueComB + s._tauB) / I) * dt;
   s.a += s.w * dt;
+  s.b += s.wb * dt;
 
-  // --- aerodynamics: body drag + parachute ---
-  // airflow relative to the lander (wind blows along x)
+  // --- aerodynamics: body drag + parachute, against the airflow relative to the lander ---
   const wind = windAt(s);
-  s.windNow = wind;
-  const rx = s.vx - wind;
-  const v = Math.hypot(rx, s.vy);
+  s.windNow = wind.speed; s.windX = wind.x; s.windZ = wind.z;
+  const rx = s.vx - wind.x, rz = s.vz - wind.z;
+  const v = Math.hypot(rx, s.vy, rz);
   s.q = 0.5 * density(s) * v * v;
   s.maxQ = Math.max(s.maxQ, s.q);
   if (s.chute === 'open') {
@@ -326,30 +360,35 @@ export function step(s, input, dt) {
   // reefed canopy: opens only as far as the riser load allows
   const chuteCda = s.chute === 'open' && s.planet.rho > 0 ? Math.min(CHUTE_CDA * s.chuteInflate, CHUTE_FMAX / Math.max(s.q, 1)) : 0;
   s.chuteOpen = chuteCda / CHUTE_CDA; // 0..1 how far the canopy is actually open
-  const cda = BODY_CDA + chuteCda;
-  const Fd = s.q * cda;
+  const Fd = s.q * (BODY_CDA + chuteCda);
   s.drag = Fd;
-  const dx = v > 0.01 ? (-Fd * rx) / v : 0, dy = v > 0.01 ? (-Fd * s.vy) / v : 0;
+  const k = v > 0.01 ? -Fd / v : 0;
+  const dx = k * rx, dy = k * s.vy, dz = k * rz;
   // side force acts above the CoM and tips the lander downwind (body drag only, the canopy hangs free)
-  const sideF = v > 0.01 ? (-s.q * BODY_CDA * rx) / v : 0;
+  const ks = v > 0.01 ? (-s.q * BODY_CDA) / v : 0;
   const arm = WIND_ARM + (WIND_ARM_PANELS - WIND_ARM) * (1 - s.panelFold) * ((s.lost.solarL && s.lost.solarR) ? 0 : 1);
-  s.windTorque = -arm * sideF;
+  s.windTorque = -arm * ks * rx;
+  s.windTorqueB = arm * ks * rz;
   s.w += (s.windTorque / I) * dt;
+  s.wb += (s.windTorqueB / I) * dt;
   if (s.chute === 'open' && s.planet.rho > 0 && s.chuteInflate > 0.05) {
     // canopy hangs above the CoM and pulls the lander upright
     const pull = s.q * CHUTE_CDA * Math.min(s.chuteInflate, CHUTE_FMAX / Math.max(s.q, 1) / CHUTE_CDA) * CHUTE_ARM;
     s.w += ((-Math.sin(s.a) * pull - s.w * pull * 0.6) / I) * dt;
+    s.wb += ((-Math.sin(s.b) * pull - s.wb * pull * 0.6) / I) * dt;
   }
 
   // --- translation ---
-  s.vx += ((F * ux + dx) / m) * dt;
-  s.vy += ((F * uy + dy) / m - p.g) * dt;
+  s.vx += ((F * u.x + dx) / m) * dt;
+  s.vy += ((F * u.y + dy) / m - p.g) * dt;
+  s.vz += ((F * u.z + dz) / m) * dt;
   s.x += s.vx * dt;
   s.y += s.vy * dt;
+  s.z += s.vz * dt;
 
   // --- crew g-load ---
   // felt load = all non-gravitational acceleration (engine + air)
-  s.gNow = Math.hypot(F * ux + dx, F * uy + dy) / m / G0;
+  s.gNow = Math.hypot(F * u.x + dx, F * u.y + dy, F * u.z + dz) / m / G0;
   s.maxG = Math.max(s.maxG, s.gNow);
   for (const c of s.crew) {
     if (s.gNow > c.limit) c.stress += (s.gNow - c.limit) * 0.35 * dt;
@@ -370,11 +409,10 @@ export function step(s, input, dt) {
   // --- aerodynamic heating: hot parts glow, overheated parts blow off ---
   const flux = Math.sqrt(density(s)) * (v / 100) ** 3 * HEAT_K;
   s.heatFlux = flux;
-  const sideways = Math.sin(s.a); // tilt exposes one side more
+  const sa = Math.sin(s.a), sb = Math.sin(s.b); // tilt exposes one side more
   for (const c of COMPONENTS) {
     if (s.lost[c.id] || !c.heat) continue;
-    const side = Math.sign(c.pos[0]);
-    let exp = Math.max(0, c.heat[0] * (1 + side * sideways * 2.5));
+    let exp = Math.max(0, c.heat[0] * (1 + Math.sign(c.pos[0]) * sa * 2.5 - Math.sign(c.pos[2]) * sb * 2.5));
     if (c.model === 'solar') exp *= 1 - 0.88 * s.panelFold; // folded panels sit in the lee of the frame
     // heat[2] = heat capacity: big, thin parts like the solar wings warm up over a few seconds
     s.temp[c.id] += ((flux * exp - HEAT_COOL * (s.temp[c.id] - T_AMB)) / (c.heat[2] ?? 1)) * dt;
@@ -384,15 +422,15 @@ export function step(s, input, dt) {
   // --- touchdown ---
   const alt = altitude(s);
   if (alt <= 0) {
-    const tilt = Math.abs((s.a * 180) / Math.PI);
-    const hL = terrainHeight(s.x - FOOT_X), hR = terrainHeight(s.x + FOOT_X);
-    const sink = -s.vy, drift = Math.abs(s.vx);
+    const tilt = tiltDeg(s);
+    const hs = feet(s).map((f) => f[3]);
+    const sink = -s.vy, drift = Math.hypot(s.vx, s.vz);
     const g = { vy: grade(sink, LAND.vy), vx: grade(drift, LAND.vx), tilt: grade(tilt, LAND.tilt) };
     const why = [];
     if (g.vy === 3) why.push(`zu schnell (${sink.toFixed(1)} m/s, max ${LAND.vy[2]})`);
     if (g.vx === 3) why.push(`seitliche Drift (${drift.toFixed(1)} m/s, max ${LAND.vx[2]})`);
     if (g.tilt === 3) why.push(`zu schräg (${tilt.toFixed(0)}°, max ${LAND.tilt[2]}°)`);
-    if (Math.abs(hL - hR) > 0.8) why.push('Gelände zu uneben');
+    if (Math.max(...hs) - Math.min(...hs) > 0.8) why.push('Gelände zu uneben');
     if (s.lost.legs) why.push('Landebeine verglüht');
     const overall = why.length ? 3 : Math.max(g.vy, g.vx, g.tilt);
     // crash energy 0..1: how violent the impact was (drives debris and explosion size)

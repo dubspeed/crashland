@@ -46,7 +46,7 @@ export function createDebris(scene) {
       const a = (i / n) * Math.PI * 2 + Math.random() * 0.4;
       const d = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3 + Math.random() * 0.2, 0),
         new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.5, flatShading: true, depthWrite: false }));
-      d.position.set(s.x + Math.cos(a) * 1.5, s.y + 0.2, Math.sin(a) * 1.5);
+      d.position.set(s.x + Math.cos(a) * 1.5, s.y + 0.2, s.z + Math.sin(a) * 1.5);
       const sp = 2 + Math.random() * 2 + strength * 1.5;
       d.userData.v = new THREE.Vector3(Math.cos(a) * sp, 0.3 + Math.random() * 0.6, Math.sin(a) * sp);
       scene.add(d);
@@ -63,11 +63,11 @@ export function createDebris(scene) {
     world.defaultContactMaterial = new CANNON.ContactMaterial(mat, mat, { friction: 0.5, restitution: 0.25 });
     const ground = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: mat, collisionFilterGroup: 1, collisionFilterMask: 2 });
     ground.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-    ground.position.set(0, terrainHeight(s.x), 0);
+    ground.position.set(0, terrainHeight(s.x, s.z), 0);
     world.addBody(ground);
 
     ship.group.updateMatrixWorld(true);
-    const impact = new THREE.Vector3(s.x, s.y + 1, 0);
+    const impact = new THREE.Vector3(s.x, s.y + 1, s.z);
     const crash = s.touch?.crash ?? { kind: 'explosion', fuelBurned: s.fuelL + s.fuelR };
     const wreck = crash.kind === 'wreck';
     // wreck: only the fragile bits break off, the hull stays in one piece and topples over
@@ -91,7 +91,7 @@ export function createDebris(scene) {
       body.quaternion.copy(part.quaternion);
       const dir = part.position.clone().sub(impact).setZ((Math.random() - 0.5) * 2).normalize();
       const pow = wreck ? 1 + Math.random() * 2.5 : (1 + Math.random() * 2) + e * (4 + Math.random() * 9);
-      body.velocity.set(s.vx * 0.4 + dir.x * pow, wreck ? 0.5 + Math.random() * 2 : 0.5 + e * (3 + Math.random() * 7), dir.z * pow);
+      body.velocity.set(s.vx * 0.4 + dir.x * pow, wreck ? 0.5 + Math.random() * 2 : 0.5 + e * (3 + Math.random() * 7), s.vz * 0.4 + dir.z * pow);
       const spin = 1.5 + e * 6.5;
       body.angularVelocity.set((Math.random() - 0.5) * spin, (Math.random() - 0.5) * spin, (Math.random() - 0.5) * spin);
       world.addBody(body);
@@ -106,9 +106,12 @@ export function createDebris(scene) {
       hull.addShape(new CANNON.Box(new CANNON.Vec3(1.3, 2.3, 1.1)), new CANNON.Vec3(0, 3.0, 0));
       hull.position.copy(ship.group.position);
       hull.quaternion.copy(ship.group.quaternion);
-      hull.velocity.set(s.vx * 0.5, 0, 0);
-      const side = Math.sign(s.a || s.vx || Math.random() - 0.5);
-      hull.angularVelocity.set(0, 0, side * (0.8 + Math.min(2, s.touch.vx * 0.2)) + (Math.random() - 0.5) * 0.4);
+      hull.velocity.set(s.vx * 0.5, 0, s.vz * 0.5);
+      // topple towards the side it was leaning / drifting to
+      const tipX = -Math.sin(s.a) + s.vx * 0.05, tipZ = Math.sin(s.b) + s.vz * 0.05;
+      const tl = Math.hypot(tipX, tipZ) || 1;
+      const spin = 0.8 + Math.min(2, s.touch.vx * 0.2);
+      hull.angularVelocity.set((tipZ / tl) * spin, 0, -(tipX / tl) * spin);
       world.addBody(hull);
       ship.group.userData.physics = true;
       bodies.push({ body: hull, obj: ship.group });

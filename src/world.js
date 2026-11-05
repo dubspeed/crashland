@@ -135,15 +135,18 @@ export function createWorld(scene, models) {
     buildGround(p);
   }
 
-  function update(camera, focus, t, wind = 0, dt = 0) {
-    for (let i = 0; i < DUST; i++) dustPos[i * 3] += wind * dt;
+  function update(camera, focus, t, wind = { x: 0, z: 0 }, dt = 0) {
+    for (let i = 0; i < DUST; i++) { dustPos[i * 3] += wind.x * dt; dustPos[i * 3 + 2] += wind.z * dt; }
+    const ws = Math.hypot(wind.x, wind.z);
     const beam = ground?.userData.beam;
-    if (beam) beam.material.opacity = 0.12 * Math.min(1, Math.max(0, (Math.hypot(camera.position.x, camera.position.y) - 90) / 400));
+    if (beam) beam.material.opacity = 0.12 * Math.min(1, Math.max(0, (Math.hypot(camera.position.x, camera.position.y, camera.position.z) - 90) / 400));
     const sock = ground?.userData.sock;
     if (sock) {
       // sock lifts from hanging (0) to horizontal (strong wind) and points downwind, with a little flutter
-      const k = Math.min(1, Math.abs(wind) / 12);
-      sock.rotation.z = Math.sign(wind || 1) * (0.15 + k * 1.35 + Math.sin(t * 7) * 0.05 * k);
+      const k = Math.min(1, ws / 12);
+      sock.parent.userData.yaw ??= 0;
+      if (ws > 0.3) sock.userData.yawTarget = -Math.atan2(wind.z, wind.x);
+      sock.rotation.set(0, sock.userData.yawTarget ?? 0, 0.15 + k * 1.35 + Math.sin(t * 7) * 0.05 * k, 'YXZ');
     }
     sun.position.set(focus.x + 30, focus.y + 60, focus.z + 25);
     sun.target.position.copy(focus);

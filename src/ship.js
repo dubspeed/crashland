@@ -121,8 +121,8 @@ export function createShip(models) {
   function update(s, t) {
     const dt = Math.min(0.05, Math.max(0, t - lastT)); lastT = t;
     if (!group.userData.physics) {
-      group.position.set(s.x, s.y - (group.userData.sink || 0), 0);
-      group.rotation.set(0, 0, s.a);
+      group.position.set(s.x, s.y - (group.userData.sink || 0), s.z);
+      group.rotation.set(s.b, 0, s.a);
     }
     updateChute(s, t, dt);
     // solar wings fold up around their root at the frame (root is 1.25 m inboard of the panel centre)
@@ -141,8 +141,8 @@ export function createShip(models) {
     flame.visible = thr > 0.01;
     flame.scale.set(0.6 + thr * 0.4, (0.25 + thr) * flick, 0.6 + thr * 0.4);
     glow.intensity = thr * 60 * flick;
-    const { cx, cy } = massProps(s);
-    com.position.set(cx, cy, 0);
+    const { cx, cy, cz } = massProps(s);
+    com.position.set(cx, cy, cz);
     for (const m of screenMats) m.emissiveIntensity = s.powered ? 1 : 0;
   }
 
@@ -162,7 +162,7 @@ export function createShip(models) {
     if (s.chute === 'stowed') { chuteRig.visible = false; return; }
     if ((s.chute === 'cut' || s.chute === 'torn') && chuteRig.parent === group) {
       group.parent.attach(chuteRig);
-      looseChute = { v: new THREE.Vector3(s.vx * 0.5, s.vy * 0.4 + 6, 0), t: 0, torn: s.chute === 'torn' };
+      looseChute = { v: new THREE.Vector3(s.vx * 0.5, s.vy * 0.4 + 6, s.vz * 0.5), t: 0, torn: s.chute === 'torn' };
       return;
     }
     if (s.status === 'crashed') { chuteRig.visible = false; return; }
@@ -182,8 +182,10 @@ export function createShip(models) {
     chuteRig.visible = fade > 0.01;
     canopy.scale.set(w, h, w);
     // the canopy stays roughly vertical in the world while the lander swings below it
-    const flow = air ? Math.atan2(s.windNow - s.vx, Math.max(3, -s.vy)) : 0; // canopy lies along the relative airflow
-    chuteRig.rotation.z = -s.a * 0.85 - flow * 0.9 + Math.sin(t * 1.3) * 0.04 + (air ? 0 : 0.6);
+    // canopy lies along the relative airflow
+    const flowX = air ? Math.atan2(s.windX - s.vx, Math.max(3, -s.vy)) : 0;
+    const flowZ = air ? Math.atan2(s.windZ - s.vz, Math.max(3, -s.vy)) : 0;
+    chuteRig.rotation.set(-s.b * 0.85 + flowZ * 0.9, 0, -s.a * 0.85 - flowX * 0.9 + Math.sin(t * 1.3) * 0.04 + (air ? 0 : 0.6));
   }
 
   function updateHeat(s, dt) {
@@ -206,7 +208,7 @@ export function createShip(models) {
         while (n-- > 0) {
           const i = embNext++ % EMB;
           embPos[i * 3] = tmpV.x + (Math.random() - 0.5) * 1.5; embPos[i * 3 + 1] = tmpV.y - 0.3; embPos[i * 3 + 2] = tmpV.z + (Math.random() - 0.5) * 1.5;
-          embVel[i * 3] = s.vx * 0.7 + (Math.random() - 0.5) * 3; embVel[i * 3 + 1] = s.vy * 0.7 + Math.random() * 2; embVel[i * 3 + 2] = (Math.random() - 0.5) * 3;
+          embVel[i * 3] = s.vx * 0.7 + (Math.random() - 0.5) * 3; embVel[i * 3 + 1] = s.vy * 0.7 + Math.random() * 2; embVel[i * 3 + 2] = s.vz * 0.7 + (Math.random() - 0.5) * 3;
           embLife[i] = 0.6 + Math.random() * 0.5;
         }
       }
@@ -234,7 +236,7 @@ export function createShip(models) {
     if (part.parent !== group) return null;
     group.parent.attach(part);
     const side = Math.sign(part.userData.component.pos[0]) || (Math.random() - 0.5);
-    loose.push({ obj: part, t: 0, v: new THREE.Vector3(s.vx + side * (5 + Math.random() * 4), s.vy * 0.85 + 6, (Math.random() - 0.5) * 6), w: new THREE.Vector3(Math.random() * 6 - 3, 0, Math.random() * 6 - 3) });
+    loose.push({ obj: part, t: 0, v: new THREE.Vector3(s.vx + side * (5 + Math.random() * 4), s.vy * 0.85 + 6, s.vz + (Math.random() - 0.5) * 6), w: new THREE.Vector3(Math.random() * 6 - 3, 0, Math.random() * 6 - 3) });
     return part.getWorldPosition(new THREE.Vector3());
   }
 

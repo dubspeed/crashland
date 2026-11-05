@@ -4,6 +4,10 @@ Low-poly lander game in the browser: **Three.js** (rendering), **cannon-es** (cr
 
 ![Screenshot](docs/screenshot.png)
 
+## Flight model
+
+Full 3D: the lander moves in x/y/z and has two tilt axes (roll about z, pitch about x); thrust points along its axis. Wind can come from any direction, the start point lies upwind somewhere around the pad. Controls are relative to the camera, so "up" on the tilt pad always tips the lander away from you.
+
 ## Idea (version 1)
 
 Your lander falls toward a planet without power. Light the main engine as late as possible and only as long as needed: the **suicide burn**. Along the way:
@@ -35,8 +39,8 @@ Landing window (same on all planets). Below 80 m a slim gauge bar shows the sink
 | Key | Touch / mouse | Function |
 |-----|---------------|----------|
 | Space (hold) | **Throttle lever** (right): touching = burn, height = thrust (top = 100 %) | Main engine |
-| W / S, ↑ / ↓ | throttle lever | Thrust limiter |
-| A / D, ← / → | **Rotate pad** (left): press left/right of centre, further out = stronger | Rotate (RCS), analog |
+| + / −, 1 … 0 | throttle lever | Thrust limiter (0 = 100 %) |
+| W A S D, arrows | **Tilt pad** (left, four-way): press towards where you want to tip; up = away from the camera; further out = faster | Tilt (RCS) on both axes, relative to the camera |
 | P | Fallschirm | Deploy / cut away the parachute |
 | E | Paneele | Fold the solar panels in / out |
 | T | Lageregler | Attitude control: **Hold** (default) / Retro / Vertical / Off |
