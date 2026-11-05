@@ -219,7 +219,7 @@ export function createHud() {
     lever.querySelector('.mark span').textContent = `${fmt(s.limit * 100)} %`;
     lever.setAttribute('aria-valuenow', Math.round(s.limit * 100));
     const sas = $('c-sas');
-    sas.textContent = `Lageregler: ${{ retro: 'Retro', up: 'Senkrecht', off: 'Aus' }[s.sas || 'off']}`;
+    sas.textContent = `Lageregler: ${{ hold: 'Halten', retro: 'Retro', up: 'Senkrecht', off: 'Aus' }[s.sas || 'off']}`;
     sas.classList.toggle('on', !!s.sas);
     lever.classList.toggle('on', s.throttle > 0);
     const rcs = $('c-rcs');

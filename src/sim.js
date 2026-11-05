@@ -5,6 +5,7 @@ export const G0 = 9.81;
 export const F_MAX = 185000;      // N, main engine
 export const ISP = 290;           // s
 export const RCS_TORQUE = 14000;  // N·m
+export const MAX_RATE = 0.4;      // rad/s, turn rate at full pad deflection in attitude-hold mode
 export const G_LIMIT = 3.2;       // pilot limit (sustained); see CREW
 // Crew: each member tolerates a different sustained g-load. Stress builds above the limit;
 // at 1.0 they pass out and wake up again once it has dropped below WAKE.
@@ -122,7 +123,7 @@ export function createState(planet, opts = {}) {
     x: planet.rho > 0 ? -dir * lvl.speed * planet.drift : 0, y: planet.alt, vx: planet.vx, vy: planet.vy,
     a: (planet.tilt * Math.PI) / 180, w: 0,
     fuel0: planet.fuel, fuelL: planet.fuel / 2, fuelR: planet.fuel / 2, battery: BAT_CAP,
-    limit: 1, throttle: 0, sas: 'retro',
+    limit: 1, throttle: 0, sas: 'hold', holdA: (planet.tilt * Math.PI) / 180,
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
     crew: CREW.map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
     torqueCom: 0, sasTorque: 0, temp: Object.fromEntries(COMPONENTS.map((c) => [c.id, T_AMB])), lost: {}, events: [],
@@ -279,14 +280,29 @@ export function step(s, input, dt) {
   let tau = s.torqueCom;
   let rcsUse = 0;
   s.sasTorque = 0;
-  if (!s.blackout && input.rcs) {
+  if (!s.blackout && input.rcs && s.sas === 'hold' && s.computerOK) {
+    // rate command (Apollo LM style): the pad sets a turn rate, the computer fires the jets to match it
+    const want = ((input.rcs * MAX_RATE - s.w) * 6 * I) - s.torqueCom;
+    s.sasTorque = Math.max(-RCS_TORQUE, Math.min(RCS_TORQUE, want));
+    tau += s.sasTorque; rcsUse = Math.abs(s.sasTorque) / RCS_TORQUE;
+    s.holdA = null; s.sasI = 0;
+  } else if (!s.blackout && input.rcs) {
     tau += input.rcs * RCS_TORQUE; rcsUse = Math.abs(input.rcs);
+    s.holdA = null; s.sasI = 0; // pilot is steering: pick up the new attitude once they let go
+  } else if (s.sas === 'hold' && s.computerOK && !s.blackout) {
+    // attitude hold (like the Apollo LM): first stop the rotation, then keep that angle
+    if (s.holdA === null && Math.abs(s.w) < 0.02) { s.holdA = s.a; s.sasI = 0; }
+    if (s.holdA !== null && Math.abs(s.a - s.holdA) < 0.1) s.sasI = Math.max(-0.5, Math.min(0.5, (s.sasI || 0) + (s.a - s.holdA) * dt)); // integral: cancels steady wind torque
+    const want = (s.holdA === null ? -3.0 * s.w : -(2.2 * (s.a - s.holdA) + 2.6 * s.w + 1.2 * s.sasI)) * I - s.torqueCom;
+    s.sasTorque = Math.max(-RCS_TORQUE, Math.min(RCS_TORQUE, want));
+    tau += s.sasTorque; rcsUse = Math.abs(s.sasTorque) / RCS_TORQUE;
   } else if (s.sas && s.computerOK && !s.blackout) {
-    // 'up' holds vertical, 'retro' leans against horizontal drift (max 15°)
+    // 'up' holds vertical, 'retro' leans against horizontal drift (max 10°)
     // lean so the thrust's sideways part kills the drift in about a second (scaled by thrust acceleration)
     const aThr = (thr * F_MAX) / massProps(s).m;
     const target = s.sas === 'retro' && thr > 0 ? Math.max(-0.17, Math.min(0.17, Math.asin(Math.max(-1, Math.min(1, (s.vx * 0.8) / Math.max(aThr, 1)))))) : 0;
-    const want = -(2.2 * (s.a - target) + 2.6 * s.w) * I - s.torqueCom;
+    if (Math.abs(s.a - target) < 0.1) s.sasI = Math.max(-0.5, Math.min(0.5, (s.sasI || 0) + (s.a - target) * dt)); // integrate only near the target (no windup)
+    const want = -(2.2 * (s.a - target) + 2.6 * s.w + 1.2 * s.sasI) * I - s.torqueCom;
     s.sasTorque = Math.max(-RCS_TORQUE, Math.min(RCS_TORQUE, want));
     tau += s.sasTorque; rcsUse = Math.abs(s.sasTorque) / RCS_TORQUE;
   }

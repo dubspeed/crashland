@@ -39,13 +39,22 @@ Landing window (same on all planets). Below 80 m a slim gauge bar shows the sink
 | A / D, ← / → | **Rotate pad** (left): press left/right of centre, further out = stronger | Rotate (RCS), analog |
 | P | Fallschirm | Deploy / cut away the parachute |
 | E | Paneele | Fold the solar panels in / out |
-| T | Lageregler | Attitude control: Retro (leans against drift) / Vertical / Off |
+| T | Lageregler | Attitude control: **Hold** (default) / Retro / Vertical / Off |
 | C | Schwerpunkt | Show centre of mass and thrust axis |
 | R / M | buttons | Restart / planet select |
 
 Lever and rotate pad each track their own touch point, so both work at the same time with two thumbs. The layout adapts to desktop, phone portrait and phone landscape.
 
 The flight computer's burn point includes air drag and the parachute and adds a reaction reserve (~15 % + about 1 s of descent); the countdown before it is a short look-ahead with drag.
+
+### Attitude control
+
+- **Hold** (default, like the Apollo LM's attitude hold with rate command): the rotate pad / A–D sets a turn rate (up to ~23°/s, proportional on the pad); let go and the computer stops the rotation and holds that angle, with an integral term against steady wind torque.
+- **Retro**: holds upright in free fall, leans up to 10° against the drift while the engine is firing.
+- **Vertical**: always back to 0°.
+- **Off**: the pad fires the jets directly; a rotation keeps going until you counter it (as in vacuum).
+
+Attitude control needs the flight computer and power; without them it is always "off".
 
 ## Structure
 

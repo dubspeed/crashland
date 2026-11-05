@@ -203,7 +203,7 @@ bindPointer($('c-rcs'), (e, r) => {
   const dx = (r.left + r.width / 2 - e.clientX) / (r.width / 2); // + = left
   touch.rcs = Math.abs(dx) < 0.12 ? 0 : Math.max(-1, Math.min(1, (dx - Math.sign(dx) * 0.12) / 0.7));
 }, () => { touch.rcs = 0; });
-function cycleSas() { s.sas = { retro: 'up', up: false }[s.sas] ?? 'retro'; }
+function cycleSas() { s.sas = { hold: 'retro', retro: 'up', up: false }[s.sas] ?? 'hold'; s.holdA = s.a; }
 function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
 $('c-sas').addEventListener('click', cycleSas);
 $('c-chute').addEventListener('click', () => S.toggleChute(s));
