@@ -327,3 +327,19 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
   .toggles { display: grid; grid-template-columns: auto auto; max-width: none; }
 }
 @media (max-height: 520px) { .toggles { display: grid; grid-template-columns: auto auto; flex-direction: initial; } }
+
+/* result window: fixed width that fits the screen, values wrap */
+.sheet.small { width: min(460px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow-y: auto; }
+#r-stats { grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; }
+#r-stats dd { white-space: normal; overflow-wrap: anywhere; }
+#r-reason { overflow-wrap: anywhere; }
+.r-close { display: block; margin: 10px auto 0; background: none; border: 0; color: var(--mute); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.result-open { position: fixed; left: 50%; transform: translateX(-50%); top: calc(64px + env(safe-area-inset-top, 0px)); z-index: 5; max-width: calc(100vw - 32px);
+  padding: 12px 18px; border-radius: 999px; border: 1px solid var(--amber); background: var(--glass); backdrop-filter: blur(6px); font: 600 14px var(--mono); color: var(--ink); box-shadow: 0 4px 18px rgba(0,0,0,0.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.result-open b { font-family: var(--display); letter-spacing: 0.04em; }
+@media (max-width: 520px) {
+  .result-open { top: calc(150px + env(safe-area-inset-top, 0px)); font-size: 13px; padding: 10px 14px; }
+  .sheet.small { padding: 16px; }
+  .sheet.small h1 { font-size: 26px; }
+  .sheet .row button { padding: 10px 8px; font-size: 13px; }
+}

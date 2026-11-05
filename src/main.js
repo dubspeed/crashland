@@ -117,7 +117,7 @@ function buildWindowInfo() {
 function showMenu() {
   buildWindowInfo();
   mode = 'menu';
-  $('menu').hidden = false; $('result').hidden = true; $('hud').hidden = true;
+  $('menu').hidden = false; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = true;
   buildMenu();
   // ship parked on the pad as a backdrop
   debris.clear(); ship.reset();
@@ -131,7 +131,7 @@ function start(p) {
   s = S.createState(planet, { wind: windLevel });
   hud.reset();
   mode = 'flight';
-  $('menu').hidden = true; $('result').hidden = true; $('hud').hidden = false;
+  $('menu').hidden = true; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = false;
   ship.helpers.visible = showCom;
 }
 
@@ -189,8 +189,9 @@ function showResult() {
     const prev = best(bestKey(planet.id));
     if (!prev || score > prev.score) saveBest(bestKey(planet.id), { stars, score });
   }
-  $('result').hidden = false;
-  $('r-again').focus();
+  // don't pop up: offer a button so the scene can be looked at first
+  $('result-open').innerHTML = `<b style="color:${$('r-title').style.color}">${$('r-title').textContent}</b>${ok ? ` ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}` : ''} · Ergebnis ansehen`;
+  $('result-open').hidden = false;
 }
 
 // ---------- input ----------
@@ -252,6 +253,8 @@ $('c-panels').addEventListener('click', () => S.togglePanels(s));
 $('c-com').addEventListener('click', toggleCom);
 $('c-com').classList.add('on');
 $('r-again').addEventListener('click', () => start(planet));
+$('result-open').addEventListener('click', () => { $('result').hidden = false; $('result-open').hidden = true; $('r-again').focus(); });
+$('r-close').addEventListener('click', () => { $('result').hidden = true; $('result-open').hidden = false; });
 $('r-menu').addEventListener('click', showMenu);
 
 // camera orbit by dragging the canvas, zoom with the wheel
