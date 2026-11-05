@@ -133,7 +133,7 @@ export function createShip(models) {
       const c = part.userData.component, side = Math.sign(c.pos[0]);
       const rootX = c.pos[0] - side * 1.25;
       part.position.set(rootX + side * 1.25 * Math.cos(th), c.pos[1] + 1.25 * Math.sin(th), c.pos[2]);
-      part.rotation.z = side * th;
+      part.rotation.z = th; // the left wing is mirrored via rotation.y = π, so the same z angle folds both up
     }
     updateHeat(s, dt);
     const thr = s.status === 'flying' ? s.throttle : 0;
