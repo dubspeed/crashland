@@ -39,7 +39,7 @@ export function createHud() {
     el.className = 'lw';
     el.innerHTML = `<i class="glyph" aria-hidden="true">${glyphs[key]}</i><div class="lw-head"><span>${label}</span><b></b></div><div class="lw-bar" style="background: linear-gradient(90deg, ${grad})"><i></i></div>`;
     $('landing').append(el);
-    lw[key] = { val: el.querySelector('b'), mark: el.querySelector('i'), unit, max };
+    lw[key] = { val: el.querySelector('b'), mark: el.querySelector('.lw-bar i'), unit, max };
   }
 
   const crew = createCrew($('crew-faces'), $('crew-say'));
