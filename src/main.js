@@ -62,6 +62,25 @@ function updateMarkers() {
   const k = Math.min(6, 1 + alt / 120); // grow with height so it stays visible from above
   impact.scale.setScalar(k); belowRing.scale.setScalar(Math.min(4, 1 + alt / 200));
 }
+// screen marker above the lander when it is only a few pixels tall (zoomed-out views)
+const shipMark = document.getElementById('ship-mark');
+const markV = new THREE.Vector3();
+function placeShipMark() {
+  let show = mode === 'flight' && s.status === 'flying';
+  if (show) {
+    markV.set(s.x, s.y + 2.5, s.z);
+    const depth = markV.distanceTo(camera.position);
+    const px = (7 / (2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)))) * innerHeight; // lander height on screen
+    markV.project(camera);
+    show = px < 46 && markV.z < 1 && Math.abs(markV.x) < 1.05 && Math.abs(markV.y) < 1.05;
+    if (show) {
+      const x = (markV.x * 0.5 + 0.5) * innerWidth, y = (-markV.y * 0.5 + 0.5) * innerHeight;
+      shipMark.style.transform = `translate(${x.toFixed(1)}px, ${(y - px * 0.5 - 6).toFixed(1)}px)`;
+      shipMark.style.opacity = String(Math.min(1, (46 - px) / 16));
+    }
+  }
+  if (shipMark.hidden === show) shipMark.hidden = !show;
+}
 let fogBase = 1400;
 const hud = createHud();
 
@@ -79,7 +98,7 @@ try { const v = localStorage.getItem('crashland.view'); if (VIEWS[v]) cam.view =
 function toggleView() {
   const order = Object.keys(VIEWS);
   cam.view = order[(order.indexOf(cam.view) + 1) % order.length];
-  cam.tgtD = 0;
+  cam.tgtD = 0; cam.intro = 0;
   try { localStorage.setItem('crashland.view', cam.view); } catch { /* storage unavailable */ }
   viewButton();
 }
@@ -157,6 +176,7 @@ function start(p) {
   debris.clear(); ship.reset();
   s = S.createState(planet, { wind: windLevel });
   hud.reset();
+  cam.tgtD = 0; cam.intro = 0;
   mode = 'flight';
   $('menu').hidden = true; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = false;
   ship.helpers.visible = showCom;
@@ -384,12 +404,17 @@ renderer.setAnimationLoop(() => {
     // frame the lander and the predicted touchdown point (or the pad near the ground) together
     const tgt = s.status === 'flying' && s.pred ? new THREE.Vector3(s.pred.x, S.terrainHeight(s.pred.x, s.pred.z), s.pred.z) : new THREE.Vector3(0, 0, 0);
     if (s.status !== 'flying') tgt.set(s.x, S.terrainHeight(s.x, s.z), s.z);
-    const mid = focus.clone().lerp(tgt, 0.5);
+    // intro: start close on the lander, then pull back over ~3 s until the touchdown point is in frame too
+    cam.intro = Math.min(1, (cam.intro ?? 1) + dt / 3);
+    const ik = cam.intro < 1 ? Math.max(0, (cam.intro - 0.25) / 0.75) : 1;
+    const k = ik * ik * (3 - 2 * ik);
+    const mid = focus.clone().lerp(tgt, 0.5 * k);
     const span = focus.distanceTo(tgt);
     // distance so both fit: narrow (portrait) screens need more room
     const fit = 1.15 / Math.min(1, camera.aspect * 1.3);
-    const d = Math.max(dist * 1.2, span * fit + 20);
-    cam.tgtD = cam.tgtD ? cam.tgtD + (d - cam.tgtD) * Math.min(1, dt * 4) : d; // ease the zoom
+    const near = dist * 1.2;
+    const d = near + (Math.max(near, span * fit + 20) - near) * k;
+    cam.tgtD = cam.tgtD ? cam.tgtD + (d - cam.tgtD) * Math.min(1, dt * (cam.intro < 1 ? 8 : 4)) : d; // ease the zoom
     camera.position.set(mid.x - fwdX * cam.tgtD * 0.55, mid.y + cam.tgtD * 0.75, mid.z - fwdZ * cam.tgtD * 0.55);
     lookAt.copy(mid);
     scene.fog.far = fogBase + cam.tgtD * 3;
@@ -405,6 +430,7 @@ renderer.setAnimationLoop(() => {
     camera.position.add(new THREE.Vector3().randomDirection().multiplyScalar(cam.shake * 0.8));
   }
   camera.lookAt(lookAt);
+  placeShipMark();
   world.update(camera, focus, time, mode === 'menu' ? { x: 0, z: 0 } : { x: s.windX, z: s.windZ }, dt);
   renderer.render(scene, camera);
 });

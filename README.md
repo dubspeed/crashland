@@ -66,7 +66,7 @@ Measured with a sim pilot that only uses these aids: Luna ~4 m, Mars without win
 
 - **Hinten**: chase camera beside/behind the lander.
 - **Schräg**: behind and above, about 50° down, so the ground ahead is visible.
-- **Ziel**: frames the lander and the predicted touchdown point together and zooms out as needed.
+- **Ziel**: starts close on the lander, then pulls back over ~3 s to frame the lander and the predicted touchdown point together. When the lander is only a few pixels tall, a bobbing arrow marks it (in every view).
 - **Oben**: straight down.
 
 The ground ring and cross are drawn on top of everything; in the downward views the canopy turns see-through.
