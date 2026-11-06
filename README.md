@@ -62,6 +62,15 @@ The flight computer's burn point includes air drag and the parachute and adds a 
 
 Measured with a sim pilot that only uses these aids: Luna ~4 m, Mars without wind 1–4 m, Terra without to strong wind 2–6 m from the centre (10/10 landed); without aiming the same flights end 35–65 m away.
 
+### Camera views
+
+- **Hinten**: chase camera beside/behind the lander.
+- **Schräg**: behind and above, about 50° down, so the ground ahead is visible.
+- **Ziel**: frames the lander and the predicted touchdown point together and zooms out as needed.
+- **Oben**: straight down.
+
+The ground ring and cross are drawn on top of everything; in the downward views the canopy turns see-through.
+
 ### Attitude control
 
 - **Hold** (default, like the Apollo LM's attitude hold with rate command): the rotate pad / A–D sets a turn rate (up to ~23°/s, proportional on the pad); let go and the computer stops the rotation and holds that angle, with an integral term against steady wind torque.

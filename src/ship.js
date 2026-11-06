@@ -56,6 +56,7 @@ export function createShip(models) {
   canopy.position.y = 0.2;
   chuteRig.add(canopy);
   group.add(chuteRig);
+  let canopyAlpha = 1;
   let looseChute = null; // canopy flying off after cut/tear: { v, t, torn }
 
   // heat: per-material base emissive so glowing can blend on top of it
@@ -167,7 +168,7 @@ export function createShip(models) {
     }
     if (s.status === 'crashed') { chuteRig.visible = false; return; }
     chuteRig.visible = true;
-    for (const m of canopyMats) m.opacity = 1;
+    for (const m of canopyMats) m.opacity = canopyAlpha;
     const deploy = Math.min(1, s.chuteT / 0.5); // pulled out of the pack before it inflates
     const air = s.planet.rho > 0;
     let w = air ? 0.12 + 0.88 * s.chuteOpen : 0.06;
@@ -178,7 +179,7 @@ export function createShip(models) {
       const k = Math.min(1, (t - (chuteRig.userData.landT ??= t)) / 1.8);
       h *= 1 - k * 0.7; w *= 1 - k * 0.5; fade = 1 - k;
     } else chuteRig.userData.landT = undefined;
-    for (const m of canopyMats) m.opacity = fade;
+    for (const m of canopyMats) m.opacity = fade * canopyAlpha;
     chuteRig.visible = fade > 0.01;
     canopy.scale.set(w, h, w);
     // the canopy stays roughly vertical in the world while the lander swings below it
@@ -243,5 +244,10 @@ export function createShip(models) {
     return part.getWorldPosition(new THREE.Vector3());
   }
 
-  return { group, parts, flame, helpers, reset, update, damageLegs, chuteRig, blowOff };
+  function setCanopyAlpha(a) {
+    canopyAlpha = a;
+    for (const m of canopyMats) m.depthWrite = a > 0.9;
+  }
+
+  return { group, parts, flame, helpers, reset, update, damageLegs, chuteRig, blowOff, setCanopyAlpha };
 }

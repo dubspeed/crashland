@@ -25,13 +25,15 @@ scene.add(ship.group);
 const debris = createDebris(scene);
 
 // aiming aids on the ground: ring right below the lander, cross where it would hit if it kept falling
-const markMat = new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.85, depthWrite: false });
+const markMat = new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false });
 const belowRing = new THREE.Mesh(new THREE.RingGeometry(2.1, 2.5, 32).rotateX(-Math.PI / 2), markMat);
 const impact = new THREE.Group();
 for (const r of [0, Math.PI / 2]) {
-  const bar = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.45).rotateX(-Math.PI / 2).rotateY(r + Math.PI / 4), new THREE.MeshBasicMaterial({ color: 0xffb547, transparent: true, opacity: 0.9, depthWrite: false }));
+  const bar = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.45).rotateX(-Math.PI / 2).rotateY(r + Math.PI / 4), new THREE.MeshBasicMaterial({ color: 0xffb547, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false }));
+  bar.renderOrder = 20;
   impact.add(bar);
 }
+belowRing.renderOrder = 19;
 scene.add(belowRing, impact);
 function updateMarkers() {
   const on = mode === 'flight' && s.status === 'flying';
@@ -59,16 +61,19 @@ const input = { thrust: false, rcs: 0, limitDir: 0 };
 const keys = new Set();
 let showCom = true;
 let cam = { yaw: 0.35, dist: 28, shake: 0, view: 'chase' };
-try { if (localStorage.getItem('crashland.view') === 'top') cam.view = 'top'; } catch { /* storage unavailable */ }
+const VIEWS = { chase: 'Hinten', oblique: 'Schräg', target: 'Ziel', top: 'Oben' };
+try { const v = localStorage.getItem('crashland.view'); if (VIEWS[v]) cam.view = v; } catch { /* storage unavailable */ }
 function toggleView() {
-  cam.view = cam.view === 'chase' ? 'top' : 'chase';
+  const order = Object.keys(VIEWS);
+  cam.view = order[(order.indexOf(cam.view) + 1) % order.length];
+  cam.tgtD = 0;
   try { localStorage.setItem('crashland.view', cam.view); } catch { /* storage unavailable */ }
   viewButton();
 }
 function viewButton() {
   const b = document.getElementById('c-view');
-  b.textContent = cam.view === 'top' ? 'Ansicht: Oben' : 'Ansicht: Hinten';
-  b.classList.toggle('on', cam.view === 'top');
+  b.textContent = `Ansicht: ${VIEWS[cam.view]}`;
+  b.classList.toggle('on', cam.view !== 'chase');
 }
 viewButton();
 
@@ -343,25 +348,49 @@ renderer.setAnimationLoop(() => {
   updateMarkers();
   focus.set(s.x, s.y + 2.5, s.z);
   const dist = mode === 'menu' ? 22 : cam.dist * (camera.aspect < 0.8 ? 1.25 : 1);
-  const top = cam.view === 'top' && mode !== 'menu';
-  if (top) {
+  const view = mode === 'menu' ? 'chase' : cam.view;
+  const fwdX = -Math.sin(cam.yaw), fwdZ = -Math.cos(cam.yaw); // screen-up direction on the ground (= tilt pad up)
+  const lookAt = focus.clone();
+  const alt = Math.max(0, S.altitude(s));
+  camera.up.set(0, 1, 0);
+  if (scene.fog) scene.fog.far = fogBase;
+  if (view === 'top') {
     // overhead: straight down onto the lander, screen-up = the camera's forward direction (matches the tilt pad)
-    const alt = Math.max(0, S.altitude(s));
     camera.position.set(focus.x, focus.y + dist * 1.8, focus.z);
-    camera.up.set(-Math.sin(cam.yaw), 0, -Math.cos(cam.yaw));
+    camera.up.set(fwdX, 0, fwdZ);
+    lookAt.y -= 10;
     scene.fog.far = fogBase + alt * 1.5 + dist * 2;
+  } else if (view === 'oblique') {
+    // behind and above, ~50 degrees down: the lander plus a good stretch of ground ahead
+    const d = dist * 1.3;
+    camera.position.set(focus.x - fwdX * d * 0.65, focus.y + d * 0.8, focus.z - fwdZ * d * 0.65);
+    lookAt.set(focus.x + fwdX * d * 0.15, focus.y - d * 0.25, focus.z + fwdZ * d * 0.15);
+    scene.fog.far = fogBase + alt + dist * 2;
+  } else if (view === 'target') {
+    // frame the lander and the predicted touchdown point (or the pad near the ground) together
+    const tgt = s.status === 'flying' && s.pred ? new THREE.Vector3(s.pred.x, S.terrainHeight(s.pred.x, s.pred.z), s.pred.z) : new THREE.Vector3(0, 0, 0);
+    if (s.status !== 'flying') tgt.set(s.x, S.terrainHeight(s.x, s.z), s.z);
+    const mid = focus.clone().lerp(tgt, 0.5);
+    const span = focus.distanceTo(tgt);
+    // distance so both fit: narrow (portrait) screens need more room
+    const fit = 1.15 / Math.min(1, camera.aspect * 1.3);
+    const d = Math.max(dist * 1.2, span * fit + 20);
+    cam.tgtD = cam.tgtD ? cam.tgtD + (d - cam.tgtD) * Math.min(1, dt * 4) : d; // ease the zoom
+    camera.position.set(mid.x - fwdX * cam.tgtD * 0.55, mid.y + cam.tgtD * 0.75, mid.z - fwdZ * cam.tgtD * 0.55);
+    lookAt.copy(mid);
+    scene.fog.far = fogBase + cam.tgtD * 3;
   } else {
-    camera.up.set(0, 1, 0);
     camera.position.set(focus.x + Math.sin(cam.yaw) * dist, focus.y + dist * 0.16, focus.z + Math.cos(cam.yaw) * dist);
-    if (scene.fog) scene.fog.far = fogBase;
   }
+  // canopy goes see-through when looking down so it doesn't hide the cross and the lander
+  ship.setCanopyAlpha(view === 'top' ? 0.25 : view === 'chase' ? 1 : 0.45);
   const minY = S.terrainHeight(camera.position.x, camera.position.z) + 1.5;
   if (camera.position.y < minY) camera.position.y = minY;
   if (cam.shake > 0) {
     cam.shake = Math.max(0, cam.shake - dt);
     camera.position.add(new THREE.Vector3().randomDirection().multiplyScalar(cam.shake * 0.8));
   }
-  if (top) camera.lookAt(focus.x, focus.y - 10, focus.z); else camera.lookAt(focus);
+  camera.lookAt(lookAt);
   world.update(camera, focus, time, mode === 'menu' ? { x: 0, z: 0 } : { x: s.windX, z: s.windZ }, dt);
   renderer.render(scene, camera);
 });
