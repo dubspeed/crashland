@@ -45,7 +45,7 @@ Landing window (same on all planets). Below 80 m a slim gauge bar shows the sink
 | E | Paneele | Fold the solar panels in / out |
 | T | Lageregler | Attitude control: **Hold** (default) / Retro / Retro 2 / Vertical / Off |
 | C | Schwerpunkt | Show centre of mass and thrust axis |
-| V | Ansicht | Camera: behind the lander / top-down (screen-up stays the tilt pad's "up") |
+| V | Ansicht | Camera: behind / oblique / target / top-down (screen-up always matches the tilt pad) |
 | R / M | buttons | Restart / planet select |
 
 Lever and rotate pad each track their own touch point, so both work at the same time with two thumbs. The layout adapts to desktop, phone portrait and phone landscape.
