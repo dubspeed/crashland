@@ -75,9 +75,17 @@ export function grade(value, limits) {
 
 // orbit level (experimental): a small moon, start on a circular orbit, deorbit and land on the target
 export const ORBIT = { R: 10000, alt: 1500, downrange: 6000, edge: 1250 };
-export const ORBIT_PLANET = { id: 'luna-orbit', name: 'Luna Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 1.62, alt: ORBIT.alt, vy: 0, vx: 0, tilt: 0, solar: 1.0, fuel: 430,
-  rho: 0, H: 1, atmo: 'keine', drift: 0, text: 'Start im Orbit: erst die Bahngeschwindigkeit abbauen, dann landen.',
-  sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true };
+export const ORBIT_PLANETS = [
+  { id: 'luna-orbit', name: 'Luna Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 1.62, alt: ORBIT.alt, downrange: ORBIT.downrange, vy: 0, vx: 0, tilt: 0, solar: 1.0, fuel: 430,
+    rho: 0, H: 1, atmo: 'keine', drift: 0, text: 'Start im Orbit: erst die Bahngeschwindigkeit abbauen, dann landen.',
+    sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true },
+  // Mars: the thin air is squeezed into a short scale height so it fits the small planet. High up the
+  // orbit barely decays; lower down the air brakes (and warms) the lander and the chute helps a bit.
+  { id: 'mars-orbit', name: 'Mars Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 3.71, alt: 2500, downrange: 9000, cueLead: 2, vy: 0, vx: 0, tilt: 0, solar: 0.45, fuel: 650,
+    rho: 0.02, H: 1100, atmo: 'sehr dünn', drift: 4, text: 'Orbit in dünner Luft: bremsen, Luftwiderstand nutzen, Schirm, landen.',
+    sky: 0xd4a27c, fog: 0xc89670, ground: 0xb4552f, ground2: 0x7d3a22, sun: 0xffe2c4 },
+];
+export const ORBIT_PLANET = ORBIT_PLANETS[0];
 /** circular orbit speed at height y above the surface */
 export function orbitSpeed(p, y) { const r = p.R + y; return Math.sqrt((p.g * p.R * p.R) / r); }
 /** curvature terms for the flat sim frame (x, z = arc length on the surface, y = height): gravity falls off
@@ -99,7 +107,7 @@ export function orbitGuide(s) {
   const k = s.planet.R / (s.planet.R + s.y);
   const dist = ((vh * vh) / (2 * acc)) * k;
   const along = -(s.x * s.vx + s.z * s.vz) / vh; // pad distance ahead along the track
-  return { vh, dist, brakeIn: (along - dist) / (vh * k) + 1 }; // a little early: early is forgiving, late overshoots
+  return { vh, dist, brakeIn: (along - dist) / (vh * k) + 1 - (s.planet.cueLead ?? 0) }; // a little early: early is forgiving, late overshoots
 }
 
 export const PLANETS = [
@@ -169,8 +177,8 @@ export function createState(planet, opts = {}) {
   if (planet.orbit) {
     // circular orbit, lying on the side with the engine pointing retrograde, burn limited to a crew-friendly 50 %
     const v = orbitSpeed(planet, planet.alt);
-    const s = createState({ ...planet, orbit: false }, { ...opts, wind: 0, pitch0: 0, vz0: 0 });
-    return Object.assign(s, { planet, x: -ORBIT.downrange, z: 0, y: planet.alt, vx: v, vy: 0, vz: 0,
+    const s = createState({ ...planet, orbit: false }, { ...opts, wind: planet.rho > 0 ? opts.wind : 0, pitch0: 0, vz0: 0 });
+    return Object.assign(s, { planet, x: -planet.downrange, z: 0, y: planet.alt, vx: v, vy: 0, vz: 0,
       a: Math.PI / 2, holdA: Math.PI / 2, b: 0, holdB: 0, sas: 'retro', limit: 0.5 });
   }
   return {
@@ -296,7 +304,9 @@ export function stoppingDistance(s) {
   if (s.vy >= 0) return 0;
   const { m } = massProps(s);
   const maxFrac = s.powered ? 1 : 0.6;
-  const aThr = ((F_MAX * Math.min(s.limit, maxFrac)) / m) * upVector(s).y;
+  // orbit levels: you fly lying on the side for a long time; assume you turn (nearly) upright for the burn
+  const uy = s.planet.orbit ? Math.max(0.85, upVector(s).y) : upVector(s).y;
+  const aThr = ((F_MAX * Math.min(s.limit, maxFrac)) / m) * uy;
   if (aThr <= s.planet.g) return Infinity;
   const rho = density(s);
   const chuteK = s.chute === 'open' && s.planet.rho > 0 ? s.chuteInflate : 0;

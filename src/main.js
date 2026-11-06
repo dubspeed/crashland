@@ -129,7 +129,7 @@ function buildMenu() {
   const wrap = $('planets');
   wrap.innerHTML = '';
   buildWindSelect();
-  for (const p of [...S.PLANETS, S.ORBIT_PLANET]) {
+  for (const p of [...S.PLANETS, ...S.ORBIT_PLANETS]) {
     const b = document.createElement('button');
     b.className = 'planet';
     const rec = best(bestKey(p.id));
@@ -482,4 +482,4 @@ world.setPlanet(planet); world.ready = true; fogBase = scene.fog.far;
 showMenu();
 
 // handle for automated tests
-window.__crashland = { renderer, camera, cam, get state() { return s; }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANET : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };
+window.__crashland = { renderer, camera, cam, get state() { return s; }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANETS[0] : i === 'mars-orbit' ? S.ORBIT_PLANETS[1] : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };
