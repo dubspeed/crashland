@@ -98,7 +98,7 @@ try { const v = localStorage.getItem('crashland.view'); if (VIEWS[v]) cam.view =
 function toggleView() {
   const order = Object.keys(VIEWS);
   cam.view = order[(order.indexOf(cam.view) + 1) % order.length];
-  cam.tgtD = 0; cam.intro = 0;
+  cam.tgtD = 0; cam.intro = 0; cam.tgt = null;
   try { localStorage.setItem('crashland.view', cam.view); } catch { /* storage unavailable */ }
   viewButton();
 }
@@ -176,7 +176,7 @@ function start(p) {
   debris.clear(); ship.reset();
   s = S.createState(planet, { wind: windLevel });
   hud.reset();
-  cam.tgtD = 0; cam.intro = 0;
+  cam.tgtD = 0; cam.intro = 0; cam.tgt = null;
   mode = 'flight';
   $('menu').hidden = true; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = false;
   ship.helpers.visible = showCom;
@@ -402,8 +402,15 @@ renderer.setAnimationLoop(() => {
     scene.fog.far = fogBase + alt + dist * 2;
   } else if (view === 'target') {
     // frame the lander and the predicted touchdown point (or the pad near the ground) together
-    const tgt = s.status === 'flying' && s.pred ? new THREE.Vector3(s.pred.x, S.terrainHeight(s.pred.x, s.pred.z), s.pred.z) : new THREE.Vector3(0, 0, 0);
-    if (s.status !== 'flying') tgt.set(s.x, S.terrainHeight(s.x, s.z), s.z);
+    const raw = s.status === 'flying' && s.pred ? new THREE.Vector3(s.pred.x, 0, s.pred.z) : new THREE.Vector3(0, 0, 0);
+    if (s.status !== 'flying') raw.set(s.x, 0, s.z);
+    // close to the ground the prediction twitches with every short thrust pulse: lean on the spot below the lander
+    const low = Math.min(1, alt / 40);
+    raw.x = s.x + (raw.x - s.x) * low; raw.z = s.z + (raw.z - s.z) * low;
+    // the prediction refreshes in steps (~12 Hz): follow it smoothly so the camera doesn't jerk
+    if (!cam.tgt) cam.tgt = raw.clone();
+    else cam.tgt.lerp(raw, 1 - Math.exp(-dt * 2.5));
+    const tgt = new THREE.Vector3(cam.tgt.x, S.terrainHeight(cam.tgt.x, cam.tgt.z), cam.tgt.z);
     // intro: start close on the lander, then pull back over ~3 s until the touchdown point is in frame too
     cam.intro = Math.min(1, (cam.intro ?? 1) + dt / 3);
     const ik = cam.intro < 1 ? Math.max(0, (cam.intro - 0.25) / 0.75) : 1;
@@ -439,4 +446,4 @@ world.setPlanet(planet); world.ready = true; fogBase = scene.fog.far;
 showMenu();
 
 // handle for automated tests
-window.__crashland = { renderer, get state() { return s; }, start: (i) => start(S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };
+window.__crashland = { renderer, camera, cam, get state() { return s; }, start: (i) => start(S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };
