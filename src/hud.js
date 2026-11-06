@@ -4,6 +4,14 @@ import { createCrew } from './crew.js';
 const $ = (id) => document.getElementById(id);
 const fmt = (n, d = 0) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
 const cls = (el, c) => { el.className = c || ''; };
+// button caption + keyboard shortcut; only touches the DOM when the text changes, so the node under
+// the mouse isn't replaced every frame (that can swallow clicks)
+export function setLabel(el, text, key) {
+  if (el.dataset.label === text) return;
+  el.dataset.label = text;
+  el.textContent = text;
+  if (key) { const k = document.createElement('kbd'); k.textContent = key; el.append(k); }
+}
 
 export function createHud() {
   const list = $('part-list');
@@ -285,13 +293,13 @@ export function createHud() {
     cls(qEl, s.q > S.CHUTE_QMAX ? 'bad' : s.q > S.CHUTE_QMAX * 0.8 ? 'warn' : '');
     const pb = $('c-panels');
     const solarGone = s.lost.solarL && s.lost.solarR;
-    pb.textContent = solarGone ? 'Paneele weg' : s.panels === 'out' ? 'Paneele einklappen' : 'Paneele ausklappen';
+    setLabel(pb, solarGone ? 'Paneele weg' : s.panels === 'out' ? 'Paneele einklappen' : 'Paneele ausklappen', 'E');
     pb.disabled = solarGone;
     pb.classList.toggle('on', s.panels === 'in' && !solarGone);
     const solarHeat = Math.max(...['solarL', 'solarR'].filter((id) => !s.lost[id]).map((id) => heatFrac(s, id)), 0);
     pb.classList.toggle('warn', s.panels === 'out' && solarHeat > 0.3 && !solarGone);
     const cb = $('c-chute');
-    cb.textContent = { burned: 'Schirm verglüht', stowed: 'Fallschirm', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute];
+    setLabel(cb, { burned: 'Schirm verglüht', stowed: 'Fallschirm', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute], 'P');
     cb.disabled = s.chute === 'cut' || s.chute === 'torn' || s.chute === 'burned' || (s.chute === 'open' && !air);
     cb.classList.toggle('on', s.chute === 'open' && air);
     cb.classList.toggle('ready', s.chute === 'stowed' && air && s.status === 'flying' && s.q <= S.CHUTE_QMAX * S.CHUTE_SAFE && s.t > 0.2);
@@ -318,10 +326,10 @@ export function createHud() {
     const lever = $('c-lever');
     lever.querySelector('.fill').style.height = `${s.throttle * 100}%`;
     lever.querySelector('.mark').style.bottom = `${s.limit * 100}%`;
-    lever.querySelector('.mark span').textContent = `${fmt(s.limit * 100)} %`;
+    { const ms = lever.querySelector('.mark span'), txt = `${fmt(s.limit * 100)} %`; if (ms.textContent !== txt) ms.textContent = txt; }
     lever.setAttribute('aria-valuenow', Math.round(s.limit * 100));
     const sas = $('c-sas');
-    sas.textContent = `Lageregler: ${{ hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkrecht', off: 'Aus' }[s.sas || 'off']}`;
+    setLabel(sas, `Lageregler: ${{ hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkrecht', off: 'Aus' }[s.sas || 'off']}`, 'T');
     sas.classList.toggle('on', !!s.sas);
     lever.classList.toggle('on', s.throttle > 0);
     const rcs = $('c-rcs');

@@ -4,7 +4,7 @@ import { loadModels } from './models.js';
 import { createWorld } from './world.js';
 import { createShip } from './ship.js';
 import { createDebris } from './debris.js';
-import { createHud } from './hud.js';
+import { createHud, setLabel } from './hud.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -104,7 +104,7 @@ function toggleView() {
 }
 function viewButton() {
   const b = document.getElementById('c-view');
-  b.textContent = `Ansicht: ${VIEWS[cam.view]}`;
+  setLabel(b, `Ansicht: ${VIEWS[cam.view]}`, 'V');
   b.classList.toggle('on', cam.view !== 'chase');
 }
 viewButton();
@@ -251,6 +251,7 @@ function showResult() {
 }
 
 // ---------- input ----------
+addEventListener('keyup', (e) => { if (e.code === 'Space' && mode === 'flight') e.preventDefault(); });
 addEventListener('keydown', (e) => {
   if (e.repeat && !['Space'].includes(e.code)) return;
   keys.add(e.code);
@@ -310,6 +311,9 @@ $('c-view').addEventListener('click', toggleView);
 $('c-panels').addEventListener('click', () => S.togglePanels(s));
 $('c-com').addEventListener('click', toggleCom);
 $('c-com').classList.add('on');
+setLabel($('c-com'), 'Schwerpunkt', 'C');
+// buttons never take keyboard focus: otherwise Space (thrust) or Enter would also "press" the last clicked button
+for (const b of document.querySelectorAll('#controls .tog')) b.addEventListener('mousedown', (e) => e.preventDefault());
 $('r-again').addEventListener('click', () => start(planet));
 $('result-open').addEventListener('click', () => { $('result').hidden = false; $('result-open').hidden = true; $('r-again').focus(); });
 $('r-close').addEventListener('click', () => { $('result').hidden = true; $('result-open').hidden = false; });
