@@ -58,6 +58,7 @@ export function createWorld(scene, models) {
     curveDir(x, z, out);
     return out.multiplyScalar(curveR + h).add(_cR.set(0, -curveR, 0));
   }
+  const _cam = new THREE.Vector3(), _up = new THREE.Vector3();
   const _cR = new THREE.Vector3(), _d = new THREE.Vector3(), _q = new THREE.Quaternion();
 
   let moon = null; // orbit level terrain (GPU-displaced grid that follows the lander)
@@ -199,6 +200,8 @@ export function createWorld(scene, models) {
     else sun.position.set(focus.x + 30, focus.y + 60, focus.z + 25);
     sun.target.position.copy(focus);
     stars.position.copy(camera.position);
+    // orbit level: pick the terrain tiles for this camera (camera in the moon's frame, from its centre)
+    if (moon) { ground.updateMatrixWorld(); moon.update(ground.worldToLocal(_cam.copy(camera.position)).add(_up.set(0, curveR, 0))); }
     // wrap dust inside a box around the camera
     for (let i = 0; i < DUST; i++) {
       for (let k = 0; k < 3; k++) {
@@ -218,7 +221,6 @@ export function createWorld(scene, models) {
   const _g = new THREE.Vector3();
   function align(x, z, alt = 0) {
     if (!ground) return;
-    moon?.center(x, z, alt);
     if (!curveR) { ground.position.set(0, 0, 0); ground.quaternion.identity(); return; }
     ground.quaternion.setFromUnitVectors(curveDir(x, z, _d), UP);
     curvePoint(x, 0, z, _g).applyQuaternion(ground.quaternion);

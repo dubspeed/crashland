@@ -56,7 +56,6 @@ export function moonRelief(x, z, R, edge) {
 
 // ---- GLSL twin of the functions above + the landing-zone relief from sim.js ----
 export const MOON_GLSL = /* glsl */ `
-uniform mat3 uFrame;
 uniform float uR;
 uniform float uEdge;
 uniform vec3 uC1;
@@ -99,7 +98,7 @@ float zoneNoise(float x, float z) {
   return sin(x * 0.021 + 1.3) * cos(z * 0.017) * 14.0 + sin(x * 0.067 + z * 0.041) * 5.0 + sin(x * 0.13 - z * 0.11 + 2.1) * 2.0;
 }
 // returns height; writes the colour of the ground there
-float moonHeight(vec3 dir, float gridDist, out vec3 col) {
+float moonHeight(vec3 dir, float spacing, out vec3 col) {
   float d = uR * atan(length(dir.xz), dir.y);
   vec2 xz = length(dir.xz) > 1e-7 ? normalize(dir.xz) * d : vec2(0.0);
   // landing zone relief (same as sim.js terrainHeight), fading out towards the edge
@@ -111,10 +110,9 @@ float moonHeight(vec3 dir, float gridDist, out vec3 col) {
   float w = smoothstep(uEdge - 300.0, uEdge + 200.0, d);
   vec2 acc = vec2(18.0 * sin(dir.x * 9.0 + 1.3) * sin(dir.z * 7.0 + 0.4) + 9.0 * sin(dir.y * 21.0 + dir.x * 13.0), 0.0);
   if (w > 0.0) {
-    // level of detail: each crater size fades out where the grid gets too coarse to draw it (no spikes);
-    // near the lander every size is there, matching the flight model
+    // level of detail: each crater size fades out where the grid is too coarse to draw it (no spikes);
+    // spacing depends only on the distance to the camera, so neighbouring tiles agree
     vec3 p = dir * uR;
-    float spacing = max(3.0, gridDist * 0.045);
     float C[3] = float[3](1800.0, 500.0, 140.0);
     float P[3] = float[3](0.7, 0.6, 0.55);
     float K[3] = float[3](0.1, 0.15, 0.2);
@@ -138,67 +136,133 @@ float moonHeight(vec3 dir, float gridDist, out vec3 col) {
 }
 `;
 
-/** polar grid geometry around the origin (flat coords in x/z), indexed */
-export function moonGridGeometry(THREE, R) {
-  const radii = [0];
-  while (radii.at(-1) < 120) radii.push(radii.at(-1) + 3);
-  while (radii.at(-1) < Math.PI * R) radii.push(Math.min(Math.PI * R, radii.at(-1) * 1.045));
-  const SEG = 128, pos = [], idx = [];
-  pos.push(0, 0, 0);
-  for (let i = 1; i < radii.length; i++) for (let k = 0; k < SEG; k++) {
-    const a = (k / SEG) * Math.PI * 2;
-    pos.push(Math.cos(a) * radii[i], 0, Math.sin(a) * radii[i]);
-  }
-  const at = (i, k) => 1 + (i - 1) * SEG + (k % SEG);
-  for (let k = 0; k < SEG; k++) idx.push(0, at(1, k + 1), at(1, k)); // centre fan
-  for (let i = 1; i < radii.length - 1; i++) for (let k = 0; k < SEG; k++) {
-    const a = at(i, k), b = at(i, k + 1), c = at(i + 1, k), d = at(i + 1, k + 1);
-    idx.push(a, b, c, b, d, c);
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(new Float32Array(pos.length).fill(0).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
-  geo.setIndex(idx);
-  return geo;
-}
+// ---- rendering: CDLOD on a cube sphere, one instanced draw call ----
+// Every tile is the same N x N grid; per instance: cube face, corner (u, v), size in face units and size in
+// metres. Tiles are fixed to the moon (nothing swims). A tile is split when the camera comes within
+// K/2 tile sizes; inside a tile, odd grid vertices slide onto their even neighbours as the camera
+// distance approaches K tile sizes (geomorphing), so at a split the new tile starts out exactly as
+// coarse as its parent and refines smoothly.
+const N = 8;           // grid cells per tile
+const K = 5;           // LOD range = K * tile size
+const MAX_TILES = 1500;
+const MIN_TILE = 16;   // metres: finest tile (2 m cells)
 
-/** terrain mesh: a MeshStandardMaterial whose vertex stage bends the grid onto the moon and displaces it */
+// cube face f, face coords (u, v) in [-1, 1] -> point on the cube; +Y (f = 2) is centred on the pad
+function facePoint(f, u, v, out) {
+  // orientations chosen so (du x dv) points inwards on every face: triangles wind outwards
+  switch (f) {
+    case 0: return out.set(1, v, u);
+    case 1: return out.set(-1, v, -u);
+    case 2: return out.set(u, 1, v);
+    case 3: return out.set(u, -1, -v);
+    case 4: return out.set(-u, v, 1);
+    default: return out.set(u, v, -1);
+  }
+}
+const FACE_GLSL = /* glsl */ `
+vec3 facePoint(float f, vec2 uv) {
+  if (f < 0.5) return vec3(1.0, uv.y, uv.x);
+  if (f < 1.5) return vec3(-1.0, uv.y, -uv.x);
+  if (f < 2.5) return vec3(uv.x, 1.0, uv.y);
+  if (f < 3.5) return vec3(uv.x, -1.0, -uv.y);
+  if (f < 4.5) return vec3(-uv.x, uv.y, 1.0);
+  return vec3(uv.x, uv.y, -1.0);
+}`;
+
 export function createMoonTerrain(THREE, R, edge, c1, c2) {
+  // shared tile grid
+  const grid = [], idx = [];
+  for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) grid.push(i, j);
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const a = j * (N + 1) + i, b = a + 1, c = a + N + 1, d = c + 1;
+    idx.push(a, c, b, b, c, d); // same diagonal everywhere, so a fully morphed tile equals its parent
+  }
+  const geo = new THREE.InstancedBufferGeometry();
+  const nv = (N + 1) * (N + 1);
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(nv * 3), 3));
+  // normals only feed three's shadow normal-bias (flat shading derives the real ones); must not be zero
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(new Float32Array(nv * 3).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+  geo.setAttribute('grid', new THREE.Float32BufferAttribute(grid, 2));
+  geo.setIndex(idx);
+  const tileA = new THREE.InstancedBufferAttribute(new Float32Array(MAX_TILES * 4), 4); // face, u0, v0, size (face units)
+  const metreA = new THREE.InstancedBufferAttribute(new Float32Array(MAX_TILES), 1);    // tile size in metres
+  tileA.setUsage(THREE.DynamicDrawUsage); metreA.setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute('tile', tileA);
+  geo.setAttribute('tileM', metreA);
+  geo.instanceCount = 0;
+
   const uniforms = {
-    uFrame: { value: new THREE.Matrix3() }, uR: { value: R }, uEdge: { value: edge },
+    uCam: { value: new THREE.Vector3() }, uR: { value: R }, uEdge: { value: edge },
     uC1: { value: new THREE.Color(c1) }, uC2: { value: new THREE.Color(c2) },
   };
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.95 });
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', `#include <common>\n${MOON_GLSL}`)
+      .replace('#include <common>', `#include <common>
+uniform vec3 uCam;
+attribute vec2 grid;
+attribute vec4 tile;
+attribute float tileM;
+${MOON_GLSL}
+${FACE_GLSL}`)
       .replace('#include <begin_vertex>', `
-        vec2 g = position.xz;
-        float gd = length(g);
-        vec3 dl = gd < 1e-4 ? vec3(0.0, 1.0, 0.0) : vec3(g.x / gd * sin(gd / uR), cos(gd / uR), g.y / gd * sin(gd / uR));
-        vec3 dir = normalize(uFrame * dl);
+        // geomorph: odd grid vertices slide onto their even neighbours towards the far end of this LOD
+        vec2 uv0 = tile.yz + grid / ${N}.0 * tile.w;
+        vec3 p0 = normalize(facePoint(tile.x, uv0)) * uR;
+        float range = ${K}.0 * tileM;
+        float km = clamp((distance(uCam, p0) - 0.7 * range) / (0.3 * range), 0.0, 1.0);
+        vec2 g = grid - fract(grid * 0.5) * 2.0 * km;
+        vec3 dir = normalize(facePoint(tile.x, tile.yz + g / ${N}.0 * tile.w));
+        // crater detail follows the camera distance (continuous across tiles of different size)
+        float spacing = distance(uCam, dir * uR) / (${K}.0 * ${N}.0) * 1.4;
         vec3 mcol;
-        float mh = moonHeight(dir, gd, mcol);
+        float mh = moonHeight(dir, spacing, mcol);
         vMoonCol = mcol;
         vec3 transformed = dir * (uR + mh) - vec3(0.0, uR, 0.0);`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vMoonCol;')
       .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= vMoonCol;');
   };
-  const mesh = new THREE.Mesh(moonGridGeometry(THREE, R), mat);
+  const mesh = new THREE.Mesh(geo, mat);
   mesh.frustumCulled = false;
   mesh.receiveShadow = true;
-  const q = new THREE.Quaternion(), m4 = new THREE.Matrix4(), up = new THREE.Vector3(0, 1, 0), dir = new THREE.Vector3();
-  /** recentre the grid under the lander; snapped so the vertices don't swim while it moves */
-  function center(x, z, alt) {
-    const step = alt < 150 ? 4 : alt < 700 ? 16 : 64;
-    const sx = Math.round(x / step) * step, sz = Math.round(z / step) * step;
-    const d = Math.hypot(sx, sz);
-    if (d < 1e-6) dir.set(0, 1, 0);
-    else { const sn = Math.sin(d / R) / d; dir.set(sx * sn, Math.cos(d / R), sz * sn); }
-    q.setFromUnitVectors(up, dir);
-    uniforms.uFrame.value.setFromMatrix4(m4.makeRotationFromQuaternion(q));
+
+  // backing sphere just below the deepest crater: hides hairline gaps at cube seams while tiles morph
+  const back = new THREE.Mesh(new THREE.IcosahedronGeometry(R - 45, 5).translate(0, -R, 0),
+    new THREE.MeshStandardMaterial({ color: new THREE.Color(c1).lerp(new THREE.Color(c2), 0.5), roughness: 1 }));
+  const group = new THREE.Group();
+  group.add(back, mesh);
+
+  // quadtree selection, per frame, on the CPU (a few hundred nodes)
+  const ARC = (Math.PI / 2) * R; // face width in metres (at the face centre)
+  const cam = new THREE.Vector3(), c = new THREE.Vector3();
+  let n = 0, horizon = 0, camLen = 0;
+  function visit(f, u0, v0, size, metres) {
+    facePoint(f, u0 + size / 2, v0 + size / 2, c).normalize();
+    const rad = metres * 0.75;
+    // horizon cull: the tile's nearest point lies beyond the horizon (plus room for hills)
+    const ang = Math.acos(Math.max(-1, Math.min(1, c.dot(cam) / camLen))) - rad / R;
+    if (ang > horizon) return;
+    c.multiplyScalar(R);
+    const dist = Math.max(0, c.distanceTo(cam) - rad);
+    if (metres > MIN_TILE && dist < (K * metres) / 2) {
+      const h = size / 2, m = metres / 2;
+      visit(f, u0, v0, h, m); visit(f, u0 + h, v0, h, m); visit(f, u0, v0 + h, h, m); visit(f, u0 + h, v0 + h, h, m);
+      return;
+    }
+    if (n >= MAX_TILES) return;
+    tileA.setXYZW(n, f, u0, v0, size); metreA.setX(n, metres); n++;
   }
-  return { mesh, center };
+  /** camPlanet: camera position relative to the moon's centre, in the moon's frame */
+  function update(camPlanet) {
+    cam.copy(camPlanet); camLen = Math.max(R + 1, cam.length());
+    uniforms.uCam.value.copy(cam);
+    horizon = Math.acos(R / camLen) + Math.acos(R / (R + 60)) + 0.02;
+    n = 0;
+    for (let f = 0; f < 6; f++) visit(f, -1, -1, 2, ARC);
+    geo.instanceCount = n;
+    tileA.needsUpdate = true; metreA.needsUpdate = true;
+  }
+  return { mesh: group, update, tiles: () => n };
 }
