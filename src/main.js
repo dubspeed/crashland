@@ -174,7 +174,7 @@ function showMenu() {
 function start(p) {
   if (p !== planet || !world.ready) {
     planet = p;
-    S.setTerrainEdge(p.orbit ? S.ORBIT.edge : null, p.orbit ? p.R : 0); // before the ground is built from the terrain
+    S.setTerrainEdge(p.orbit ? S.ORBIT.edge : null, p.orbit ? p.R : 0, p.id); // before the ground is built from the terrain
     world.setPlanet(p); world.ready = true; fogBase = scene.fog.far;
     camera.far = p.orbit ? 45000 : 6000; camera.updateProjectionMatrix();
   }

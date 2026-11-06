@@ -1,6 +1,7 @@
-// Orbit level moon: procedural relief (craters + hills) shared by the flight model (JS) and the
-// renderer (GLSL), and a single-draw-call terrain mesh: a polar grid that rides under the lander
-// (fine near it, coarse towards the far side), displaced on the GPU. Only used when a planet has R.
+// Orbit planets: procedural relief shared by the flight model (JS) and the renderer (GLSL), and the CDLOD
+// terrain mesh. Features (all outside the landing zone): rolling hills, three sizes of craters, mountain
+// ranges (ridged noise), long canyons / rilles / grabens, fissures, a shield volcano (Mars), a fresh rayed
+// crater (Luna), and albedo: maria, dust, basalt. Heights are computed the same way in both languages.
 
 // ---- integer hash, bit-identical in JS and GLSL (uint math) ----
 function h3(x, y, z) {
@@ -16,6 +17,20 @@ function mx(h) {
 }
 const u01 = (h) => (h >>> 8) / 16777216;
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const clamp01 = (x) => Math.min(1, Math.max(0, x));
+
+/** 3D value noise in [0, 1] (smooth, trilinear over hashed lattice values) */
+function vn(x, y, z) {
+  const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+  const fx = x - ix, fy = y - iy, fz = z - iz;
+  const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy), uz = fz * fz * (3 - 2 * fz);
+  const X = ix + 2048, Y = iy + 2048, Z = iz + 2048;
+  const L = (a, b, t) => a * (1 - t) + b * t;
+  const v = (i, j, k) => u01(h3(X + i, Y + j, Z + k));
+  return L(L(L(v(0, 0, 0), v(1, 0, 0), ux), L(v(0, 1, 0), v(1, 1, 0), ux), uy),
+           L(L(v(0, 0, 1), v(1, 0, 1), ux), L(v(0, 1, 1), v(1, 1, 1), ux), uy), uz);
+}
+const ridge = (n) => { const q = 2 * n - 1, r = 1 - Math.sqrt(q * q + 0.01); return r * r; }; // rounded crest
 
 // crater octaves: cell size (m), share of cells with a crater, depth factor
 export const OCTAVES = [[1800, 0.7, 0.1], [500, 0.6, 0.15], [140, 0.55, 0.2]];
@@ -41,17 +56,108 @@ function craters(px, py, pz, C, prob, dk, out) {
   }
 }
 
+// ---- hand-placed features per planet (flat coords: x, z = arc length from the pad; the approach runs
+// along -x at z = 0) ----
+const LAYOUTS = {
+  'luna-orbit': {
+    style: 0, mount: 170,
+    // [x0, z0, x1, z1, width, depth, meander amplitude]
+    arcs: [[-3650, -2900, -3250, 3100, 110, 40, 70],      // sinuous rille across the approach
+           [-9500, -3800, -1800, -8800, 320, 70, 0],     // long graben to the south
+           [2500, 4200, 9500, 900, 160, 45, 90],         // rille beyond the pad
+           [-11000, 2600, -4200, 5600, 240, 55, 30]],    // graben to the north
+    volcano: null,
+    hero: [-7400, -1500, 480, 70],                       // fresh rayed crater: x, z, radius, depth
+  },
+  'mars-orbit': {
+    style: 1, mount: 140,
+    arcs: [[-8200, -3600, -2500, 3400, 430, 130, 140],   // "Valles": wide canyon across the approach
+           [-13000, 1200, -6000, 7600, 170, 60, 60],
+           [1500, -5200, 8000, -1200, 220, 70, 80],
+           [-4200, -9000, 2600, -6800, 120, 40, 50]],
+    volcano: [-7600, 3600, 1900, 380, 320, 90],          // x, z, base radius, height, caldera radius, depth
+    hero: null,
+  },
+};
+
+function flatDir(x, z, R) {
+  const d = Math.hypot(x, z), phi = d / R, sn = d > 1e-6 ? Math.sin(phi) / d : 0;
+  return [x * sn, Math.cos(phi), z * sn];
+}
+const norm = (v) => { const l = Math.hypot(...v); return v.map((c) => c / l); };
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+/** turn a planet's layout into the vectors both the JS relief and the shader uniforms use */
+export function moonFeatures(id, R) {
+  const L = LAYOUTS[id] ?? LAYOUTS['luna-orbit'];
+  const arcs = L.arcs.map(([x0, z0, x1, z1, W, D, M]) => {
+    const A = flatDir(x0, z0, R), B = flatDir(x1, z1, R);
+    const n = norm(cross(A, B)), c = norm(A.map((v, i) => v + B[i])), tt = cross(n, c);
+    return { n, c, cosL: dot(A, c), t: tt, W, D, M };
+  });
+  const vol = L.volcano ? { d: flatDir(L.volcano[0], L.volcano[1], R), r: L.volcano[2], h: L.volcano[3], cr: L.volcano[4], cd: L.volcano[5] } : null;
+  const hero = L.hero ? { d: flatDir(L.hero[0], L.hero[1], R), r: L.hero[2], depth: L.hero[3] } : null;
+  return { style: L.style, mount: L.mount, arcs, vol, hero };
+}
+
+/** everything outside the landing zone at direction (dx, dy, dz); returns { h, s (crater shade), ... } */
+function relief(dx, dy, dz, R, F, out) {
+  const px = dx * R, py = dy * R, pz = dz * R;
+  out.h = 18 * Math.sin(dx * 9 + 1.3) * Math.sin(dz * 7 + 0.4) + 9 * Math.sin(dy * 21 + dx * 13);
+  out.s = 0;
+  for (const [C, prob, dk] of OCTAVES) craters(px, py, pz, C, prob, dk, out);
+  // mountain ranges: ridged noise, only where the region mask allows
+  const mask = smooth(0.52, 0.72, vn(px / 6000 + 17, py / 6000, pz / 6000));
+  if (mask > 0) {
+    const m = ridge(vn(px / 2600, py / 2600, pz / 2600)) * 0.6 + ridge(vn(px / 1000 + 5, py / 1000, pz / 1000)) * 0.28
+            + ridge(vn(px / 400 + 9, py / 400, pz / 400)) * 0.12;
+    out.h += F.mount * m * mask;
+  }
+  // fissures: thin iso-lines of noise, long ones and short ones, in some regions
+  const fm = smooth(0.45, 0.6, vn(px / 3000 + 5, py / 3000 + 2, pz / 3000));
+  if (fm > 0) {
+    const c1 = 1 - smooth(0, 0.025, Math.abs(vn(px / 700 + 31, py / 700, pz / 700) - 0.5));
+    const c2 = 1 - smooth(0, 0.04, Math.abs(vn(px / 110 + 41, py / 110, pz / 110) - 0.5));
+    out.h -= (8 * c1 + 2.5 * c2) * fm;
+  }
+  // canyons, rilles, grabens: flat floor, steep walls, slight rims, tapered ends, optional meander
+  for (const a of F.arcs) {
+    const along = dx * a.c[0] + dy * a.c[1] + dz * a.c[2];
+    if (along <= a.cosL) continue;
+    const end = smooth(a.cosL, a.cosL + (1 - a.cosL) * 0.15, along);
+    const sd = (dx * a.n[0] + dy * a.n[1] + dz * a.n[2]) * R + a.M * Math.sin((dx * a.t[0] + dy * a.t[1] + dz * a.t[2]) * R / 520);
+    const ad = Math.abs(sd);
+    if (ad > a.W * 2) continue;
+    const trough = 1 - smooth(a.W * 0.55, a.W, ad), e = (ad - a.W) / (a.W * 0.35);
+    out.h += a.D * (-trough + 0.12 * Math.exp(-e * e)) * end;
+  }
+  // shield volcano with caldera
+  if (F.vol) {
+    const v = F.vol, d = Math.hypot(dx - v.d[0], dy - v.d[1], dz - v.d[2]) * R;
+    if (d < v.r) { const s = 1 - d / v.r; out.h += v.h * s * s * (3 - 2 * s) - v.cd * (1 - smooth(v.cr * 0.7, v.cr, d)); }
+  }
+  // hero crater: big, fresh, with a central peak
+  if (F.hero) {
+    const c = F.hero, t = Math.hypot(dx - c.d[0], dy - c.d[1], dz - c.d[2]) * R / c.r;
+    if (t < 1.8) {
+      const bowl = t < 1 ? t * t - 1 : 0, e = (t - 1) / 0.22;
+      out.h += c.depth * (bowl + 0.35 * Math.exp(-e * e) + 0.45 * Math.exp(-(t / 0.16) * (t / 0.16)));
+    }
+  }
+}
+
+let features = null, featuresKey = '';
+const tmp = { h: 0, s: 0 };
 /** relief outside the landing zone at flat coords (x, z = arc length from the pad), faded in past `edge` */
-export function moonRelief(x, z, R, edge) {
+export function moonRelief(x, z, R, edge, id = 'luna-orbit') {
   const d = Math.hypot(x, z);
   const w = smooth(edge - 300, edge + 200, d);
   if (w <= 0) return 0;
-  const phi = d / R, sn = d > 1e-6 ? Math.sin(phi) / d : 0;
-  const dx = x * sn, dy = Math.cos(phi), dz = z * sn;
-  const hills = 18 * Math.sin(dx * 9 + 1.3) * Math.sin(dz * 7 + 0.4) + 9 * Math.sin(dy * 21 + dx * 13);
-  const out = { h: hills, s: 0 };
-  for (const [C, prob, dk] of OCTAVES) craters(dx * R, dy * R, dz * R, C, prob, dk, out);
-  return out.h * w;
+  if (featuresKey !== id + R) { features = moonFeatures(id, R); featuresKey = id + R; }
+  const [dx, dy, dz] = flatDir(x, z, R);
+  relief(dx, dy, dz, R, features, tmp);
+  return tmp.h * w;
 }
 
 // ---- GLSL twin of the functions above + the landing-zone relief from sim.js ----
@@ -60,6 +166,16 @@ uniform float uR;
 uniform float uEdge;
 uniform vec3 uC1;
 uniform vec3 uC2;
+uniform float uStyle;
+uniform float uMount;
+uniform vec4 uArcN[4];   // n.xyz, width
+uniform vec4 uArcC[4];   // c.xyz, cos(half length)
+uniform vec4 uArcT[4];   // t.xyz, depth
+uniform float uArcM[4];  // meander amplitude
+uniform vec4 uVol;       // dir.xyz, base radius (0 = none)
+uniform vec4 uVolP;      // height, caldera radius, caldera depth
+uniform vec4 uHero;      // dir.xyz, radius (0 = none)
+uniform float uHeroD;
 varying vec3 vMoonCol;
 uint mh3(ivec3 c) {
   uint h = uint(c.x) * 0x8da6b343u ^ uint(c.y) * 0xd8163841u ^ uint(c.z) * 0xcb1ab31fu;
@@ -73,6 +189,14 @@ uint mmx(uint h) {
   return h ^ (h >> 16u);
 }
 float mu(uint h) { return float(h >> 8u) / 16777216.0; }
+float vn(vec3 p) {
+  vec3 i = floor(p); vec3 f = p - i; vec3 u = f * f * (3.0 - 2.0 * f);
+  ivec3 c = ivec3(i) + 2048;
+  float a = mu(mh3(c)), b = mu(mh3(c + ivec3(1, 0, 0))), cc = mu(mh3(c + ivec3(0, 1, 0))), d = mu(mh3(c + ivec3(1, 1, 0)));
+  float e = mu(mh3(c + ivec3(0, 0, 1))), g = mu(mh3(c + ivec3(1, 0, 1))), hh = mu(mh3(c + ivec3(0, 1, 1))), k = mu(mh3(c + ivec3(1, 1, 1)));
+  return mix(mix(mix(a, b, u.x), mix(cc, d, u.x), u.y), mix(mix(e, g, u.x), mix(hh, k, u.x), u.y), u.z);
+}
+float ridge(float n) { float q = 2.0 * n - 1.0; float r = 1.0 - sqrt(q * q + 0.01); return r * r; }
 void moonCraters(vec3 p, float C, float prob, float dk, inout vec2 acc) {
   vec3 f = p / C;
   vec3 b = floor(f);
@@ -97,8 +221,8 @@ void moonCraters(vec3 p, float C, float prob, float dk, inout vec2 acc) {
 float zoneNoise(float x, float z) {
   return sin(x * 0.021 + 1.3) * cos(z * 0.017) * 14.0 + sin(x * 0.067 + z * 0.041) * 5.0 + sin(x * 0.13 - z * 0.11 + 2.1) * 2.0;
 }
-// returns height; writes the colour of the ground there
-float moonHeight(vec3 dir, float spacing, out vec3 col) {
+// returns height; writes the colour of the ground there. spacing = grid cell size there (level of detail)
+float moonHeight(vec3 dir, float spacing, bool wantCol, out vec3 col) {
   float d = uR * atan(length(dir.xz), dir.y);
   vec2 xz = length(dir.xz) > 1e-7 ? normalize(dir.xz) * d : vec2(0.0);
   // landing zone relief (same as sim.js terrainHeight), fading out towards the edge
@@ -106,13 +230,12 @@ float moonHeight(vec3 dir, float spacing, out vec3 col) {
   float blend = t * t * (3.0 - 2.0 * t);
   float e = clamp((d - (uEdge - 250.0)) / 250.0, 0.0, 1.0);
   float zone = (zoneNoise(xz.x, xz.y) + 6.0) * blend * (1.0 - e * e * (3.0 - 2.0 * e));
-  // craters + hills outside it
   float w = smoothstep(uEdge - 300.0, uEdge + 200.0, d);
-  vec2 acc = vec2(18.0 * sin(dir.x * 9.0 + 1.3) * sin(dir.z * 7.0 + 0.4) + 9.0 * sin(dir.y * 21.0 + dir.x * 13.0), 0.0);
+  vec3 p = dir * uR;
+  float hh = 18.0 * sin(dir.x * 9.0 + 1.3) * sin(dir.z * 7.0 + 0.4) + 9.0 * sin(dir.y * 21.0 + dir.x * 13.0);
+  float shade = 0.0, mnt = 0.0, crack = 0.0, canyon = 0.0, volc = 0.0, rays = 0.0;
   if (w > 0.0) {
-    // level of detail: each crater size fades out where the grid is too coarse to draw it (no spikes);
-    // spacing depends only on the distance to the camera, so neighbouring tiles agree
-    vec3 p = dir * uR;
+    // craters; each size fades out where the grid is too coarse to draw it (no spikes)
     float C[3] = float[3](1800.0, 500.0, 140.0);
     float P[3] = float[3](0.7, 0.6, 0.55);
     float K[3] = float[3](0.1, 0.15, 0.2);
@@ -121,16 +244,92 @@ float moonHeight(vec3 dir, float spacing, out vec3 col) {
       if (f <= 0.0) continue;
       vec2 a = vec2(0.0);
       moonCraters(p, C[o], P[o], K[o], a);
-      acc += a * f;
+      hh += a.x * f; shade += a.y * f;
+    }
+    // mountain ranges
+    float mask = smoothstep(0.52, 0.72, vn(p / 6000.0 + vec3(17.0, 0.0, 0.0)));
+    if (mask > 0.0) {
+      float m = ridge(vn(p / 2600.0)) * 0.6 + ridge(vn(p / 1000.0 + vec3(5.0, 0.0, 0.0))) * 0.28
+              + ridge(vn(p / 400.0 + vec3(9.0, 0.0, 0.0))) * 0.12 * smoothstep(120.0, 40.0, spacing);
+      mnt = m * mask;
+      hh += uMount * mnt;
+    }
+    // fissures
+    float fm = smoothstep(0.45, 0.6, vn(p / 3000.0 + vec3(5.0, 2.0, 0.0)));
+    if (fm > 0.0) {
+      float c1 = 1.0 - smoothstep(0.0, 0.025, abs(vn(p / 700.0 + vec3(31.0, 0.0, 0.0)) - 0.5));
+      float c2 = (1.0 - smoothstep(0.0, 0.04, abs(vn(p / 110.0 + vec3(41.0, 0.0, 0.0)) - 0.5))) * smoothstep(30.0, 10.0, spacing);
+      hh -= (8.0 * c1 * smoothstep(60.0, 20.0, spacing) + 2.5 * c2) * fm; // depth only up close, the line always
+      crack = max(c1, c2) * fm;
+    }
+    // canyons / rilles / grabens
+    for (int i = 0; i < 4; i++) {
+      float along = dot(dir, uArcC[i].xyz);
+      if (along <= uArcC[i].w) continue;
+      float cl = uArcC[i].w;
+      float endf = smoothstep(cl, cl + (1.0 - cl) * 0.15, along);
+      float W = uArcN[i].w;
+      float sd = dot(dir, uArcN[i].xyz) * uR + uArcM[i] * sin(dot(dir, uArcT[i].xyz) * uR / 520.0);
+      float ad = abs(sd);
+      if (ad > W * 2.0) continue;
+      // walls get wider where the grid is coarse (no sawtooth); close up they match the flight model
+      float wall = max(W * 0.45, spacing * 3.0);
+      float trough = 1.0 - smoothstep(W - wall, W, ad);
+      float ee = (ad - W) / max(W * 0.35, spacing * 2.0);
+      hh += uArcT[i].w * (-trough + 0.12 * exp(-ee * ee)) * endf;
+      canyon = max(canyon, trough * endf);
+    }
+    // shield volcano
+    if (uVol.w > 0.0) {
+      float dv = length(dir - uVol.xyz) * uR;
+      if (dv < uVol.w) {
+        float s = 1.0 - dv / uVol.w;
+        hh += uVolP.x * s * s * (3.0 - 2.0 * s) - uVolP.z * (1.0 - smoothstep(min(uVolP.y * 0.7, uVolP.y - spacing * 3.0), uVolP.y, dv));
+        volc = s;
+      }
+    }
+    // hero crater with rays (the rays are colour only)
+    if (uHero.w > 0.0) {
+      float th = length(dir - uHero.xyz) * uR / uHero.w;
+      if (th < 1.8) {
+        float bowl = th < 1.0 ? th * th - 1.0 : 0.0;
+        float ee = (th - 1.0) / max(0.22, spacing * 2.0 / uHero.w);
+        hh += uHeroD * (bowl + 0.35 * exp(-ee * ee) + 0.45 * exp(-(th / 0.16) * (th / 0.16)));
+        shade += bowl * 0.4 + exp(-ee * ee) * 0.6;
+      }
+      if (th < 9.0) {
+        vec3 r = normalize(cross(uHero.xyz, dir) + 1e-6);
+        float ang = atan(dot(r, normalize(cross(uHero.xyz, vec3(0.0, 0.0, 1.0)))), dot(r, normalize(cross(cross(uHero.xyz, vec3(0.0, 0.0, 1.0)), uHero.xyz))));
+        float stripe = vn(vec3(ang * 5.0, th * 0.35, 7.0));
+        float soft = clamp(spacing / 300.0, 0.0, 0.25); // softer ray edges where the grid is coarse
+        rays = smoothstep(0.62 - soft, 0.85 + soft * 0.5, stripe) * smoothstep(9.0, 2.0, th) * smoothstep(0.8, 1.4, th) * (1.0 - soft * 2.0);
+      }
     }
   }
-  float h = zone + acc.x * w;
-  // colour: zone like the flat levels; outside maria (dark lowlands) and bright crater rims
+  float h = zone + hh * w;
+  col = vec3(1.0);
+  if (!wantCol) return h;
+  // colour
   vec3 zc = mix(uC1, uC2, clamp(zone / 22.0 + 0.25 * sin(xz.x * 0.09) * sin(xz.y * 0.07), 0.0, 1.0));
-  float n = sin(dir.x * 5.1 + 0.7) * cos(dir.z * 4.3 - 0.4) + 0.6 * sin(dir.y * 7.7 + dir.x * 3.1) + 0.3 * sin(dir.z * 13.0 - dir.y * 9.0);
-  float m = clamp((n - 0.15) * 2.2, 0.0, 1.0);
-  vec3 gc = mix(uC1 * 1.2, uC2 * 0.62, m);
-  gc *= 1.0 + clamp(acc.y, -0.6, 0.5) * 0.45;
+  float big = vn(p / 4200.0 + vec3(3.0, 1.0, 0.0));
+  float fine = vn(p / 260.0 + vec3(11.0, 0.0, 0.0)) * smoothstep(80.0, 20.0, spacing);
+  vec3 gc;
+  if (uStyle < 0.5) {
+    // Luna: dark maria in the lowlands, bright highlands and mountains, bright fresh ejecta
+    float mare = smoothstep(0.42, 0.58, big) * (1.0 - mnt);
+    gc = mix(uC1 * 1.18, uC2 * 0.5, mare);
+    gc *= 1.0 + mnt * 0.35 + rays * 0.55;
+  } else {
+    // Mars: dark basalt plains vs bright dust, dark canyon floors, darker volcano with dusty flanks
+    float basalt = smoothstep(0.45, 0.62, big);
+    gc = mix(uC1 * 1.12 + vec3(0.05, 0.03, 0.0), uC2 * 0.62, basalt);
+    gc = mix(gc, uC2 * 0.45 + vec3(0.04, 0.0, 0.0), canyon * 0.7);
+    gc = mix(gc, uC2 * 0.55, volc * 0.5);
+    gc *= 1.0 + mnt * 0.25;
+  }
+  gc *= 0.93 + fine * 0.14;
+  gc *= 1.0 + clamp(shade, -0.6, 0.5) * 0.45;
+  gc *= 1.0 - crack * 0.45 - canyon * 0.15;
   col = mix(zc, gc, w);
   return h;
 }
@@ -169,7 +368,8 @@ vec3 facePoint(float f, vec2 uv) {
   return vec3(uv.x, uv.y, -1.0);
 }`;
 
-export function createMoonTerrain(THREE, R, edge, c1, c2) {
+export function createMoonTerrain(THREE, R, edge, c1, c2, id) {
+  const F = moonFeatures(id, R);
   // shared tile grid
   const grid = [], idx = [];
   for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) grid.push(i, j);
@@ -194,8 +394,17 @@ export function createMoonTerrain(THREE, R, edge, c1, c2) {
   const uniforms = {
     uCam: { value: new THREE.Vector3() }, uR: { value: R }, uEdge: { value: edge },
     uC1: { value: new THREE.Color(c1) }, uC2: { value: new THREE.Color(c2) },
+    uStyle: { value: F.style }, uMount: { value: F.mount },
+    uArcN: { value: [0, 1, 2, 3].map((i) => F.arcs[i] ? new THREE.Vector4(...F.arcs[i].n, F.arcs[i].W) : new THREE.Vector4(0, 1, 0, 1)) },
+    uArcC: { value: [0, 1, 2, 3].map((i) => F.arcs[i] ? new THREE.Vector4(...F.arcs[i].c, F.arcs[i].cosL) : new THREE.Vector4(0, 1, 0, 2)) },
+    uArcT: { value: [0, 1, 2, 3].map((i) => F.arcs[i] ? new THREE.Vector4(...F.arcs[i].t, F.arcs[i].D) : new THREE.Vector4(1, 0, 0, 0)) },
+    uArcM: { value: [0, 1, 2, 3].map((i) => F.arcs[i]?.M ?? 0) },
+    uVol: { value: F.vol ? new THREE.Vector4(...F.vol.d, F.vol.r) : new THREE.Vector4() },
+    uVolP: { value: F.vol ? new THREE.Vector4(F.vol.h, F.vol.cr, F.vol.cd, 0) : new THREE.Vector4() },
+    uHero: { value: F.hero ? new THREE.Vector4(...F.hero.d, F.hero.r) : new THREE.Vector4() },
+    uHeroD: { value: F.hero?.depth ?? 0 },
   };
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.95 });
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 });
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, uniforms);
     sh.vertexShader = sh.vertexShader
@@ -206,7 +415,7 @@ attribute vec4 tile;
 attribute float tileM;
 ${MOON_GLSL}
 ${FACE_GLSL}`)
-      .replace('#include <begin_vertex>', `
+      .replace('#include <beginnormal_vertex>', `
         // geomorph: odd grid vertices slide onto their even neighbours towards the far end of this LOD
         vec2 uv0 = tile.yz + grid / ${N}.0 * tile.w;
         vec3 p0 = normalize(facePoint(tile.x, uv0)) * uR;
@@ -216,10 +425,20 @@ ${FACE_GLSL}`)
         vec3 dir = normalize(facePoint(tile.x, tile.yz + g / ${N}.0 * tile.w));
         // crater detail follows the camera distance (continuous across tiles of different size)
         float spacing = distance(uCam, dir * uR) / (${K}.0 * ${N}.0) * 1.4;
-        vec3 mcol;
-        float mh = moonHeight(dir, spacing, mcol);
+        vec3 mcol, ncol;
+        float mh = moonHeight(dir, spacing, true, mcol);
         vMoonCol = mcol;
-        vec3 transformed = dir * (uR + mh) - vec3(0.0, uR, 0.0);`);
+        vec3 moonPos = dir * (uR + mh);
+        // smooth normal from two neighbouring height samples (about one grid cell away)
+        vec3 t1 = normalize(cross(dir, abs(dir.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+        vec3 t2 = cross(dir, t1);
+        float eps = max(spacing, 1.5) / uR;
+        vec3 d1 = normalize(dir + t1 * eps), d2 = normalize(dir + t2 * eps);
+        vec3 q1 = d1 * (uR + moonHeight(d1, spacing, false, ncol));
+        vec3 q2 = d2 * (uR + moonHeight(d2, spacing, false, ncol));
+        vec3 objectNormal = normalize(cross(q1 - moonPos, q2 - moonPos));
+        if (dot(objectNormal, dir) < 0.0) objectNormal = -objectNormal;`)
+      .replace('#include <begin_vertex>', `vec3 transformed = moonPos - vec3(0.0, uR, 0.0);`);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vMoonCol;')
       .replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb *= vMoonCol;');

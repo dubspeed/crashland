@@ -148,14 +148,14 @@ function noise(x, z) {
        + Math.sin(x * 0.13 - z * 0.11 + 2.1) * 2;
 }
 // orbit level: the landing-zone relief fades out to the smooth sphere beyond this radius (null = endless relief)
-let terrainEdge = null, terrainR = 0;
-/** orbit level: landing-zone relief fades out at `r`, the moon's craters and hills (radius R) take over */
-export function setTerrainEdge(r, R = 0) { terrainEdge = r; terrainR = R; }
+let terrainEdge = null, terrainR = 0, terrainId = '';
+/** orbit level: landing-zone relief fades out at `r`, the planet's own relief (radius R, layout `id`) takes over */
+export function setTerrainEdge(r, R = 0, id = 'luna-orbit') { terrainEdge = r; terrainR = R; terrainId = id; }
 export function terrainHeight(x, z = 0) {
   const r = Math.hypot(x, z);
   if (terrainEdge && r > terrainEdge - 250) {
     const e = Math.min(1, (r - (terrainEdge - 250)) / 250);
-    const outer = terrainR ? moonRelief(x, z, terrainR, terrainEdge) : 0;
+    const outer = terrainR ? moonRelief(x, z, terrainR, terrainEdge, terrainId) : 0;
     if (e >= 1) return outer;
     const t = Math.min(1, Math.max(0, (r - PAD_R) / 60)), blend = t * t * (3 - 2 * t);
     return (noise(x, z) + 6) * blend * (1 - e * e * (3 - 2 * e)) + outer;
@@ -223,7 +223,7 @@ export function predictImpact(s) {
   let x = s.x, y = s.y, z = s.z, vx = s.vx, vy = s.vy, vz = s.vz, t = 0;
   const h = s.planet.orbit ? 0.2 : 0.1;
   for (let i = 0, n = s.planet.orbit ? 2000 : 1200; i < n; i++) {
-    const ground = s.planet.orbit && y > 200 ? -1e9 : terrainHeight(x, z);
+    const ground = s.planet.orbit && y > 600 ? -1e9 : terrainHeight(x, z);
     if (y <= ground) return { x, z, t };
     const alt = y - ground;
     const w = windAt(s, alt, s.t + t);

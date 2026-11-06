@@ -70,7 +70,7 @@ export function createWorld(scene, models) {
     curveR = p.orbit ? p.R : 0;
     moon = null;
     if (curveR) {
-      moon = createMoonTerrain(THREE, p.R, p.edge, p.ground, p.ground2);
+      moon = createMoonTerrain(THREE, p.R, p.edge, p.ground, p.ground2, p.id);
       ground.add(moon.mesh);
     } else {
       const terrain = new THREE.Mesh(flatGround(p), new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 }));
