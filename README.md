@@ -52,11 +52,21 @@ Lever and rotate pad each track their own touch point, so both work at the same 
 
 The flight computer's burn point includes air drag and the parachute and adds a reaction reserve (~15 % + about 1 s of descent); the countdown before it is a short look-ahead with drag.
 
+### Precision landing
+
+- The orange cross (on the ground and in the compass) is a real prediction of the touchdown point without thrust: gravity, drag, wind with shear and the current canopy are integrated forward (`predictImpact`). Bring it onto the pad.
+- Under an open parachute the tilt pad steers the canopy: it glides up to 5 m/s through the air in the pressed direction.
+- Without air, a short tilted burn high up moves the cross.
+- With **Retro 2** the pad is a velocity command while burning (up to 8 m/s over ground, less near the ground); let go and the drift is stopped.
+- The result shows the distance to the pad centre; ≤ 3 m is a bull's-eye (+300 points), on the pad (≤ 12 m) +150.
+
+Measured with a sim pilot that only uses these aids: Luna ~4 m, Mars without wind 1–4 m, Terra without to strong wind 2–6 m from the centre (10/10 landed); without aiming the same flights end 35–65 m away.
+
 ### Attitude control
 
 - **Hold** (default, like the Apollo LM's attitude hold with rate command): the rotate pad / A–D sets a turn rate (up to ~23°/s, proportional on the pad); let go and the computer stops the rotation and holds that angle, with an integral term against steady wind torque.
 - **Retro**: holds upright in free fall, leans up to 10° against the drift while the engine is firing.
-- **Retro 2** (experimental, to compare): surface-retrograde. In free fall the thrust axis points against the velocity over ground; while burning it leans so the thrust kills the ground drift (with a short lead for the attitude lag) and holds against the current wind force (feed-forward from the measured air drag), up to 20°. Under an open parachute it hangs straight. In the sim it lands Terra in a storm with ~1 m/s drift from every wind direction where Retro drifts 4–8 m/s.
+- **Retro 2** (experimental, to compare; the tilt pad sets the ground velocity while burning): surface-retrograde. In free fall the thrust axis points against the velocity over ground; while burning it leans so the thrust kills the ground drift (with a short lead for the attitude lag) and holds against the current wind force (feed-forward from the measured air drag), up to 20°. Under an open parachute it hangs straight. In the sim it lands Terra in a storm with ~1 m/s drift from every wind direction where Retro drifts 4–8 m/s.
 - **Vertical**: always back to 0°.
 - **Off**: the pad fires the jets directly; a rotation keeps going until you counter it (as in vacuum).
 

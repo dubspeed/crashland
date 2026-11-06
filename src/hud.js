@@ -141,6 +141,12 @@ export function createHud() {
       c.beginPath(); c.moveTo(sx, sy2); c.lineTo(ex, ey); c.stroke();
       c.beginPath(); c.moveTo(ex + wx * 5, ey + wy * 5); c.lineTo(ex - wy * 4, ey + wx * 4); c.lineTo(ex + wy * 4, ey - wx * 4); c.closePath(); c.fill();
     }
+    // predicted touchdown point (orange cross)
+    if (s.pred && s.status === 'flying') {
+      const [ix, iy] = place(s.pred.x - s.x, s.pred.z - s.z);
+      c.strokeStyle = '#ffb547'; c.lineWidth = 2.2; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(ix - 3.5, iy - 3.5); c.lineTo(ix + 3.5, iy + 3.5); c.moveTo(ix + 3.5, iy - 3.5); c.lineTo(ix - 3.5, iy + 3.5); c.stroke();
+    }
     // own motion (where you drift to in the next ~10 s)
     const [mx, my] = place(s.vx * 10, s.vz * 10);
     const ml = Math.hypot(mx, my);
@@ -196,6 +202,10 @@ export function createHud() {
     const vp = $('v-pad');
     vp.innerHTML = padDist < 10 ? 'Landeplatz <b>unter dir</b>' : `Landeplatz <b>${screenArrow(-s.x, -s.z, yaw)} ${fmt(padDist, 0)} m</b>`;
     vp.className = padDist < 10 ? 'ok' : padDist > 70 ? 'warn' : '';
+    if (s.pred && s.status === 'flying' && padDist >= 10) {
+      const miss = Math.hypot(s.pred.x, s.pred.z);
+      vp.innerHTML += ` <span class="aim">· Kreuz ${miss < 4 ? 'auf dem Pad' : `${fmt(miss, 0)} m daneben`}</span>`;
+    }
 
     // touchdown gauge
     const td = $('td');

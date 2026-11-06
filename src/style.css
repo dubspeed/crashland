@@ -387,3 +387,4 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
   .menu-head h1 { font-size: 40px; }
   .planet { padding: 10px; }
 }
+.nav .aim { color: var(--amber); }

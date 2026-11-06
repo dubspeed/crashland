@@ -28,7 +28,8 @@ export const CHUTE_CDA = 110;      // m², fully inflated canopy
 export const CHUTE_INFLATE = 2.2;  // s to full inflation
 export const CHUTE_QMAX = 5500;    // Pa, canopy tears above this dynamic pressure
 export const CHUTE_FMAX = 70000;   // N, reefing limits the riser load
-export const CHUTE_ARM = 3.5;      // m, riser attachment above the centre of mass (righting torque)
+export const CHUTE_ARM = 3.5;
+export const CHUTE_GLIDE = 5;      // m/s, steerable canopy: max glide speed through the air      // m, riser attachment above the centre of mass (righting torque)
 
 // Aerodynamic heating (game-scaled Sutton–Graves): flux ∝ sqrt(rho) · v³
 export const HEAT_K = 55;           // K/s at rho = 1, v = 100 m/s, exposure 1
@@ -158,6 +159,29 @@ export function massProps(s) {
   return { m, cx, cy, cz, I };
 }
 
+/** Where the lander would touch down if nothing changes from now on (no thrust): gravity, drag with the
+ *  current canopy, wind and its shear included. Returns { x, z, t } or null if it never gets there. */
+export function predictImpact(s) {
+  const { m } = massProps(s);
+  const chuteK = s.chute === 'open' && s.planet.rho > 0 ? s.chuteInflate : 0;
+  let x = s.x, y = s.y, z = s.z, vx = s.vx, vy = s.vy, vz = s.vz, t = 0;
+  const h = 0.1;
+  for (let i = 0; i < 1200; i++) {
+    const ground = terrainHeight(x, z);
+    if (y <= ground) return { x, z, t };
+    const alt = y - ground;
+    const w = windAt(s, alt, s.t + t);
+    const rx = vx - w.x, rz = vz - w.z, v = Math.hypot(rx, vy, rz);
+    const rho = s.planet.rho * Math.exp(-Math.max(0, y) / s.planet.H);
+    const q = 0.5 * rho * v * v;
+    const Fd = q * BODY_CDA + Math.min(q * CHUTE_CDA * chuteK, chuteK > 0 ? CHUTE_FMAX : 0);
+    const k = v > 0.01 ? -Fd / v / m : 0;
+    vx += k * rx * h; vy += (k * vy - s.planet.g) * h; vz += k * rz * h;
+    x += vx * h; y += vy * h; z += vz * h; t += h;
+  }
+  return null;
+}
+
 /** Thrust axis (unit vector) for the current attitude. */
 export function upVector(s) {
   const ca = Math.cos(s.a);
@@ -279,19 +303,27 @@ export function destroy(s, id) {
  *  Free fall: thrust axis opposite the velocity over ground. Burning: lean so the thrust's sideways part
  *  kills the ground drift in ~1.25 s and holds against the current air force (wind). Capped at 20°. */
 export const RETRO2_MAX = 0.35; // rad
-function retro2Targets(s, F, m, dt) {
+export const VCMD = 8; // m/s over ground at full pad deflection (Retro 2)
+function retro2Targets(s, F, m, dt, moveX = 0, moveZ = 0) {
+  const steering = Math.hypot(moveX, moveZ) > 0.01;
   if (F > 0) s.r2BurnT = s.t;
   const burning = s.t - (s.r2BurnT ?? -99) < 1.5; // stay in burn mode through short throttle gaps
   let hx = 0, hz = 0; // wanted horizontal component of the thrust axis
   if (s.chute === 'open' && s.planet.rho > 0) {
     // under the canopy: hang straight, the chute does the work
-  } else if (burning) {
+  } else if (burning || (steering && F > 0)) {
     const Fe = Math.max(F, F_MAX * Math.max(s.limit, 0.3));
     // lead the drift by the attitude lag (~0.4 s) so the lean is gone when the drift is
     const ax = (s.vx - (s.r2vx ?? s.vx)) / Math.max(dt, 1e-3), az = (s.vz - (s.r2vz ?? s.vz)) / Math.max(dt, 1e-3);
     const px = s.vx + ax * 0.4, pz = s.vz + az * 0.4;
-    hx = (-px * 0.6 * m - (s.dragX || 0)) / Fe;
-    hz = (-pz * 0.6 * m - (s.dragZ || 0)) / Fe;
+    // fly at the commanded ground velocity (0 when the pad is released = stop the drift)
+    // allowed sideways speed shrinks near the ground so a held stick can't drag you in sideways
+    const vmax = Math.max(1, Math.min(VCMD, altitude(s) * 0.2));
+    hx = (-(px - moveX * vmax) * 0.6 * m - (s.dragX || 0)) / Fe;
+    hz = (-(pz - moveZ * vmax) * 0.6 * m - (s.dragZ || 0)) / Fe;
+  } else if (steering) {
+    // free fall: lean the way the pilot wants to go, ready for the burn
+    hx = moveX * 0.25; hz = moveZ * 0.25;
   } else {
     const v = Math.hypot(s.vx, s.vy, s.vz) || 1;
     hx = -s.vx / v; hz = -s.vz / v;
@@ -369,9 +401,18 @@ export function step(s, input, dt) {
   const lean = (v) => Math.max(-0.17, Math.min(0.17, Math.asin(Math.max(-1, Math.min(1, (v * 0.8) / Math.max(aThr, 1))))));
   let tA = s.sas === 'retro' && thr > 0 ? lean(s.vx) : 0;
   let tB = s.sas === 'retro' && thr > 0 ? -lean(s.vz) : 0;
-  if (s.sas === 'retro2') [tA, tB] = retro2Targets(s, F, m, dt);
-  const ra = controlAxis(s, 'a', 'w', 'holdA', 'sasI', input.rcs || 0, tA, s.torqueCom, I, dt);
-  const rb = controlAxis(s, 'b', 'wb', 'holdB', 'sasIB', input.rcsZ || 0, tB, s.torqueComB, I, dt);
+  let cmdA = input.rcs || 0, cmdB = input.rcsZ || 0;
+  // under an open canopy the pad steers the parachute (pulls the risers) instead of tilting the lander
+  const chuteSteer = s.chute === 'open' && s.planet.rho > 0 && s.chuteInflate > 0.5;
+  s.steerX = chuteSteer ? -cmdA : 0; s.steerZ = chuteSteer ? cmdB : 0;
+  if (chuteSteer) { cmdA = cmdB = 0; }
+  if (s.sas === 'retro2') {
+    // velocity command: the pad says where to fly (world direction), the computer tilts to get there
+    [tA, tB] = retro2Targets(s, F, m, dt, -cmdA, cmdB);
+    cmdA = cmdB = 0;
+  }
+  const ra = controlAxis(s, 'a', 'w', 'holdA', 'sasI', cmdA, tA, s.torqueCom, I, dt);
+  const rb = controlAxis(s, 'b', 'wb', 'holdB', 'sasIB', cmdB, tB, s.torqueComB, I, dt);
   const rcsUse = Math.max(ra, rb);
   s.w += ((s.torqueCom + s._tauA) / I) * dt;
   s.wb += ((s.torqueComB + s._tauB) / I) * dt;
@@ -417,6 +458,13 @@ export function step(s, input, dt) {
   s.vx += ((F * u.x + dx) / m) * dt;
   s.vy += ((F * u.y + dy) / m - p.g) * dt;
   s.vz += ((F * u.z + dz) / m) * dt;
+  if (s.steerX || s.steerZ) {
+    // steerable canopy: glide up to CHUTE_GLIDE m/s through the air in the commanded direction
+    const sl = Math.hypot(s.steerX, s.steerZ), ex = s.steerX / sl, ez = s.steerZ / sl;
+    const along = (s.vx - wind.x) * ex + (s.vz - wind.z) * ez;
+    const want = CHUTE_GLIDE * Math.min(1, sl);
+    if (along < want) { const acc = Math.min(1.5, (want - along) * 1.2); s.vx += ex * acc * dt; s.vz += ez * acc * dt; }
+  }
   s.x += s.vx * dt;
   s.y += s.vy * dt;
   s.z += s.vz * dt;

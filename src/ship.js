@@ -185,7 +185,10 @@ export function createShip(models) {
     // canopy lies along the relative airflow
     const flowX = air ? Math.atan2(s.windX - s.vx, Math.max(3, -s.vy)) : 0;
     const flowZ = air ? Math.atan2(s.windZ - s.vz, Math.max(3, -s.vy)) : 0;
-    chuteRig.rotation.set(-s.b * 0.85 + flowZ * 0.9, 0, -s.a * 0.85 - flowX * 0.9 + Math.sin(t * 1.3) * 0.04 + (air ? 0 : 0.6));
+    // steering: the pilot pulls the risers, the canopy leans the way it glides
+    chuteRig.userData.sx = (chuteRig.userData.sx ?? 0) + ((s.steerX || 0) - (chuteRig.userData.sx ?? 0)) * 0.08;
+    chuteRig.userData.sz = (chuteRig.userData.sz ?? 0) + ((s.steerZ || 0) - (chuteRig.userData.sz ?? 0)) * 0.08;
+    chuteRig.rotation.set(-s.b * 0.85 + flowZ * 0.9 + chuteRig.userData.sz * 0.3, 0, -s.a * 0.85 - flowX * 0.9 - chuteRig.userData.sx * 0.3 + Math.sin(t * 1.3) * 0.04 + (air ? 0 : 0.6));
   }
 
   function updateHeat(s, dt) {

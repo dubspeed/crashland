@@ -39,9 +39,11 @@ function updateMarkers() {
   if (!on) return;
   belowRing.position.set(s.x, S.terrainHeight(s.x, s.z) + 0.15, s.z);
   const alt = Math.max(0, S.altitude(s));
-  const tHit = alt / Math.max(1, -s.vy);
-  const ix = s.x + s.vx * tHit, iz = s.z + s.vz * tHit;
-  impact.position.set(ix, S.terrainHeight(ix, iz) + 0.2, iz);
+  // predicted touchdown without thrust (gravity, drag, wind, canopy), shared with the HUD compass
+  const pred = S.predictImpact(s);
+  s.pred = pred;
+  impact.visible = !!pred;
+  if (pred) impact.position.set(pred.x, S.terrainHeight(pred.x, pred.z) + 0.2, pred.z);
   const k = Math.min(6, 1 + alt / 120); // grow with height so it stays visible from above
   impact.scale.setScalar(k); belowRing.scale.setScalar(Math.min(4, 1 + alt / 200));
 }
@@ -142,6 +144,13 @@ function start(p) {
   ship.helpers.visible = showCom;
 }
 
+const PAD_RADIUS = 12;
+function precision(st) {
+  const d = Math.hypot(st.x, st.z);
+  return { d, label: d <= 3 ? 'Volltreffer' : d <= PAD_RADIUS ? 'auf dem Pad' : d <= 70 ? 'neben dem Pad' : 'weit daneben' };
+}
+function precisionBonus(st) { const { d } = precision(st); return d <= 3 ? 300 : d <= PAD_RADIUS ? 150 : 0; }
+
 function rate(st) {
   if (st.status !== 'landed') return { stars: 0, score: 0 };
   const fuelPct = S.fuel(st) / st.fuel0;
@@ -149,9 +158,10 @@ function rate(st) {
   const fainted = st.crew.some((c) => c.fainted > 0);
   if (fainted || fuelPct < 0.1 || Object.keys(st.lost).length) stars--;
   stars = Math.max(1, stars);
-  const score = Math.max(0, Math.round(fuelPct * 1000 + (S.LAND.vy[2] - st.touch.vy) * 60 + (S.LAND.tilt[1] - st.touch.tilt) * 10
-    - st.touch.grade * 150 + st.crew.filter((c) => !c.fainted).length * 70 + st.planet.g * 20 - Object.keys(st.lost).length * 120)
-    * (st.planet.rho > 0 ? st.wind.bonus : 1));
+  const base = fuelPct * 1000 + (S.LAND.vy[2] - st.touch.vy) * 60 + (S.LAND.tilt[1] - st.touch.tilt) * 10
+    - st.touch.grade * 150 + st.crew.filter((c) => !c.fainted).length * 70 + st.planet.g * 20 - Object.keys(st.lost).length * 120
+    + precisionBonus(st);
+  const score = Math.max(0, Math.round(base * (st.planet.rho > 0 ? st.wind.bonus : 1)));
   return { stars, score };
 }
 
@@ -187,6 +197,7 @@ function showResult() {
     ['Max. G-Last', `${f1(s.maxG)} g`],
     ['Fallschirm', { burned: 'verglüht', stowed: 'nicht benutzt', open: s.planet.rho > 0 ? 'offen gelandet' : 'nutzlos (keine Luft)', cut: 'abgeworfen', torn: 'gerissen' }[s.chute]],
     ['Crew', !ok ? (s.touch.crash.crew ? 'überlebt' : 'Kein Kontakt mehr') : s.crew.some((c) => c.fainted) ? s.crew.filter((c) => c.fainted).map((c) => `${c.name} ${c.fainted}× ohnmächtig`).join(', ') : 'alle bei Bewusstsein'],
+    ['Abstand zum Pad', `${f1(precision(s).d)} m · ${precision(s).label}`],
     ['Hitzeschäden', Object.keys(s.lost).length ? S.COMPONENTS.filter((c) => s.lost[c.id]).map((c) => c.name).join(', ') + ' verglüht' : 'keine'],
     ['Batterie', `${Math.round(s.battery)} %`],
     ['Flugzeit', `${f1(s.t)} s`],
