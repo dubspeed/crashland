@@ -200,6 +200,7 @@ export function createWorld(scene, models) {
     else sun.position.set(focus.x + 30, focus.y + 60, focus.z + 25);
     sun.target.position.copy(focus);
     stars.position.copy(camera.position);
+    dust.visible = !curveR || camera.position.y < 400; // speed dust only near the ground, not in orbit
     // orbit level: pick the terrain tiles for this camera (camera in the moon's frame, from its centre)
     if (moon) { ground.updateMatrixWorld(); moon.update(ground.worldToLocal(_cam.copy(camera.position)).add(_up.set(0, curveR, 0))); }
     // wrap dust inside a box around the camera
