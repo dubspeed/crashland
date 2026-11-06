@@ -34,6 +34,15 @@ Landing window (same on all planets). Below 80 m a slim gauge bar shows the sink
 | Explosion | above that | | | tanks rupture; only the **remaining fuel** explodes (fireball scales with it). Crew survives up to 24 m/s unless a big fuel fire engulfs the capsule. No fuel, no explosion. |
 
 
+## Orbit level (experimental prototype)
+
+"Luna Orbit" in the planet menu starts on a circular orbit 1.5 km above a small moon (radius 10 km, orbital speed ~119 m/s), 6 km before the pad, with 430 kg of fuel. The attitude mode starts on **Retro**, which on this level points the engine fully against the velocity (any angle), and the throttle limit starts at 50 % (~2 g). The HUD counts down to the braking burn (`ORBIT … · BREMSEN IN … s`, then `JETZT BREMSEN`); burn until the orange cross reaches the pad, fall, then land as usual. In the sim, following the cue lands ~10 m from the pad with ~110 kg left; braking late overshoots, braking a few seconds early is forgiving.
+
+How it works (kept separate so it can be removed again):
+- **Physics** (`sim.js`): the flight model stays flat; `x`, `z` are arc length over the surface and `y` the height. `curvature()` adds gravity that falls off with height, centrifugal lift from horizontal speed and the shrinking arc rate. Only planets with `R` use it (`ORBIT_PLANET`); `predictImpact` uses the same terms. `orbitGuide()` gives the brake countdown, `setTerrainEdge()` fades the landing-zone relief out to the smooth sphere.
+- **Rendering** (`world.js`): the ground is a polar grid around the pad, bent onto the sphere (azimuthal mapping), fine near the pad and coarse out to the far side. Each frame `align()` turns the moon so the point below the lander sits under it, so the lander, camera and HUD keep using flat coordinates; `toRender()` maps ground markers.
+- **Removing it**: drop `ORBIT_PLANET` from the menu list in `main.js`; everything else is inert for the normal planets.
+
 ## Controls
 
 | Key | Touch / mouse | Function |

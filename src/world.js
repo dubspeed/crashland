@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { terrainHeight } from './sim.js';
+import { terrainHeight, ORBIT } from './sim.js';
 
 function hash(x, z) {
   const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
@@ -41,11 +41,87 @@ export function createWorld(scene, models) {
   scene.add(dust);
 
   let ground = null;
+  let curveR = 0; // orbit level: radius of the moon the ground is bent onto (0 = flat world)
+
+  // flat sim coordinates (x, z = arc length from the pad, h = height) -> point in the ground group.
+  // azimuthal equidistant mapping onto a sphere whose top touches the pad; flat world: identity
+  const UP = new THREE.Vector3(0, 1, 0);
+  function curveDir(x, z, out) {
+    const d = Math.hypot(x, z);
+    if (!curveR || d < 1e-6) return out.set(0, 1, 0);
+    const phi = d / curveR, sn = Math.sin(phi);
+    return out.set((x / d) * sn, Math.cos(phi), (z / d) * sn);
+  }
+  function curvePoint(x, h, z, out) {
+    if (!curveR) return out.set(x, h, z);
+    curveDir(x, z, out);
+    return out.multiplyScalar(curveR + h).add(_cR.set(0, -curveR, 0));
+  }
+  const _cR = new THREE.Vector3(), _d = new THREE.Vector3(), _q = new THREE.Quaternion();
+
+  /** spherical ground: polar grid around the pad out to the antipode (fine near the pad, coarse far away) */
+  function buildSphereGround(p) {
+    const R = curveR, radii = [0];
+    while (radii.at(-1) < ORBIT.edge + 60) radii.push(radii.at(-1) + 15);
+    while (radii.at(-1) < Math.PI * R) radii.push(Math.min(Math.PI * R, radii.at(-1) * 1.13));
+    const SEG = 128, pts = [];
+    const vtx = (r, k) => { const a = (k / SEG) * Math.PI * 2, x = Math.cos(a) * r, z = Math.sin(a) * r; return [x, terrainHeight(x, z), z]; };
+    for (let i = 0; i < radii.length - 1; i++) {
+      for (let k = 0; k < SEG; k++) {
+        const a = vtx(radii[i], k), b = vtx(radii[i], k + 1), c = vtx(radii[i + 1], k), d = vtx(radii[i + 1], k + 1);
+        if (i > 0) pts.push(a, b, c); // counter-clockwise seen from above
+        pts.push(b, d, c);
+      }
+    }
+    const pos = new Float32Array(pts.length * 3), colors = new Float32Array(pts.length * 3);
+    const c1 = new THREE.Color(p.ground), c2 = new THREE.Color(p.ground2), c = new THREE.Color(), v = new THREE.Vector3();
+    for (let f = 0; f < pts.length; f += 3) {
+      const x = (pts[f][0] + pts[f + 1][0] + pts[f + 2][0]) / 3, z = (pts[f][2] + pts[f + 1][2] + pts[f + 2][2]) / 3;
+      const y = (pts[f][1] + pts[f + 1][1] + pts[f + 2][1]) / 3;
+      const near = Math.hypot(x, z) < ORBIT.edge;
+      if (near) {
+        c.copy(c1).lerp(c2, Math.min(1, Math.max(0, y / 22 + (hash(x, z) - 0.5) * 0.5)));
+        c.offsetHSL(0, 0, (hash(z, x) - 0.5) * 0.06);
+      }
+      for (let k = 0; k < 3; k++) {
+        if (!near) {
+          // far away: darker "maria" and lighter highlands, coloured per vertex so the edges stay smooth
+          curveDir(pts[f + k][0], pts[f + k][2], v);
+          const n = Math.sin(v.x * 5.1 + 0.7) * Math.cos(v.z * 4.3 - 0.4) + 0.6 * Math.sin(v.y * 7.7 + v.x * 3.1) + 0.3 * Math.sin(v.z * 13 - v.y * 9);
+          const m = Math.min(1, Math.max(0, (n - 0.15) * 2.2));
+          c.copy(c1).lerp(c2, m * 0.9).offsetHSL(0, 0, (1 - m) * 0.08 - m * 0.1);
+        }
+        curvePoint(pts[f + k][0], pts[f + k][1], pts[f + k][2], v).toArray(pos, (f + k) * 3);
+        c.toArray(colors, (f + k) * 3);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.computeVertexNormals();
+    // beyond the landing zone: smooth sphere normals (flat-shaded long polar triangles look like wedges)
+    const nrm = geo.attributes.normal;
+    for (let i = 0; i < pts.length; i++) {
+      if (Math.hypot(pts[i][0], pts[i][2]) <= ORBIT.edge) continue;
+      curveDir(pts[i][0], pts[i][2], v);
+      nrm.setXYZ(i, v.x, v.y, v.z);
+    }
+    return geo;
+  }
 
   function buildGround(p) {
     if (ground) { scene.remove(ground); ground.traverse((o) => { o.geometry?.dispose(); }); }
     ground = new THREE.Group();
 
+    curveR = p.orbit ? p.R : 0;
+    const geo = curveR ? buildSphereGround(p) : flatGround(p);
+    const terrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: !curveR, roughness: 0.95 }));
+    terrain.receiveShadow = true;
+    ground.add(terrain);
+    buildPad(p);
+  }
+
+  function flatGround(p) {
     const geo = new THREE.PlaneGeometry(2400, 2400, 140, 140).rotateX(-Math.PI / 2).toNonIndexed();
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) pos.setY(i, terrainHeight(pos.getX(i), pos.getZ(i)));
@@ -61,10 +137,10 @@ export function createWorld(scene, models) {
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geo.computeVertexNormals();
-    const terrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 }));
-    terrain.receiveShadow = true;
-    ground.add(terrain);
+    return geo;
+  }
 
+  function buildPad(p) {
     // landing pad
     const pad = new THREE.Mesh(new THREE.CylinderGeometry(12, 13, 0.5, 8).translate(0, -0.23, 0),
       new THREE.MeshStandardMaterial({ color: 0x7c8088, roughness: 0.8, flatShading: true }));
@@ -101,7 +177,8 @@ export function createWorld(scene, models) {
     ground.userData.sock = sock;
 
     // faint light column above the pad so it can be found from high up
-    const beam = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.2, 600, 8, 1, true).translate(0, 300, 0),
+    const bh = curveR ? 3000 : 600, br = curveR ? 5 : 1.2;
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(br, br, bh, 8, 1, true).translate(0, bh / 2, 0),
       new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     ground.add(beam);
     ground.userData.beam = beam;
@@ -122,7 +199,8 @@ export function createWorld(scene, models) {
       const k = 0.6 + rnd(i + 200) ** 2 * (r < 60 ? 1.5 : 9);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd(i + 400) * 6);
       sc.set(k, k * (0.7 + rnd(i + 300) * 0.6), k);
-      ps.set(x, terrainHeight(x, z) - k * 0.15, z);
+      curvePoint(x, terrainHeight(x, z) - k * 0.15, z, ps);
+      if (curveR) q.premultiply(_q.setFromUnitVectors(UP, curveDir(x, z, _d)));
       rocks.setMatrixAt(n++, mtx.compose(ps, q, sc));
     }
     rocks.count = n;
@@ -133,7 +211,8 @@ export function createWorld(scene, models) {
 
   function setPlanet(p) {
     scene.background = new THREE.Color(p.sky);
-    scene.fog = new THREE.Fog(p.fog, 150, p.stars ? 2600 : 1400);
+    scene.fog = new THREE.Fog(p.fog, p.orbit ? 4000 : 150, p.orbit ? 60000 : p.stars ? 2600 : 1400);
+    stars.scale.setScalar(p.orbit ? 10 : 1);
     hemi.color.set(p.sky).lerp(new THREE.Color(0xffffff), 0.6);
     hemi.groundColor.set(p.ground2);
     hemi.intensity = p.stars ? 0.6 : 1.0;
@@ -148,7 +227,7 @@ export function createWorld(scene, models) {
     for (let i = 0; i < DUST; i++) { dustPos[i * 3] += wind.x * dt; dustPos[i * 3 + 2] += wind.z * dt; }
     const ws = Math.hypot(wind.x, wind.z);
     const beam = ground?.userData.beam;
-    if (beam) beam.material.opacity = 0.12 * Math.min(1, Math.max(0, (Math.hypot(camera.position.x, camera.position.y, camera.position.z) - 90) / 400));
+    if (beam) beam.material.opacity = (curveR ? 0.22 : 0.12) * Math.min(1, Math.max(0, (camera.position.distanceTo(beam.getWorldPosition(_g)) - 90) / 400));
     const sock = ground?.userData.sock;
     if (sock) {
       // sock lifts from hanging (0) to horizontal (strong wind) and points downwind, with a little flutter
@@ -174,5 +253,24 @@ export function createWorld(scene, models) {
     ground?.userData.lamps.forEach((l, i) => { l.material.color.set(on === (i % 2 === 0) ? 0xff3b2f : 0x441010); });
   }
 
-  return { setPlanet, update };
+  /** orbit level: turn the moon under the lander so the ground point below it sits at (x, 0, z) facing up.
+   *  The lander and camera keep using the flat sim coordinates. */
+  const _g = new THREE.Vector3();
+  function align(x, z) {
+    if (!ground) return;
+    if (!curveR) { ground.position.set(0, 0, 0); ground.quaternion.identity(); return; }
+    ground.quaternion.setFromUnitVectors(curveDir(x, z, _d), UP);
+    curvePoint(x, 0, z, _g).applyQuaternion(ground.quaternion);
+    ground.position.set(x - _g.x, -_g.y, z - _g.z);
+    ground.updateMatrixWorld(true);
+  }
+  /** flat sim point -> render position (and the local "up" orientation there) */
+  function toRender(x, h, z, out, quat) {
+    curvePoint(x, h, z, out);
+    if (ground) out.applyMatrix4(ground.matrixWorld);
+    if (quat) { quat.setFromUnitVectors(UP, curveDir(x, z, _d)); if (ground) quat.premultiply(ground.quaternion); }
+    return out;
+  }
+
+  return { setPlanet, update, align, toRender };
 }

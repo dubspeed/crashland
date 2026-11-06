@@ -361,6 +361,7 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 .planet p { min-height: 2.6em; }
 .chips { display: flex; gap: 4px; flex-wrap: wrap; }
 .chip { font-size: 10px; letter-spacing: 0.04em; color: var(--mute); border: 1px solid var(--glass-edge); border-radius: 999px; padding: 2px 8px; }
+.chip.new { color: var(--cyan); border-color: var(--cyan); }
 .planet .best { min-height: 1.2em; }
 
 .help-sheet { width: min(620px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow-y: auto; background: var(--glass); border: 1px solid var(--glass-edge); border-radius: 14px; padding: 20px 22px; backdrop-filter: blur(10px); background-color: rgba(9,13,22,0.88); }

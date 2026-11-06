@@ -58,7 +58,7 @@ function updateMarkers() {
   if (!s.pred || (s.predAt ?? -1) > s.t || s.t - s.predAt > 0.08) { s.pred = S.predictImpact(s); s.predAt = s.t; }
   const pred = s.pred;
   impact.visible = !!pred;
-  if (pred) impact.position.set(pred.x, S.terrainHeight(pred.x, pred.z) + 0.2, pred.z);
+  if (pred) world.toRender(pred.x, S.terrainHeight(pred.x, pred.z) + 0.2, pred.z, impact.position, impact.quaternion);
   const k = Math.min(6, 1 + alt / 120); // grow with height so it stays visible from above
   impact.scale.setScalar(k); belowRing.scale.setScalar(Math.min(4, 1 + alt / 200));
 }
@@ -129,7 +129,7 @@ function buildMenu() {
   const wrap = $('planets');
   wrap.innerHTML = '';
   buildWindSelect();
-  for (const p of S.PLANETS) {
+  for (const p of [...S.PLANETS, S.ORBIT_PLANET]) {
     const b = document.createElement('button');
     b.className = 'planet';
     const rec = best(bestKey(p.id));
@@ -137,7 +137,7 @@ function buildMenu() {
     b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
       <span class="pname"><b>${p.name}</b><span class="g">${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span></span>
       <p>${p.text}</p>
-      <span class="chips"><span class="chip">${p.rho > 0 ? `Luft: ${p.atmo}` : 'keine Luft'}</span>${p.rho === 0 && windLevel ? '<span class="chip">kein Wind</span>' : ''}</span>
+      <span class="chips">${p.orbit ? '<span class="chip new">Neu · Orbit</span>' : ''}<span class="chip">${p.rho > 0 ? `Luft: ${p.atmo}` : 'keine Luft'}</span>${p.rho === 0 && windLevel ? '<span class="chip">kein Wind</span>' : ''}</span>
       <span class="best">${rec ? `${'★'.repeat(rec.stars)}${'☆'.repeat(3 - rec.stars)} · ${rec.score} Punkte` : ''}</span>`;
     b.addEventListener('click', () => start(p));
     wrap.append(b);
@@ -172,7 +172,12 @@ function showMenu() {
 }
 
 function start(p) {
-  if (p !== planet || !world.ready) { planet = p; world.setPlanet(p); world.ready = true; fogBase = scene.fog.far; }
+  if (p !== planet || !world.ready) {
+    planet = p;
+    S.setTerrainEdge(p.orbit ? S.ORBIT.edge : null); // before the ground is built from the terrain
+    world.setPlanet(p); world.ready = true; fogBase = scene.fog.far;
+    camera.far = p.orbit ? 45000 : 6000; camera.updateProjectionMatrix();
+  }
   debris.clear(); ship.reset();
   s = S.createState(planet, { wind: windLevel });
   hud.reset();
@@ -393,6 +398,12 @@ renderer.setAnimationLoop(() => {
   debris.update(dt);
   if (mode !== 'menu') hud.update(s, input, cam.yaw);
 
+  // orbit level: turn the moon under the lander (frozen once it is down, so debris and wreck stay put)
+  if (planet.orbit && (s.status === 'flying' || mode === 'menu')) world.align(s.x, s.z);
+  if (planet.orbit) {
+    const near = Math.min(3, Math.max(0.1, S.altitude(s) / 300));
+    if (Math.abs(near - camera.near) > 0.05) { camera.near = near; camera.updateProjectionMatrix(); }
+  } else if (camera.near !== 0.1) { camera.near = 0.1; camera.updateProjectionMatrix(); }
   updateMarkers();
   focus.set(s.x, s.y + 2.5, s.z);
   const dist = mode === 'menu' ? 22 : cam.dist * (camera.aspect < 0.8 ? 1.25 : 1);
@@ -424,7 +435,7 @@ renderer.setAnimationLoop(() => {
     // the prediction refreshes in steps (~12 Hz): follow it smoothly so the camera doesn't jerk
     if (!cam.tgt) cam.tgt = raw.clone();
     else cam.tgt.lerp(raw, 1 - Math.exp(-dt * 2.5));
-    const tgt = new THREE.Vector3(cam.tgt.x, S.terrainHeight(cam.tgt.x, cam.tgt.z), cam.tgt.z);
+    const tgt = world.toRender(cam.tgt.x, S.terrainHeight(cam.tgt.x, cam.tgt.z), cam.tgt.z, new THREE.Vector3());
     // intro: start close on the lander, then pull back over ~3 s until the touchdown point is in frame too
     cam.intro = Math.min(1, (cam.intro ?? 1) + dt / 3);
     const ik = cam.intro < 1 ? Math.max(0, (cam.intro - 0.25) / 0.75) : 1;
@@ -471,4 +482,4 @@ world.setPlanet(planet); world.ready = true; fogBase = scene.fog.far;
 showMenu();
 
 // handle for automated tests
-window.__crashland = { renderer, camera, cam, get state() { return s; }, start: (i) => start(S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };
+window.__crashland = { renderer, camera, cam, get state() { return s; }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANET : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };

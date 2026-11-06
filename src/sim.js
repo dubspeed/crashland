@@ -72,6 +72,35 @@ export function grade(value, limits) {
   return i < 0 ? 3 : i;
 }
 
+// orbit level (experimental): a small moon, start on a circular orbit, deorbit and land on the target
+export const ORBIT = { R: 10000, alt: 1500, downrange: 6000, edge: 1250 };
+export const ORBIT_PLANET = { id: 'luna-orbit', name: 'Luna Orbit', orbit: true, R: ORBIT.R, g: 1.62, alt: ORBIT.alt, vy: 0, vx: 0, tilt: 0, solar: 1.0, fuel: 430,
+  rho: 0, H: 1, atmo: 'keine', drift: 0, text: 'Start im Orbit: erst die Bahngeschwindigkeit abbauen, dann landen.',
+  sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true };
+/** circular orbit speed at height y above the surface */
+export function orbitSpeed(p, y) { const r = p.R + y; return Math.sqrt((p.g * p.R * p.R) / r); }
+/** curvature terms for the flat sim frame (x, z = arc length on the surface, y = height): gravity falls off
+ *  with height, horizontal speed gives centrifugal lift, and the arc rate shrinks with height. */
+function curvature(p, y, vx, vy, vz) {
+  if (!p.R) return null;
+  const r = p.R + y;
+  return { gy: p.g * (p.R / r) ** 2 - (vx * vx + vz * vz) / r, ax: (-vx * vy) / r, az: (-vz * vy) / r, k: p.R / r };
+}
+
+/** orbit level: when to start the braking burn so the lander stops (horizontally) about over the pad.
+ *  Returns null once the orbital speed is mostly gone. */
+export function orbitGuide(s) {
+  if (!s.planet.orbit) return null;
+  const vh = Math.hypot(s.vx, s.vz);
+  if (vh < 15) return null;
+  const { m } = massProps(s);
+  const acc = (F_MAX * Math.max(s.limit, 0.05)) / m;
+  const k = s.planet.R / (s.planet.R + s.y);
+  const dist = ((vh * vh) / (2 * acc)) * k;
+  const along = -(s.x * s.vx + s.z * s.vz) / vh; // pad distance ahead along the track
+  return { vh, dist, brakeIn: (along - dist) / (vh * k) + 1 }; // a little early: early is forgiving, late overshoots
+}
+
 export const PLANETS = [
   { id: 'luna', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0, fuel: 175, rho: 0, H: 1, atmo: 'keine', drift: 0,
     text: 'Wenig Schwerkraft, keine Luft. Zum Üben.',
@@ -109,8 +138,17 @@ function noise(x, z) {
        + Math.sin(x * 0.067 + z * 0.041) * 5
        + Math.sin(x * 0.13 - z * 0.11 + 2.1) * 2;
 }
+// orbit level: the landing-zone relief fades out to the smooth sphere beyond this radius (null = endless relief)
+let terrainEdge = null;
+export function setTerrainEdge(r) { terrainEdge = r; }
 export function terrainHeight(x, z = 0) {
   const r = Math.hypot(x, z);
+  if (terrainEdge && r > terrainEdge - 250) {
+    const e = Math.min(1, (r - (terrainEdge - 250)) / 250);
+    if (e >= 1) return 0;
+    const t = Math.min(1, Math.max(0, (r - PAD_R) / 60)), blend = t * t * (3 - 2 * t);
+    return (noise(x, z) + 6) * blend * (1 - e * e * (3 - 2 * e));
+  }
   const t = Math.min(1, Math.max(0, (r - PAD_R) / 60));
   const blend = t * t * (3 - 2 * t);
   return (noise(x, z) + 6) * blend;
@@ -125,6 +163,13 @@ export function createState(planet, opts = {}) {
   const off = planet.rho > 0 ? lvl.speed * planet.drift : 0;
   const t0 = (planet.tilt * Math.PI) / 180, b0 = opts.pitch0 ?? (rnd() - 0.5) * 0.06;
   const side = rnd() < 0.5 ? -1 : 1;
+  if (planet.orbit) {
+    // circular orbit, lying on the side with the engine pointing retrograde, burn limited to a crew-friendly 50 %
+    const v = orbitSpeed(planet, planet.alt);
+    const s = createState({ ...planet, orbit: false }, { ...opts, wind: 0, pitch0: 0, vz0: 0 });
+    return Object.assign(s, { planet, x: -ORBIT.downrange, z: 0, y: planet.alt, vx: v, vy: 0, vz: 0,
+      a: Math.PI / 2, holdA: Math.PI / 2, b: 0, holdB: 0, sas: 'retro', limit: 0.5 });
+  }
   return {
     planet, t: 0,
     wind: { level: WIND_LEVELS.indexOf(lvl), name: lvl.name, speed: lvl.speed, gust: lvl.gust, bonus: lvl.bonus,
@@ -165,8 +210,8 @@ export function predictImpact(s) {
   const { m } = massProps(s);
   const chuteK = s.chute === 'open' && s.planet.rho > 0 ? s.chuteInflate : 0;
   let x = s.x, y = s.y, z = s.z, vx = s.vx, vy = s.vy, vz = s.vz, t = 0;
-  const h = 0.1;
-  for (let i = 0; i < 1200; i++) {
+  const h = s.planet.orbit ? 0.2 : 0.1;
+  for (let i = 0, n = s.planet.orbit ? 2000 : 1200; i < n; i++) {
     const ground = terrainHeight(x, z);
     if (y <= ground) return { x, z, t };
     const alt = y - ground;
@@ -176,8 +221,10 @@ export function predictImpact(s) {
     const q = 0.5 * rho * v * v;
     const Fd = q * BODY_CDA + Math.min(q * CHUTE_CDA * chuteK, chuteK > 0 ? CHUTE_FMAX : 0);
     const k = v > 0.01 ? -Fd / v / m : 0;
-    vx += k * rx * h; vy += (k * vy - s.planet.g) * h; vz += k * rz * h;
-    x += vx * h; y += vy * h; z += vz * h; t += h;
+    const cv = curvature(s.planet, y, vx, vy, vz);
+    vx += (k * rx + (cv ? cv.ax : 0)) * h; vy += (k * vy - (cv ? cv.gy : s.planet.g)) * h; vz += (k * rz + (cv ? cv.az : 0)) * h;
+    const kk = cv ? cv.k : 1;
+    x += vx * kk * h; y += vy * h; z += vz * kk * h; t += h;
   }
   return null;
 }
@@ -401,6 +448,12 @@ export function step(s, input, dt) {
   const lean = (v) => Math.max(-0.17, Math.min(0.17, Math.asin(Math.max(-1, Math.min(1, (v * 0.8) / Math.max(aThr, 1))))));
   let tA = s.sas === 'retro' && thr > 0 ? lean(s.vx) : 0;
   let tB = s.sas === 'retro' && thr > 0 ? -lean(s.vz) : 0;
+  if (s.sas === 'retro' && p.orbit) {
+    // orbit level: point the engine against the velocity (any angle), so it can brake the orbital speed
+    const vh = Math.hypot(s.vx, s.vz), v = Math.hypot(vh, s.vy);
+    if (v > 0.5) { tA = Math.atan2(s.vx, -s.vy); tB = -Math.asin(Math.max(-1, Math.min(1, s.vz / v))) ; }
+    else { tA = 0; tB = 0; }
+  }
   let cmdA = input.rcs || 0, cmdB = input.rcsZ || 0;
   // under an open canopy the pad steers the parachute (pulls the risers) instead of tilting the lander
   const chuteSteer = s.chute === 'open' && s.planet.rho > 0 && s.chuteInflate > 0.5;
@@ -455,9 +508,10 @@ export function step(s, input, dt) {
   }
 
   // --- translation ---
-  s.vx += ((F * u.x + dx) / m) * dt;
-  s.vy += ((F * u.y + dy) / m - p.g) * dt;
-  s.vz += ((F * u.z + dz) / m) * dt;
+  const cv = curvature(p, s.y, s.vx, s.vy, s.vz);
+  s.vx += ((F * u.x + dx) / m + (cv ? cv.ax : 0)) * dt;
+  s.vy += ((F * u.y + dy) / m - (cv ? cv.gy : p.g)) * dt;
+  s.vz += ((F * u.z + dz) / m + (cv ? cv.az : 0)) * dt;
   if (s.steerX || s.steerZ) {
     // steerable canopy: glide up to CHUTE_GLIDE m/s through the air in the commanded direction
     const sl = Math.hypot(s.steerX, s.steerZ), ex = s.steerX / sl, ez = s.steerZ / sl;
@@ -465,9 +519,9 @@ export function step(s, input, dt) {
     const want = CHUTE_GLIDE * Math.min(1, sl);
     if (along < want) { const acc = Math.min(1.5, (want - along) * 1.2); s.vx += ex * acc * dt; s.vz += ez * acc * dt; }
   }
-  s.x += s.vx * dt;
+  s.x += s.vx * (cv ? cv.k : 1) * dt;
   s.y += s.vy * dt;
-  s.z += s.vz * dt;
+  s.z += s.vz * (cv ? cv.k : 1) * dt;
 
   // --- crew g-load ---
   // felt load = all non-gravitational acceleration (engine + air)

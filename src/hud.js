@@ -349,6 +349,13 @@ export function createHud() {
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
     else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
+    else if (S.orbitGuide(s)) {
+      // orbit level: count down to the braking burn, then keep burning until the orbit speed is gone
+      const og = S.orbitGuide(s);
+      if (s.throttle > 0) { msg = `BREMSEN · ${fmt(og.vh)} m/s`; color = 'var(--amber)'; pulse = false; }
+      else if (og.brakeIn > 2.5) { msg = `ORBIT ${fmt(og.vh)} m/s · BREMSEN IN ${fmt(og.brakeIn)} s`; color = 'var(--cyan)'; pulse = false; }
+      else { msg = og.brakeIn > -8 ? 'JETZT BREMSEN (RETRO)' : 'ZU SPÄT – BREMSEN!'; color = 'var(--amber)'; }
+    }
     else if (s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
     else if (s.battery < 20) { msg = 'BATTERIE SCHWACH'; color = 'var(--warn)'; pulse = false; }
     else if (s.panels === 'in' && !(s.lost.solarL && s.lost.solarR) && s.heatFlux < 4 && s.battery < 45 && s.t > 6) { msg = 'PANEELE AUSKLAPPEN – BATTERIE LÄDT NICHT'; color = 'var(--cyan)'; pulse = false; }
