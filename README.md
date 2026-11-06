@@ -47,6 +47,7 @@ Landing window (same on all planets). Below 80 m a slim gauge bar shows the sink
 | C | Schwerpunkt | Show centre of mass and thrust axis |
 | V | Ansicht | Camera: behind / oblique / target / top-down (screen-up always matches the tilt pad) |
 | R / M | buttons | Restart / planet select |
+| – | drag / swipe on the 3D scene | Orbit the camera around the lander: sideways = around, up/down = higher or lower (from above to slightly below); double tap / double click resets the height; wheel = zoom |
 
 Lever and rotate pad each track their own touch point, so both work at the same time with two thumbs. The layout adapts to desktop, phone portrait and phone landscape.
 

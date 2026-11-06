@@ -92,13 +92,13 @@ let endTimer = 0;
 const input = { thrust: false, rcs: 0, limitDir: 0 };
 const keys = new Set();
 let showCom = true;
-let cam = { yaw: 0.35, dist: 28, shake: 0, view: 'chase' };
+let cam = { yaw: 0.35, pitch: 0, dist: 28, shake: 0, view: 'chase' };
 const VIEWS = { chase: 'Hinten', oblique: 'Schräg', target: 'Ziel', top: 'Oben' };
 try { const v = localStorage.getItem('crashland.view'); if (VIEWS[v]) cam.view = v; } catch { /* storage unavailable */ }
 function toggleView() {
   const order = Object.keys(VIEWS);
   cam.view = order[(order.indexOf(cam.view) + 1) % order.length];
-  cam.tgtD = 0; cam.intro = 0; cam.tgt = null;
+  cam.tgtD = 0; cam.intro = 0; cam.tgt = null; cam.pitch = 0;
   try { localStorage.setItem('crashland.view', cam.view); } catch { /* storage unavailable */ }
   viewButton();
 }
@@ -176,7 +176,7 @@ function start(p) {
   debris.clear(); ship.reset();
   s = S.createState(planet, { wind: windLevel });
   hud.reset();
-  cam.tgtD = 0; cam.intro = 0; cam.tgt = null;
+  cam.tgtD = 0; cam.intro = 0; cam.tgt = null; cam.pitch = 0;
   mode = 'flight';
   $('menu').hidden = true; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = false;
   ship.helpers.visible = showCom;
@@ -316,10 +316,20 @@ $('r-close').addEventListener('click', () => { $('result').hidden = true; $('res
 $('r-menu').addEventListener('click', showMenu);
 
 // camera orbit by dragging the canvas, zoom with the wheel
+// sideways = around the lander, up/down = camera height (orbit pitch); only the finger that started on the canvas
 let drag = null;
-renderer.domElement.addEventListener('pointerdown', (e) => { drag = e.clientX; });
-addEventListener('pointerup', () => { drag = null; });
-addEventListener('pointermove', (e) => { if (drag !== null) { cam.yaw -= (e.clientX - drag) * 0.006; drag = e.clientX; } });
+renderer.domElement.addEventListener('pointerdown', (e) => { drag = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
+const endDrag = (e) => { if (drag && e.pointerId === drag.id) drag = null; };
+addEventListener('pointerup', endDrag);
+addEventListener('pointercancel', endDrag);
+addEventListener('pointermove', (e) => {
+  if (!drag || e.pointerId !== drag.id) return;
+  cam.yaw -= (e.clientX - drag.x) * 0.006;
+  cam.pitch = Math.max(-1.6, Math.min(1.6, cam.pitch + (e.clientY - drag.y) * 0.005));
+  drag.x = e.clientX; drag.y = e.clientY;
+});
+// double tap / double click on the scene: back to the view's own camera height
+renderer.domElement.addEventListener('dblclick', () => { cam.pitch = 0; });
 renderer.domElement.addEventListener('wheel', (e) => { cam.dist = Math.min(90, Math.max(12, cam.dist * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: true });
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
@@ -427,6 +437,17 @@ renderer.setAnimationLoop(() => {
     scene.fog.far = fogBase + cam.tgtD * 3;
   } else {
     camera.position.set(focus.x + Math.sin(cam.yaw) * dist, focus.y + dist * 0.16, focus.z + Math.cos(cam.yaw) * dist);
+  }
+  // free orbit pitch from vertical swipes: swing the camera up/down around the point it looks at,
+  // keeping the distance; the view's own height is the starting angle
+  if (mode !== 'menu' && cam.pitch !== 0) {
+    const off = camera.position.clone().sub(lookAt);
+    const r = off.length(), h = Math.hypot(off.x, off.z);
+    const bx = -fwdX, bz = -fwdZ; // horizontal "behind" direction (also defined for the straight-down top view)
+    const e = Math.max(-0.12, Math.min(1.53, Math.atan2(off.y, h) + cam.pitch));
+    const hx = h > 0.01 ? off.x / h : bx, hz = h > 0.01 ? off.z / h : bz;
+    camera.position.set(lookAt.x + hx * r * Math.cos(e), lookAt.y + r * Math.sin(e), lookAt.z + hz * r * Math.cos(e));
+    if (view === 'top') camera.position.set(lookAt.x + bx * r * Math.cos(e), lookAt.y + r * Math.sin(e), lookAt.z + bz * r * Math.cos(e));
   }
   // canopy goes see-through when looking down so it doesn't hide the cross and the lander
   ship.setCanopyAlpha(view === 'top' ? 0.25 : view === 'chase' ? 1 : 0.45);
