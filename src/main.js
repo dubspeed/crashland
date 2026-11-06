@@ -96,9 +96,10 @@ function buildMenu() {
     const rec = best(bestKey(p.id));
     const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
     b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
-      <b>${p.name}</b><span class="g">${p.g.toLocaleString('de-DE')} m/s² · ${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span>
-      <p>${p.text}</p><p>Start: ${p.alt} m · ${-p.vy} m/s<br>Atmosphäre: ${p.atmo} · Treibstoff: ${p.fuel} kg${p.rho === 0 && windLevel ? '<br>Kein Wind ohne Luft' : ''}</p>
-      <span class="best">${rec ? `Bestwert: ${'★'.repeat(rec.stars)}${'☆'.repeat(3 - rec.stars)} · ${rec.score} Punkte` : ''}</span>`;
+      <span class="pname"><b>${p.name}</b><span class="g">${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span></span>
+      <p>${p.text}</p>
+      <span class="chips"><span class="chip">${p.rho > 0 ? `Luft: ${p.atmo}` : 'keine Luft'}</span>${p.rho === 0 && windLevel ? '<span class="chip">kein Wind</span>' : ''}</span>
+      <span class="best">${rec ? `${'★'.repeat(rec.stars)}${'☆'.repeat(3 - rec.stars)} · ${rec.score} Punkte` : ''}</span>`;
     b.addEventListener('click', () => start(p));
     wrap.append(b);
   }
@@ -113,6 +114,12 @@ function buildWindowInfo() {
     <span><b class="bad">Bruchlandung</b> ≤ ${f(S.WRECK_V)} m/s: Lander kaputt, kein Feuer, Crew überlebt</span>
     <span><b class="bad">Explosion</b> darüber, wenn noch Treibstoff in den Tanks ist</span>`;
 }
+
+function openHelp() { $('help').hidden = false; $('help-close').focus(); }
+function closeHelp() { $('help').hidden = true; }
+$('help-btn').addEventListener('click', openHelp);
+$('help-close').addEventListener('click', closeHelp);
+$('help').addEventListener('click', (e) => { if (e.target === $('help')) closeHelp(); });
 
 function showMenu() {
   buildWindowInfo();
@@ -200,6 +207,8 @@ addEventListener('keydown', (e) => {
   keys.add(e.code);
   if (e.code === 'Space') e.preventDefault();
   if (e.code === 'KeyR' && mode !== 'menu') start(planet);
+  if (e.code === 'Escape' && !$('help').hidden) { closeHelp(); return; }
+  if ((e.code === 'KeyH' || e.code === 'F1') && mode === 'menu') { e.preventDefault(); openHelp(); }
   if ((e.code === 'KeyM' || e.code === 'Escape') && mode !== 'menu') showMenu();
   if (mode !== 'flight') return;
   if (e.code === 'KeyT') cycleSas();

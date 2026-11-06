@@ -73,16 +73,16 @@ export function grade(value, limits) {
 
 export const PLANETS = [
   { id: 'luna', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0, fuel: 175, rho: 0, H: 1, atmo: 'keine', drift: 0,
-    text: 'Geringe Schwerkraft. Viel Zeit, wenig Risiko. Gut zum Üben.',
+    text: 'Wenig Schwerkraft, keine Luft. Zum Üben.',
     sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true },
   { id: 'mars', name: 'Mars', g: 3.71, alt: 1500, vy: -110, vx: -4, tilt: -3, solar: 0.45, fuel: 305, rho: 0.02, H: 11000, atmo: 'sehr dünn', drift: 4,
-    text: 'Mittlere Schwerkraft, schwache Sonne. Auf die Batterie achten.',
+    text: 'Dünne Luft, schwache Sonne.',
     sky: 0xd4a27c, fog: 0xc89670, ground: 0xb4552f, ground2: 0x7d3a22, sun: 0xffe2c4 },
   { id: 'terra', name: 'Terra', g: 9.81, alt: 1800, vy: -165, vx: 5, tilt: 4, solar: 0.75, fuel: 200, rho: 1.225, H: 8500, atmo: 'normal', drift: 17,
-    text: 'Volle Erdschwerkraft. Der Burn muss sitzen, die G-Last steigt schnell.',
+    text: 'Hitze beim Eintritt, Fallschirm hilft.',
     sky: 0x8ec5ff, fog: 0xa9d2ff, ground: 0x5f9a4c, ground2: 0x7a6145, sun: 0xffffff },
   { id: 'brontes', name: 'Brontes', g: 15.2, alt: 1800, vy: -90, vx: -3, tilt: -2, solar: 0.3, fuel: 230, rho: 2.8, H: 7000, atmo: 'dicht', drift: 20,
-    text: 'Supererde. Kaum Schubreserve, wenig Licht. Nur für Profis.',
+    text: 'Supererde. Erst bremsen, dann Schirm.',
     sky: 0x3b2f5c, fog: 0x463868, ground: 0x2f6e6a, ground2: 0x1f4442, sun: 0xd8c8ff },
 ];
 

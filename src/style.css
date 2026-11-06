@@ -346,3 +346,44 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 
 #td { z-index: 4; }
 @media (max-width: 400px) { #controls .tog { font-size: 10.5px; padding: 6px 7px; } #controls .toggles { gap: 5px; } }
+
+/* ===== start menu: compact, help moved into its own dialog ===== */
+.menu-sheet { max-width: 760px; }
+.menu-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.menu-head h1 { margin-bottom: 4px; }
+.help-btn { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--amber); background: var(--glass); color: var(--amber); font: 700 20px var(--display); margin-bottom: 10px; }
+.help-btn:hover { background: rgba(255,181,71,0.15); }
+.tagline { margin: 0 0 20px; color: #c7d1df; }
+#planets { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.planet { gap: 8px; padding: 14px; align-content: start; }
+.planet .pname { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.planet .pname .g { font-size: 13px; }
+.planet p { min-height: 2.6em; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip { font-size: 10px; letter-spacing: 0.04em; color: var(--mute); border: 1px solid var(--glass-edge); border-radius: 999px; padding: 2px 8px; }
+.planet .best { min-height: 1.2em; }
+
+.help-sheet { width: min(620px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow-y: auto; background: var(--glass); border: 1px solid var(--glass-edge); border-radius: 14px; padding: 20px 22px; backdrop-filter: blur(10px); background-color: rgba(9,13,22,0.88); }
+.help-top { display: flex; justify-content: space-between; align-items: center; position: sticky; top: -20px; margin: -20px -22px 4px; padding: 16px 22px 10px; background: rgba(9,13,22,0.96); }
+.help-top h2 { margin: 0; font: 700 24px var(--display); letter-spacing: 0.06em; text-transform: uppercase; }
+.help-close { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--glass-edge); background: none; font-size: 22px; line-height: 1; color: var(--ink); }
+.help-sheet section { padding: 12px 0; border-top: 1px solid var(--glass-edge); }
+.help-sheet section:first-of-type { border-top: 0; }
+.help-sheet h3 { margin: 0 0 8px; font: 600 11px var(--mono); letter-spacing: 0.16em; text-transform: uppercase; color: var(--amber); }
+.help-sheet p { margin: 0; color: #c7d1df; font-size: 13px; line-height: 1.55; max-width: 62ch; }
+.help-sheet b { color: var(--ink); }
+.help-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: #c7d1df; font-size: 13px; line-height: 1.5; }
+.help-keys { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
+.help-keys dt { color: var(--ink); white-space: nowrap; }
+.help-keys dd { margin: 0; color: #c7d1df; text-align: left; font-weight: 400; white-space: normal; }
+.help-keys.key-hint, .help-keys.touch-hint { display: none; }
+@media (hover: hover) and (pointer: fine) { .help-keys.key-hint { display: grid; } }
+@media (pointer: coarse) { .help-keys.touch-hint { display: grid; } }
+.help-sheet #window-info { margin: 0; background: none; border: 0; padding: 0; }
+.help-sheet #window-info h3 { display: none; }
+@media (max-width: 520px) {
+  .help-keys { grid-template-columns: 1fr; gap: 2px 0; }
+  .help-keys dd { margin-bottom: 6px; }
+  .menu-head h1 { font-size: 40px; }
+  .planet { padding: 10px; }
+}

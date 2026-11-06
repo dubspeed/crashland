@@ -88,15 +88,83 @@
   </div>
 
   <div id="menu" class="overlay">
-    <div class="sheet">
-      <p class="kicker">Landeprotokoll · Version 1</p>
-      <h1>Crashland</h1>
-      <p class="lead">Dein Lander fällt antriebslos auf den Planeten. Zünde den Haupt&shy;antrieb so spät wie möglich und so kurz wie nötig: der <b>Suicide Burn</b>. Achte dabei auf Treibstoff, Batterie und deine Crew: Pilotin Kira, Ingenieur Bo und Wissenschaftlerin Ines vertragen unterschiedlich viel G-Last. Wird Kira ohnmächtig, steuert niemand. Wo es Luft gibt, hilft der <b>Fallschirm</b>, aber ziehst du ihn zu schnell, reißt er.</p>
+    <div class="sheet menu-sheet">
+      <div class="menu-head">
+        <div>
+          <p class="kicker">Landeprotokoll</p>
+          <h1>Crashland</h1>
+        </div>
+        <button id="help-btn" class="help-btn" aria-label="Hilfe und Steuerung">?</button>
+      </div>
+      <p class="tagline">So spät bremsen wie möglich, so sanft aufsetzen wie nötig.</p>
       <div class="wind-row"><span class="wind-label">Wind</span><div id="wind-select" role="radiogroup" aria-label="Windstärke"></div></div>
       <div id="planets"></div>
-      <div id="window-info"></div>
-      <p class="keys touch-hint">Touch: <b>Schubhebel</b> rechts drücken und hoch/runter ziehen (oben = 100 %) · <b>Steuerkreuz</b> links: in die Richtung drücken, in die du kippen willst (oben = vom Bildschirm weg), weiter außen = schneller · <b>Fallschirm</b>-Taste über dem Drehfeld · Kamera: auf der Szene wischen</p>
-      <p class="keys key-hint"><kbd>Leertaste</kbd> Schub · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / Pfeile neigen · <kbd>+</kbd>/<kbd>−</kbd> oder <kbd>1</kbd>–<kbd>0</kbd> Schubbegrenzer · <kbd>P</kbd> Fallschirm · <kbd>E</kbd> Paneele ein/aus · <kbd>T</kbd> Lageregler · <kbd>V</kbd> Ansicht · <kbd>C</kbd> Schwerpunkt · <kbd>R</kbd> Neustart · <kbd>M</kbd> Menü</p>
+    </div>
+  </div>
+
+  <div id="help" class="overlay" hidden>
+    <div class="sheet help-sheet" role="dialog" aria-modal="true" aria-labelledby="help-title">
+      <div class="help-top"><h2 id="help-title">So landest du</h2><button id="help-close" class="help-close" aria-label="Hilfe schließen">×</button></div>
+
+      <section>
+        <h3>Ziel</h3>
+        <p>Dein Lander fällt antriebslos auf den Planeten. Zünde das Triebwerk so spät wie möglich und so kurz wie nötig: der <b>Suicide Burn</b>. Der Bordcomputer zeigt dir am Burn-Streifen, wann es so weit ist. Setz auf dem Landeplatz auf, langsam, gerade und ohne Seitendrift.</p>
+      </section>
+
+      <section>
+        <h3>Steuerung</h3>
+        <dl class="help-keys touch-hint">
+          <dt>Schubhebel rechts</dt><dd>gedrückt halten = Schub, Höhe des Fingers = Stärke</dd>
+          <dt>Steuerkreuz links</dt><dd>in die Richtung drücken, in die du kippen willst; oben = vom Bildschirm weg</dd>
+          <dt>Schalter</dt><dd>Fallschirm, Paneele, Lageregler, Ansicht</dd>
+          <dt>Wischen</dt><dd>Kamera drehen</dd>
+        </dl>
+        <dl class="help-keys key-hint">
+          <dt><kbd>Leertaste</kbd></dt><dd>Schub</dd>
+          <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / Pfeile</dt><dd>neigen (oben = vom Bildschirm weg)</dd>
+          <dt><kbd>+</kbd> <kbd>−</kbd> · <kbd>1</kbd>–<kbd>0</kbd></dt><dd>Schubbegrenzer</dd>
+          <dt><kbd>P</kbd> · <kbd>E</kbd></dt><dd>Fallschirm · Paneele ein/aus</dd>
+          <dt><kbd>T</kbd> · <kbd>V</kbd></dt><dd>Lageregler · Ansicht</dd>
+          <dt><kbd>R</kbd> · <kbd>M</kbd></dt><dd>Neustart · Menü</dd>
+        </dl>
+      </section>
+
+      <section>
+        <h3>Landefenster</h3>
+        <div id="window-info"></div>
+      </section>
+
+      <section>
+        <h3>Worauf du achten musst</h3>
+        <ul class="help-list">
+          <li><b>Treibstoff</b> ist knapp bemessen. Wer zu früh bremst oder lange schwebt, steht am Ende ohne da.</li>
+          <li><b>Crew:</b> Kira (3,2 g), Bo (2,9 g) und Ines (2,6 g) vertragen unterschiedlich viel G-Last. Wird Kira ohnmächtig, steuert niemand.</li>
+          <li><b>Hitze:</b> Beim Eintritt in dichte Luft glühen die Solarpaneele. Klapp sie ein, bevor sie verglühen.</li>
+          <li><b>Fallschirm</b> nur, wenn der Button orange leuchtet. Zu schnell gezogen, reißt er.</li>
+          <li><b>Wind</b> treibt dich vom Pad weg. Neig dich beim Bremsen dagegen.</li>
+          <li><b>Batterie:</b> Ohne Strom fallen Bordcomputer und Lageregler aus. Eingeklappte Paneele laden nicht.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h3>Lageregler</h3>
+        <dl class="help-keys">
+          <dt>Halten</dt><dd>hält die Neigung, die du eingestellt hast</dd>
+          <dt>Retro</dt><dd>senkrecht, beim Bremsen bis 10° gegen die Drift</dd>
+          <dt>Retro 2</dt><dd>gegen die Bewegung und den Wind, bis 20° (experimentell)</dd>
+          <dt>Senkrecht · Aus</dt><dd>immer gerade · keine Hilfe</dd>
+        </dl>
+      </section>
+
+      <section>
+        <h3>Anzeigen</h3>
+        <ul class="help-list">
+          <li><b>Kompass:</b> gelb das Pad, blau woher der Wind kommt, weiß wohin du treibst.</li>
+          <li><b>Burn-Streifen:</b> rot der Bremsweg, blau deine Höhe. Treffen sie sich, zünden.</li>
+          <li><b>Aufsetzbalken</b> unter 80 m: Sinkrate mit den Grenzen 2,5 · 5 · 8 · 15 m/s.</li>
+          <li><b>Am Boden:</b> Ring direkt unter dir, oranges Kreuz dort, wo du aufschlagen würdest.</li>
+        </ul>
+      </section>
     </div>
   </div>
 
