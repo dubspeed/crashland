@@ -11,7 +11,8 @@ export function createWorld(scene, models) {
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffffff, 2.4);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  const mobile = matchMedia('(pointer: coarse)').matches;
+  sun.shadow.mapSize.set(mobile ? 1024 : 2048, mobile ? 1024 : 2048);
   Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25, near: 1, far: 200 });
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.03;
@@ -45,7 +46,7 @@ export function createWorld(scene, models) {
     if (ground) { scene.remove(ground); ground.traverse((o) => { o.geometry?.dispose(); }); }
     ground = new THREE.Group();
 
-    const geo = new THREE.PlaneGeometry(2400, 2400, 200, 200).rotateX(-Math.PI / 2).toNonIndexed();
+    const geo = new THREE.PlaneGeometry(2400, 2400, 140, 140).rotateX(-Math.PI / 2).toNonIndexed();
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) pos.setY(i, terrainHeight(pos.getX(i), pos.getZ(i)));
     const colors = new Float32Array(pos.count * 3);
@@ -105,20 +106,28 @@ export function createWorld(scene, models) {
     ground.add(beam);
     ground.userData.beam = beam;
 
-    // rocks
+    // rocks: one instanced mesh (one draw call) instead of hundreds of separate meshes
     const rnd = (n) => hash(n * 1.7, n * 9.3);
+    let rockMesh = null;
+    models.rock.traverse((o) => { if (o.isMesh && !rockMesh) rockMesh = o; });
+    const rockMat = rockMesh.material.clone();
+    rockMat.color.set(p.ground2).lerp(new THREE.Color(0x888888), 0.35);
+    const rocks = new THREE.InstancedMesh(rockMesh.geometry, rockMat, 220);
+    const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3();
+    let n = 0;
     for (let i = 0; i < 220; i++) {
       const r = 24 + rnd(i) * 700, a = rnd(i + 100) * Math.PI * 2;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       if (Math.abs(z) < 6 && r < 60) continue;
-      const s = 0.6 + rnd(i + 200) ** 2 * (r < 60 ? 1.5 : 9);
-      const rock = models.rock.clone();
-      rock.scale.set(s, s * (0.7 + rnd(i + 300) * 0.6), s);
-      rock.rotation.y = rnd(i + 400) * 6;
-      rock.position.set(x, terrainHeight(x, z) - s * 0.15, z);
-      rock.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); o.material.color.set(p.ground2).lerp(new THREE.Color(0x888888), 0.35); } });
-      ground.add(rock);
+      const k = 0.6 + rnd(i + 200) ** 2 * (r < 60 ? 1.5 : 9);
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd(i + 400) * 6);
+      sc.set(k, k * (0.7 + rnd(i + 300) * 0.6), k);
+      ps.set(x, terrainHeight(x, z) - k * 0.15, z);
+      rocks.setMatrixAt(n++, mtx.compose(ps, q, sc));
     }
+    rocks.count = n;
+    rocks.receiveShadow = true;
+    ground.add(rocks);
     scene.add(ground);
   }
 

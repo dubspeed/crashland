@@ -10,7 +10,19 @@ const $ = (id) => document.getElementById(id);
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+// resolution: phones start at 1.5x, then a simple governor lowers/raises it with the frame time
+const coarse = matchMedia('(pointer: coarse)').matches;
+const maxRatio = Math.min(devicePixelRatio, coarse ? 1.5 : 2);
+let pixelRatio = maxRatio;
+renderer.setPixelRatio(pixelRatio);
+const perf = { acc: 0, n: 0 };
+function governResolution(raw) {
+  perf.acc += raw; perf.n++;
+  if (perf.acc < 1) return;
+  const avg = perf.acc / perf.n; perf.acc = 0; perf.n = 0;
+  const next = avg > 0.024 ? Math.max(0.75, pixelRatio - 0.25) : avg < 0.015 ? Math.min(maxRatio, pixelRatio + 0.25) : pixelRatio;
+  if (next !== pixelRatio) { pixelRatio = next; renderer.setPixelRatio(pixelRatio); renderer.setSize(innerWidth, innerHeight); }
+}
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -42,8 +54,9 @@ function updateMarkers() {
   belowRing.position.set(s.x, S.terrainHeight(s.x, s.z) + 0.15, s.z);
   const alt = Math.max(0, S.altitude(s));
   // predicted touchdown without thrust (gravity, drag, wind, canopy), shared with the HUD compass
-  const pred = S.predictImpact(s);
-  s.pred = pred;
+  // the forward integration is the costliest bit per frame: refresh it ~12 times a second
+  if (!s.pred || (s.predAt ?? -1) > s.t || s.t - s.predAt > 0.08) { s.pred = S.predictImpact(s); s.predAt = s.t; }
+  const pred = s.pred;
   impact.visible = !!pred;
   if (pred) impact.position.set(pred.x, S.terrainHeight(pred.x, pred.z) + 0.2, pred.z);
   const k = Math.min(6, 1 + alt / 120); // grow with height so it stays visible from above
@@ -321,6 +334,7 @@ function readInput(dt) {
 renderer.setAnimationLoop(() => {
   timer.update();
   const raw = timer.getDelta();
+  governResolution(raw);
   const dt = Math.min(raw, 0.05);
   time += dt;
 
@@ -399,4 +413,4 @@ world.setPlanet(planet); world.ready = true; fogBase = scene.fog.far;
 showMenu();
 
 // handle for automated tests
-window.__crashland = { get state() { return s; }, start: (i) => start(S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };
+window.__crashland = { renderer, get state() { return s; }, start: (i) => start(S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };

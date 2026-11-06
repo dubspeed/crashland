@@ -79,6 +79,7 @@ export function createHud() {
     }
   }
 
+  let crewTick = 0;
   const crew = createCrew($('crew-faces'), $('crew-say'));
   let tornAt;
 
@@ -228,7 +229,8 @@ export function createHud() {
     const g = $('v-g'); g.textContent = `${fmt(s.status === 'flying' ? s.gNow : 0, 2)} g`;
     const minLimit = Math.min(...s.crew.map((c) => c.limit));
     cls(g, s.gNow > S.G_LIMIT ? 'bad' : s.gNow > minLimit ? 'warn' : '');
-    crew.update(s, alt, gr.vy === 3, performance.now() / 1000);
+    // faces at ~30 fps are plenty
+    if (!(crewTick = (crewTick + 1) % 2) || s.status !== 'flying') crew.update(s, alt, gr.vy === 3, performance.now() / 1000);
     const pilot = s.crew[0];
     $('tunnel').style.opacity = s.status === 'flying' ? Math.min(0.97, pilot.out ? 0.97 : pilot.stress ** 1.3 * 0.9) : 0;
 
