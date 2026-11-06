@@ -174,7 +174,7 @@ function showMenu() {
 function start(p) {
   if (p !== planet || !world.ready) {
     planet = p;
-    S.setTerrainEdge(p.orbit ? S.ORBIT.edge : null); // before the ground is built from the terrain
+    S.setTerrainEdge(p.orbit ? S.ORBIT.edge : null, p.orbit ? p.R : 0); // before the ground is built from the terrain
     world.setPlanet(p); world.ready = true; fogBase = scene.fog.far;
     camera.far = p.orbit ? 45000 : 6000; camera.updateProjectionMatrix();
   }
@@ -399,7 +399,7 @@ renderer.setAnimationLoop(() => {
   if (mode !== 'menu') hud.update(s, input, cam.yaw);
 
   // orbit level: turn the moon under the lander (frozen once it is down, so debris and wreck stay put)
-  if (planet.orbit && (s.status === 'flying' || mode === 'menu')) world.align(s.x, s.z);
+  if (planet.orbit && (s.status === 'flying' || mode === 'menu')) world.align(s.x, s.z, S.altitude(s));
   if (planet.orbit) {
     const near = Math.min(3, Math.max(0.1, S.altitude(s) / 300));
     if (Math.abs(near - camera.near) > 0.05) { camera.near = near; camera.updateProjectionMatrix(); }

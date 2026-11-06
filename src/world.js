@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { terrainHeight, ORBIT } from './sim.js';
+import { terrainHeight } from './sim.js';
+import { createMoonTerrain } from './moon.js';
 
 function hash(x, z) {
   const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453;
@@ -59,65 +60,22 @@ export function createWorld(scene, models) {
   }
   const _cR = new THREE.Vector3(), _d = new THREE.Vector3(), _q = new THREE.Quaternion();
 
-  /** spherical ground: polar grid around the pad out to the antipode (fine near the pad, coarse far away) */
-  function buildSphereGround(p) {
-    const R = curveR, radii = [0];
-    while (radii.at(-1) < ORBIT.edge + 60) radii.push(radii.at(-1) + 15);
-    while (radii.at(-1) < Math.PI * R) radii.push(Math.min(Math.PI * R, radii.at(-1) * 1.13));
-    const SEG = 128, pts = [];
-    const vtx = (r, k) => { const a = (k / SEG) * Math.PI * 2, x = Math.cos(a) * r, z = Math.sin(a) * r; return [x, terrainHeight(x, z), z]; };
-    for (let i = 0; i < radii.length - 1; i++) {
-      for (let k = 0; k < SEG; k++) {
-        const a = vtx(radii[i], k), b = vtx(radii[i], k + 1), c = vtx(radii[i + 1], k), d = vtx(radii[i + 1], k + 1);
-        if (i > 0) pts.push(a, b, c); // counter-clockwise seen from above
-        pts.push(b, d, c);
-      }
-    }
-    const pos = new Float32Array(pts.length * 3), colors = new Float32Array(pts.length * 3);
-    const c1 = new THREE.Color(p.ground), c2 = new THREE.Color(p.ground2), c = new THREE.Color(), v = new THREE.Vector3();
-    for (let f = 0; f < pts.length; f += 3) {
-      const x = (pts[f][0] + pts[f + 1][0] + pts[f + 2][0]) / 3, z = (pts[f][2] + pts[f + 1][2] + pts[f + 2][2]) / 3;
-      const y = (pts[f][1] + pts[f + 1][1] + pts[f + 2][1]) / 3;
-      const near = Math.hypot(x, z) < ORBIT.edge;
-      if (near) {
-        c.copy(c1).lerp(c2, Math.min(1, Math.max(0, y / 22 + (hash(x, z) - 0.5) * 0.5)));
-        c.offsetHSL(0, 0, (hash(z, x) - 0.5) * 0.06);
-      }
-      for (let k = 0; k < 3; k++) {
-        if (!near) {
-          // far away: darker "maria" and lighter highlands, coloured per vertex so the edges stay smooth
-          curveDir(pts[f + k][0], pts[f + k][2], v);
-          const n = Math.sin(v.x * 5.1 + 0.7) * Math.cos(v.z * 4.3 - 0.4) + 0.6 * Math.sin(v.y * 7.7 + v.x * 3.1) + 0.3 * Math.sin(v.z * 13 - v.y * 9);
-          const m = Math.min(1, Math.max(0, (n - 0.15) * 2.2));
-          c.copy(c1).lerp(c2, m * 0.9).offsetHSL(0, 0, (1 - m) * 0.08 - m * 0.1);
-        }
-        curvePoint(pts[f + k][0], pts[f + k][1], pts[f + k][2], v).toArray(pos, (f + k) * 3);
-        c.toArray(colors, (f + k) * 3);
-      }
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    geo.computeVertexNormals();
-    // beyond the landing zone: smooth sphere normals (flat-shaded long polar triangles look like wedges)
-    const nrm = geo.attributes.normal;
-    for (let i = 0; i < pts.length; i++) {
-      if (Math.hypot(pts[i][0], pts[i][2]) <= ORBIT.edge) continue;
-      curveDir(pts[i][0], pts[i][2], v);
-      nrm.setXYZ(i, v.x, v.y, v.z);
-    }
-    return geo;
-  }
+  let moon = null; // orbit level terrain (GPU-displaced grid that follows the lander)
 
   function buildGround(p) {
     if (ground) { scene.remove(ground); ground.traverse((o) => { o.geometry?.dispose(); }); }
     ground = new THREE.Group();
 
     curveR = p.orbit ? p.R : 0;
-    const geo = curveR ? buildSphereGround(p) : flatGround(p);
-    const terrain = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: !curveR, roughness: 0.95 }));
-    terrain.receiveShadow = true;
-    ground.add(terrain);
+    moon = null;
+    if (curveR) {
+      moon = createMoonTerrain(THREE, p.R, p.edge, p.ground, p.ground2);
+      ground.add(moon.mesh);
+    } else {
+      const terrain = new THREE.Mesh(flatGround(p), new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 }));
+      terrain.receiveShadow = true;
+      ground.add(terrain);
+    }
     buildPad(p);
   }
 
@@ -215,7 +173,7 @@ export function createWorld(scene, models) {
     stars.scale.setScalar(p.orbit ? 10 : 1);
     hemi.color.set(p.sky).lerp(new THREE.Color(0xffffff), 0.6);
     hemi.groundColor.set(p.ground2);
-    hemi.intensity = p.stars ? 0.6 : 1.0;
+    hemi.intensity = p.orbit ? 0.35 : p.stars ? 0.6 : 1.0;
     sun.color.set(p.sun);
     stars.material.opacity = p.stars ? 1 : p.id === 'brontes' ? 0.45 : 0;
     stars.visible = stars.material.opacity > 0;
@@ -236,7 +194,9 @@ export function createWorld(scene, models) {
       if (ws > 0.3) sock.userData.yawTarget = -Math.atan2(wind.z, wind.x);
       sock.rotation.set(0, sock.userData.yawTarget ?? 0, 0.15 + k * 1.35 + Math.sin(t * 7) * 0.05 * k, 'YXZ');
     }
-    sun.position.set(focus.x + 30, focus.y + 60, focus.z + 25);
+    // orbit level: low sun (~20°) so the craters get lit rims and shadowed bowls
+    if (curveR) sun.position.set(focus.x + 70, focus.y + 32, focus.z + 45);
+    else sun.position.set(focus.x + 30, focus.y + 60, focus.z + 25);
     sun.target.position.copy(focus);
     stars.position.copy(camera.position);
     // wrap dust inside a box around the camera
@@ -256,8 +216,9 @@ export function createWorld(scene, models) {
   /** orbit level: turn the moon under the lander so the ground point below it sits at (x, 0, z) facing up.
    *  The lander and camera keep using the flat sim coordinates. */
   const _g = new THREE.Vector3();
-  function align(x, z) {
+  function align(x, z, alt = 0) {
     if (!ground) return;
+    moon?.center(x, z, alt);
     if (!curveR) { ground.position.set(0, 0, 0); ground.quaternion.identity(); return; }
     ground.quaternion.setFromUnitVectors(curveDir(x, z, _d), UP);
     curvePoint(x, 0, z, _g).applyQuaternion(ground.quaternion);

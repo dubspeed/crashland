@@ -1,3 +1,4 @@
+import { moonRelief } from './moon.js';
 // Flight model in 3D: position x/y/z (y up), attitude as two tilts:
 //   a = roll about the z axis (positive tips the top towards -x), w = its rate
 //   b = pitch about the x axis (positive tips the top towards +z), wb = its rate
@@ -74,7 +75,7 @@ export function grade(value, limits) {
 
 // orbit level (experimental): a small moon, start on a circular orbit, deorbit and land on the target
 export const ORBIT = { R: 10000, alt: 1500, downrange: 6000, edge: 1250 };
-export const ORBIT_PLANET = { id: 'luna-orbit', name: 'Luna Orbit', orbit: true, R: ORBIT.R, g: 1.62, alt: ORBIT.alt, vy: 0, vx: 0, tilt: 0, solar: 1.0, fuel: 430,
+export const ORBIT_PLANET = { id: 'luna-orbit', name: 'Luna Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 1.62, alt: ORBIT.alt, vy: 0, vx: 0, tilt: 0, solar: 1.0, fuel: 430,
   rho: 0, H: 1, atmo: 'keine', drift: 0, text: 'Start im Orbit: erst die Bahngeschwindigkeit abbauen, dann landen.',
   sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true };
 /** circular orbit speed at height y above the surface */
@@ -139,15 +140,17 @@ function noise(x, z) {
        + Math.sin(x * 0.13 - z * 0.11 + 2.1) * 2;
 }
 // orbit level: the landing-zone relief fades out to the smooth sphere beyond this radius (null = endless relief)
-let terrainEdge = null;
-export function setTerrainEdge(r) { terrainEdge = r; }
+let terrainEdge = null, terrainR = 0;
+/** orbit level: landing-zone relief fades out at `r`, the moon's craters and hills (radius R) take over */
+export function setTerrainEdge(r, R = 0) { terrainEdge = r; terrainR = R; }
 export function terrainHeight(x, z = 0) {
   const r = Math.hypot(x, z);
   if (terrainEdge && r > terrainEdge - 250) {
     const e = Math.min(1, (r - (terrainEdge - 250)) / 250);
-    if (e >= 1) return 0;
+    const outer = terrainR ? moonRelief(x, z, terrainR, terrainEdge) : 0;
+    if (e >= 1) return outer;
     const t = Math.min(1, Math.max(0, (r - PAD_R) / 60)), blend = t * t * (3 - 2 * t);
-    return (noise(x, z) + 6) * blend * (1 - e * e * (3 - 2 * e));
+    return (noise(x, z) + 6) * blend * (1 - e * e * (3 - 2 * e)) + outer;
   }
   const t = Math.min(1, Math.max(0, (r - PAD_R) / 60));
   const blend = t * t * (3 - 2 * t);
@@ -212,7 +215,7 @@ export function predictImpact(s) {
   let x = s.x, y = s.y, z = s.z, vx = s.vx, vy = s.vy, vz = s.vz, t = 0;
   const h = s.planet.orbit ? 0.2 : 0.1;
   for (let i = 0, n = s.planet.orbit ? 2000 : 1200; i < n; i++) {
-    const ground = terrainHeight(x, z);
+    const ground = s.planet.orbit && y > 200 ? -1e9 : terrainHeight(x, z);
     if (y <= ground) return { x, z, t };
     const alt = y - ground;
     const w = windAt(s, alt, s.t + t);
