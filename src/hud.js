@@ -351,7 +351,8 @@ export function createHud() {
     const al = $('alert');
     let msg = null, color = 'var(--bad)', pulse = true;
     if (s.blackout) msg = 'PILOTIN BEWUSSTLOS – KEINE STEUERUNG';
-    else if (s.gNow > S.G_LIMIT) msg = 'G-LAST ZU HOCH – SCHUB DROSSELN';
+    // name the cause: only the engine can be throttled; air drag or the canopy's jerk can't
+    else if (s.gNow > S.G_LIMIT) msg = s.throttle > 0 ? 'G-LAST ZU HOCH – SCHUB DROSSELN' : s.chute === 'open' ? 'G-LAST ZU HOCH – SCHIRM REISST AN' : 'G-LAST ZU HOCH – LUFTWIDERSTAND';
     else if (s.gNow > minLimit && s.throttle > 0) { msg = 'G-LAST: CREW LEIDET'; color = 'var(--warn)'; pulse = false; }
     else if (recentLoss(s)) msg = `${recentLoss(s).toUpperCase()} VERGLÜHT`;
     else if (s.chute === 'torn' && s.t - (tornAt ??= s.t) < 3) msg = 'FALLSCHIRM GERISSEN';
@@ -361,7 +362,13 @@ export function createHud() {
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
     else if (p.deorbitAt && s.pred && alt > 4000 && Math.hypot(s.pred.x, s.pred.z) < 60 && Math.hypot(s.vx, s.vz) > 80) { msg = s.throttle > 0 ? 'KREUZ AUF DEM PAD – SCHUB AUS' : 'KURS STIMMT – WIEDEREINTRITT, RETRO HALTEN'; color = 'var(--ok)'; pulse = s.throttle > 0; }
     else if (s.fineBurn) { msg = 'FEINREGELUNG – KREUZ WANDERT ZUM PAD'; color = 'var(--cyan)'; pulse = false; }
-    else if (S.brakeForChute(s)) { msg = s.throttle > 0 ? 'BREMSEN … BIS DER SCHIRM GEHT' : 'SCHUB: FÜR DEN SCHIRM BREMSEN'; color = 'var(--amber)'; pulse = s.throttle === 0; }
+    else if (S.brakeForChute(s)) {
+      // hint only: the thrust that keeps the crew below their G limit (the air already brakes hard)
+      const rec = S.chuteBrakeLimit(s), pct = Math.round(rec * 20) * 5;
+      const how = pct >= 5 ? ` · SCHUB ≤ ${pct} %` : ' · LUFT BREMST GENUG';
+      msg = (s.throttle > 0 ? 'BREMSEN … BIS DER SCHIRM GEHT' : 'FÜR DEN SCHIRM BREMSEN') + how;
+      color = 'var(--amber)'; pulse = s.throttle === 0;
+    }
     else if (S.orbitGuide(s)) {
       // orbit level: count down to the braking burn, then keep burning until the orbit speed is gone
       const og = S.orbitGuide(s);

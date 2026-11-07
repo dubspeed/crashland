@@ -404,6 +404,14 @@ export function brakeForChute(s) {
   const { m } = massProps(s);
   return (m * p.g) / BODY_CDA > CHUTE_QMAX * CHUTE_SAFE && altitude(s) < CHUTE_MAX_ALT(p) && s.vy < -10 && !chuteSafe(s);
 }
+/** hint for that braking burn: the thrust limit (0..1) that keeps the felt load (engine + air) just below
+ *  the most sensitive crew member's limit. Near 0 means the air alone already brakes that hard. */
+export function chuteBrakeLimit(s) {
+  const { m } = massProps(s);
+  const gMax = Math.min(...s.crew.map((c) => c.limit)) * 0.95 * G0;
+  const fromAir = s.drag / m;
+  return Math.max(0, Math.min(1, ((gMax - fromAir) * m) / F_MAX));
+}
 /** safe to open the chute now: pressure low enough and not about to rise past the limit */
 export function chuteSafe(s) {
   return s.q + Math.max(0, s.qRate ?? 0) * 3 <= CHUTE_QMAX * CHUTE_SAFE; // and still below the limit in 3 s

@@ -32,7 +32,7 @@ const CASES = [
   ['luna-orbit', 0, 1, ['BREMSEN IN', 'BREMSEN ·']],
   ['mars-orbit', 0, 1, ['BREMSEN IN', 'BREMSEN ·']],
   ['terra-orbit', 0, 1, ['BREMSEN IN', 'KURS STIMMT']],
-  ['brontes-orbit', 0, 1, ['BREMSEN IN', 'KURS STIMMT']], // 'FÜR DEN SCHIRM' is hidden behind G and heat warnings
+  ['brontes-orbit', 0, 1, ['BREMSEN IN', 'KURS STIMMT']], // the chute braking burn lasts < 1 s: may not show at 10x
 ];
 const pilotSrc = readFileSync(new URL('./pilots.mjs', import.meta.url), 'utf8').replace(/^export /m, '');
 
