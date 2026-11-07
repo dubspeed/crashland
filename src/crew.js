@@ -236,7 +236,7 @@ export function createCrew(container, sayEl) {
     if (s.status !== 'flying') { sayEl.textContent = ''; return; }
     if (t < 3) say('start', ...(s.wind.speed >= 15 && s.planet.rho > 0 ? ['kira', `${s.wind.name} heute. Gegenhalten!`] : LINES.start), t);
     if (s.planet.rho > 0 && s.wind.speed && t > 4 && Math.abs(s.windNow) > s.wind.speed * 1.3) say(`gust-${Math.floor(t / 15)}`, 'ines', 'Böe!', t);
-    if (s.panels === 'in' && s.heatFlux < 4 && s.t > 8 && s.battery < 70 && !(s.lost.solarL && s.lost.solarR)) say('unfold', 'bo', 'Hitze ist vorbei. Paneele wieder ausklappen, die Batterie leert sich.', t);
+    if (s.panels === 'in' && s.heatFlux < 4 && s.t > 8 && s.battery < 70 && (S.hasPart(s, 'solarL') || S.hasPart(s, 'solarR'))) say('unfold', 'bo', 'Hitze ist vorbei. Paneele wieder ausklappen, die Batterie leert sich.', t);
     else if (t > 4 && t < 8 && s.gNow < 0.3 && !said.has('ignite')) say('float', ...LINES.float, t);
     if (s.throttle > 0) say('ignite', ...LINES.ignite, t);
     if (prev && s.chute !== prev.chute) {
@@ -244,7 +244,7 @@ export function createCrew(container, sayEl) {
       if (s.chute === 'torn') say('chute-torn', ...LINES.chuteTorn, t);
       if (s.chute === 'cut') say('chute-cut', ...LINES.chuteCut, t);
     }
-    const solarHot = s.panels === 'out' && ['solarL', 'solarR'].some((id) => !s.lost[id] && s.temp[id] > S.COMPONENTS.find((c) => c.id === id).heat[1] * 0.35);
+    const solarHot = s.panels === 'out' && ['solarL', 'solarR'].some((id) => S.hasPart(s, id) && s.temp[id] > s.spec.comps.find((c) => c.id === id).heat[1] * 0.35);
     if (solarHot) say('heat', ...LINES.heat, t);
     for (const id of Object.keys(s.lost)) if (LINES.lost[id]) say(`lost-${id}`, ...LINES.lost[id], t);
     s.crew.forEach((c, i) => {

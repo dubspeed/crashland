@@ -1,5 +1,14 @@
 import * as THREE from 'three';
-import { COMPONENTS, massProps } from './sim.js';
+import { COMPONENTS, SHIELD, makeSpec, massProps } from './sim.js';
+
+/** heat shield: a dark ablative cone ring around the nozzle (no Blender model needed) */
+function shieldModel() {
+  const prof = [[0.62, 0.16], [0.7, 0.18], [1.78, -0.02], [1.8, -0.1], [1.7, -0.12], [0.6, 0.06]].map(([r, y]) => new THREE.Vector2(r, y));
+  const mesh = new THREE.Mesh(new THREE.LatheGeometry(prof, 28), new THREE.MeshStandardMaterial({ color: 0x3a2b22, roughness: 0.95, metalness: 0.05, flatShading: true }));
+  mesh.castShadow = true;
+  const g = new THREE.Group(); g.add(mesh);
+  return g;
+}
 
 function checkerTexture() {
   const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -13,8 +22,8 @@ function checkerTexture() {
 export function createShip(models) {
   const group = new THREE.Group();
   const parts = {};
-  for (const c of COMPONENTS) {
-    const o = models[c.model].clone(true);
+  for (const c of [...COMPONENTS, SHIELD]) {
+    const o = c.model === 'shield' ? shieldModel() : models[c.model].clone(true);
     o.position.set(...c.pos);
     if (c.mirror) o.rotation.y = Math.PI;
     o.userData.component = c;
@@ -56,7 +65,7 @@ export function createShip(models) {
   canopy.position.y = 0.2;
   chuteRig.add(canopy);
   group.add(chuteRig);
-  let canopyAlpha = 1;
+  let canopyAlpha = 1, rigScale = 1;
   let looseChute = null; // canopy flying off after cut/tear: { v, t, torn }
 
   // heat: per-material base emissive so glowing can blend on top of it
@@ -87,20 +96,30 @@ export function createShip(models) {
   const screenMats = [];
   parts.computer.traverse((m) => { if (m.isMesh && m.material.name === 'Screen') screenMats.push(m.material); });
 
-  function reset() {
-    for (const c of COMPONENTS) {
+  /** rebuild for a lander spec: parts that are not built in leave the group (so debris skips them),
+   *  options change the size of engine, tanks, battery, legs and canopy */
+  function reset(spec = makeSpec()) {
+    const b = spec.build;
+    for (const c of [...COMPONENTS, SHIELD]) {
       const o = parts[c.id];
+      if (!spec.ids.has(c.id)) { o.parent?.remove(o); continue; }
       if (o.parent !== group) group.add(o);
       o.position.set(...c.pos);
       o.rotation.set(0, c.mirror ? Math.PI : 0, 0);
       o.visible = true;
       o.scale.set(1, 1, 1);
     }
+    const sc = (id, x, y = x, z = x) => spec.ids.has(id) && parts[id].scale.set(x, y, z);
+    if (b.engine === 'strong') sc('engine', 1.14, 1.08); else if (b.engine === 'eco') sc('engine', 0.88, 0.95);
+    if (b.tanks !== 'std') { const k = b.tanks === 'large' ? [1.16, 1.12] : [0.86, 0.88]; sc('tankL', k[0], k[1]); sc('tankR', k[0], k[1]); }
+    if (b.power !== 'panels') sc('battery', 1.35, 1.3);
+    if (b.legs === 'wide') sc('legs', 1.25, 1, 1.25); else if (b.legs === 'light') sc('legs', 0.9, 1, 0.9);
+    rigScale = b.chute === 'large' ? 1.24 : 1;
     group.userData.sink = 0;
     group.userData.physics = false;
     group.quaternion.identity();
     if (chuteRig.parent !== group) group.add(chuteRig);
-    chuteRig.position.set(0, 5.72, 0); chuteRig.rotation.set(0, 0, 0); chuteRig.scale.set(1, 1, 1);
+    chuteRig.position.set(0, 5.72, 0); chuteRig.rotation.set(0, 0, 0); chuteRig.scale.setScalar(rigScale);
     chuteRig.visible = false; looseChute = null;
     for (const l of loose) l.obj.parent?.remove(l.obj);
     loose.length = 0;
@@ -194,7 +213,7 @@ export function createShip(models) {
 
   function updateHeat(s, dt) {
     if (!scene && group.parent) { scene = group.parent; scene.add(embers); }
-    for (const c of COMPONENTS) {
+    for (const c of s.spec.comps) {
       if (!c.heat) continue;
       const part = parts[c.id];
       const k = Math.min(1, Math.max(0, (s.temp[c.id] - 140) / (c.heat[1] - 140)));

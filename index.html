@@ -106,7 +106,18 @@
       <div class="wind-row"><span class="wind-label">Treibstoff</span><div id="fuel-select" class="opt-select" role="radiogroup" aria-label="Treibstoffvorrat"></div></div>
       <div class="wind-row"><span class="wind-label">Hinweise</span><div id="hint-select" class="opt-select" role="radiogroup" aria-label="Hinweise im HUD"></div></div>
       <div class="wind-row"><span class="wind-label">Computer</span><div id="auto-select" class="opt-select" role="radiogroup" aria-label="Automatische Feinregelung beim Deorbit"></div></div>
+      <div class="wind-row"><span class="wind-label">Lander</span><button id="build-btn" class="build-btn"></button></div>
       <div id="planets"></div>
+    </div>
+  </div>
+
+  <div id="builder" class="overlay" hidden>
+    <div class="sheet help-sheet builder-sheet" role="dialog" aria-modal="true" aria-labelledby="builder-title">
+      <div class="help-top"><h2 id="builder-title">Lander bauen</h2><button id="builder-close" class="help-close" aria-label="Fertig">×</button></div>
+      <p class="builder-lead">Jede Wahl ändert Masse, Schwerpunkt und Verhalten. Der Lander im Hintergrund zeigt deinen Bau.</p>
+      <div id="build-slots"></div>
+      <div id="build-stats"></div>
+      <div class="row"><button id="build-reset">Standard</button><button id="build-done" class="primary">Fertig</button></div>
     </div>
   </div>
 
@@ -117,6 +128,7 @@
       <section>
         <h3>Ziel</h3>
         <p>Dein Lander fällt antriebslos auf den Planeten. Zünde das Triebwerk so spät wie möglich und so kurz wie nötig: der <b>Suicide Burn</b>. Der Bordcomputer zeigt dir am Burn-Streifen, wann es so weit ist. Setz auf dem Landeplatz auf, langsam, gerade und ohne Seitendrift.</p>
+        <p><b>Lander bauen</b> im Startmenü: Triebwerk, Tanks, Energie, Fallschirm, Hitzeschild und Landebeine wählen. Jede Wahl ändert Masse, Schwerpunkt und Verhalten, die Tabelle zeigt Δv und Schub/Gewicht pro Planet.</p>
         <p><b>Schwierigkeit</b> im Startmenü: Wind, <b>Treibstoff</b> (knapp / normal / reichlich), <b>Hinweise</b> (Tipps wie „Bremsen in …“, „Fallschirm möglich“, empfohlener Schub; Warnungen bleiben immer an) und <b>Computer</b> (automatische Feinregelung beim Deorbit, sonst regelst du selbst nach dem Hinweis). Schwerer gibt mehr Punkte.</p>
         <p><b>Luna Orbit</b> (neu, Prototyp): du startest im Orbit mit rund 119 m/s. Der Lageregler steht auf Retro und richtet das Triebwerk gegen die Flugrichtung. Warte auf <b>JETZT BREMSEN</b>, gib Schub, bis das orange Kreuz auf dem Landeplatz liegt, dann fallen lassen und wie gewohnt landen. Zu spät bremsen heißt: übers Ziel hinaus. <b>Mars Orbit</b> ist dasselbe mit dünner Luft: sie bremst mit, wärmt den Lander (Paneele einklappen) und der Schirm spart etwas Treibstoff. <b>Terra Orbit</b> und <b>Brontes Orbit</b> sind Wiedereintritte: nur kurz bremsen (der Bordcomputer regelt fein, bis das Kreuz auf dem Landeplatz liegt), Lageregler auf Retro lassen, dann schützt das Triebwerk vorn den Rest vor der Hitze. Wenn das Kreuz nah am Ziel ist, mit wenig Schub fein nachregeln (der Hinweis sagt, wie viel) und danach die Schubgrenze wieder hochsetzen. Danach Schirm, auf Brontes vorher mit Schub für den Schirm abbremsen.</p>
       </section>

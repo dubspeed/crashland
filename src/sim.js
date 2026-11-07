@@ -154,11 +154,11 @@ export const HINTS_OFF_BONUS = 1.15; // score multiplier without hints
 export const AUTO_FINE_BONUS = 0.9;  // score multiplier with the automatic deorbit fine control
 export const DEFAULT_SETTINGS = { fuel: 1, hints: true, autoFine: false };
 
-export function newRound(planet, wind = 0, seed = 1, settings = {}) {
+export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) {
   const rnd = seededRandom(seed);
   setupTerrain(planet);
   const set = { ...DEFAULT_SETTINGS, ...settings };
-  const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: FUEL_LEVELS[set.fuel]?.k ?? 1 });
+  const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: FUEL_LEVELS[set.fuel]?.k ?? 1, build });
   s.settings = set;
   return s;
 }
@@ -173,7 +173,9 @@ export function act(s, name) {
  *  0.1 s of sim time, independent of the frame rate, so a round replays exactly) */
 export function advance(s, input) {
   s.stepN = s.stepN ?? 0;
-  if (s.status === 'flying' && s.stepN % 12 === 0) s.pred = predictImpact(s);
+  // during the deorbit fine control the cross moves hundreds of metres per m/s: refresh it 4x as often
+  const fine = s.planet.deorbitAt && s.throttle > 0 && s.pred && Math.hypot(s.pred.x, s.pred.z) < 3000 && s.y > 4000;
+  if (s.status === 'flying' && s.stepN % (fine ? 3 : 12) === 0) s.pred = predictImpact(s);
   step(s, input, STEP);
   s.stepN++;
 }
@@ -195,7 +197,7 @@ export function orbitGuide(s) {
   const vh = Math.hypot(s.vx, s.vz);
   if (vh < 15) return null;
   const { m } = massProps(s);
-  const acc = (F_MAX * Math.max(s.limit, 0.05)) / m;
+  const acc = (s.spec.fMax * Math.max(s.limit, 0.05)) / m;
   const k = s.planet.R / (s.planet.R + s.y);
   const dist = ((vh * vh) / (2 * acc)) * k;
   const along = -(s.x * s.vx + s.z * s.vz) / vh; // pad distance ahead along the track
@@ -238,6 +240,66 @@ export const COMPONENTS = [
   { id: 'legs',     name: 'Landebeine',       model: 'legs',     mass: 380,  pos: [0, 0, 0], com: [0, 0.9], heat: [0.9, 950] },
 ];
 
+// ---------- lander builder: six slots, each option changes parts, masses and performance ----------
+export const BUILD_SLOTS = [
+  { id: 'engine', name: 'Triebwerk', options: [
+    { id: 'std', name: 'Standard', desc: '185 kN · Isp 290 s' },
+    { id: 'strong', name: 'Stark', desc: '240 kN · Isp 280 s · +150 kg' },
+    { id: 'eco', name: 'Effizient', desc: '140 kN · Isp 320 s · −70 kg' }] },
+  { id: 'tanks', name: 'Tanks', options: [
+    { id: 'small', name: 'Klein', desc: '70 % Treibstoff · −100 kg' },
+    { id: 'std', name: 'Standard', desc: '100 % Treibstoff' },
+    { id: 'large', name: 'Groß', desc: '135 % Treibstoff · +120 kg' }] },
+  { id: 'power', name: 'Energie', options: [
+    { id: 'panels', name: 'Solarpaneele', desc: 'laden, aber hitzeempfindlich' },
+    { id: 'battery', name: 'Große Batterie', desc: 'keine Paneele · 2,2× Kapazität · +30 kg' },
+    { id: 'both', name: 'Beides', desc: 'Paneele + große Batterie · +250 kg' }] },
+  { id: 'chute', name: 'Fallschirm', options: [
+    { id: 'none', name: 'Keiner', desc: '−120 kg' },
+    { id: 'std', name: 'Standard', desc: '110 m² · 70 kN' },
+    { id: 'large', name: 'Groß', desc: '170 m² · 95 kN · +80 kg' }] },
+  { id: 'shield', name: 'Hitzeschild', options: [
+    { id: 'none', name: 'Keiner', desc: '' },
+    { id: 'shield', name: 'Hitzeschild', desc: 'schützt, wenn das Triebwerk vorn ist · +240 kg' }] },
+  { id: 'legs', name: 'Landebeine', options: [
+    { id: 'light', name: 'Leicht', desc: 'weniger Toleranz · −120 kg' },
+    { id: 'std', name: 'Standard', desc: '' },
+    { id: 'wide', name: 'Breit', desc: 'mehr Drift & Neigung · +120 kg' }] },
+];
+export const DEFAULT_BUILD = { engine: 'std', tanks: 'std', power: 'panels', chute: 'std', shield: 'none', legs: 'std' };
+export const SHIELD = { id: 'shield', name: 'Hitzeschild', model: 'shield', mass: 240, pos: [0, 0.95, 0], heat: [1.2, 3000, 6] };
+
+/** the lander as built: parts (masses, which exist) and performance figures. The default build gives
+ *  exactly the original constants, so its flights are unchanged. */
+export function makeSpec(build = {}) {
+  const b = { ...DEFAULT_BUILD, ...build };
+  const eng = { std: [F_MAX, ISP, 950], strong: [240000, 280, 1100], eco: [140000, 320, 880] }[b.engine] ?? [F_MAX, ISP, 950];
+  const tank = { small: [0.7, 150], std: [1, 200], large: [1.35, 260] }[b.tanks] ?? [1, 200];
+  const legs = { light: [260, 0.8, 1, 1, 0.65], std: [380, 1, 1, 1, 0.8], wide: [500, 1, 1.4, 1.3, 1.1] }[b.legs] ?? [380, 1, 1, 1, 0.8];
+  const comps = [];
+  for (const c0 of COMPONENTS) {
+    if ((c0.id === 'solarL' || c0.id === 'solarR') && b.power === 'battery') continue;
+    if (c0.id === 'chute' && b.chute === 'none') continue;
+    const c = { ...c0 };
+    if (c.id === 'engine') c.mass = eng[2];
+    if (c.id === 'tankL' || c.id === 'tankR') c.mass = tank[1];
+    if (c.id === 'battery' && b.power !== 'panels') c.mass = b.power === 'battery' ? 670 : 670; // big pack
+    if (c.id === 'chute' && b.chute === 'large') c.mass = 200;
+    if (c.id === 'legs') c.mass = legs[0];
+    comps.push(c);
+  }
+  if (b.shield === 'shield') comps.push({ ...SHIELD });
+  return {
+    build: b, comps, ids: new Set(comps.map((c) => c.id)),
+    fMax: eng[0], isp: eng[1], tankK: tank[0], batK: b.power === 'panels' ? 1 : 2.2,
+    chuteCda: b.chute === 'large' ? 170 : CHUTE_CDA, chuteFmax: b.chute === 'large' ? 95000 : CHUTE_FMAX,
+    land: { vy: LAND.vy.map((v) => v * legs[1]), vx: LAND.vx.map((v) => v * legs[2]), tilt: LAND.tilt.map((v) => v * legs[3]) },
+    uneven: legs[4],
+  };
+}
+/** a part is there: built in and not destroyed */
+export const hasPart = (s, id) => s.spec.ids.has(id) && !s.lost[id];
+
 // ---------- terrain ----------
 const PAD_R = 70;
 function noise(x, z) {
@@ -272,6 +334,8 @@ export function createState(planet, opts = {}) {
   const off = planet.rho > 0 ? lvl.speed * planet.drift : 0;
   const t0 = (planet.tilt * Math.PI) / 180, b0 = opts.pitch0 ?? (rnd() - 0.5) * 0.06;
   const side = rnd() < 0.5 ? -1 : 1;
+  const spec = makeSpec(opts.build);
+  const fuelK = (opts.fuelK ?? 1) * spec.tankK;
   if (planet.orbit) {
     // circular orbit, lying on the side with the engine pointing retrograde, burn limited to a crew-friendly 50 %
     const v = orbitSpeed(planet, planet.alt);
@@ -288,11 +352,11 @@ export function createState(planet, opts = {}) {
     x: -Math.cos(heading) * off, z: -Math.sin(heading) * off, y: planet.alt,
     vx: planet.vx, vy: planet.vy, vz: opts.vz0 ?? side * Math.abs(planet.vx) * 0.7,
     a: t0, w: 0, b: b0, wb: 0,
-    fuel0: planet.fuel * (opts.fuelK ?? 1), fuelL: (planet.fuel * (opts.fuelK ?? 1)) / 2, fuelR: (planet.fuel * (opts.fuelK ?? 1)) / 2, battery: BAT_CAP,
+    spec, fuel0: planet.fuel * fuelK, fuelL: (planet.fuel * fuelK) / 2, fuelR: (planet.fuel * fuelK) / 2, battery: BAT_CAP,
     limit: 1, throttle: 0, sas: 'hold', holdA: t0, holdB: b0, sasI: 0, sasIB: 0,
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
     crew: CREW.map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
-    torqueCom: 0, torqueComB: 0, sasTorque: 0, temp: Object.fromEntries(COMPONENTS.map((c) => [c.id, T_AMB])), lost: {}, events: [],
+    torqueCom: 0, torqueComB: 0, sasTorque: 0, temp: Object.fromEntries(spec.comps.map((c) => [c.id, T_AMB])), lost: {}, events: [],
     panels: 'out', panelFold: 0,
     chute: 'stowed', chuteT: 0, chuteInflate: 0, chuteOpen: 0, q: 0, maxQ: 0, drag: 0,
     status: 'flying', reason: '', touch: null, log: [],
@@ -301,7 +365,7 @@ export function createState(planet, opts = {}) {
 
 export function massProps(s) {
   let m = 0, mx = 0, my = 0, mz = 0;
-  const parts = COMPONENTS.filter((c) => !s.lost?.[c.id]).map((c) => {
+  const parts = (s.spec?.comps ?? COMPONENTS).filter((c) => !s.lost?.[c.id]).map((c) => {
     const mass = c.mass + (c.fuel ? s[c.fuel] : 0);
     const [px, py, pz = 0] = c.com || c.pos;
     m += mass; mx += mass * px; my += mass * py; mz += mass * pz;
@@ -320,8 +384,9 @@ export function predictImpact(s, path = null) {
   let chuteK = s.chute === 'open' && s.planet.rho > 0 ? s.chuteInflate : 0;
   // orbit levels with thick air: assume the chute opens as soon as it is safe (that is what the HUD asks
   // for), otherwise the cross lies kilometres long and a burn "until the cross is on the pad" falls short
-  const planChute = s.planet.orbit && s.planet.rho > 0.5 && s.chute === 'stowed' && !s.lost.chute;
+  const planChute = s.planet.orbit && s.planet.rho > 0.5 && s.chute === 'stowed' && hasPart(s, 'chute');
   const mustBrake = (m * s.planet.g) / BODY_CDA > CHUTE_QMAX * CHUTE_SAFE; // terminal pressure above the canopy limit
+  const gSafe = Math.min(...s.crew.map((c) => c.limit)) * 0.95 * G0;
   let lastQ = Infinity;
   let x = s.x, y = s.y, z = s.z, vx = s.vx, vy = s.vy, vz = s.vz, t = 0;
   const h = s.planet.orbit ? 0.2 : 0.1;
@@ -340,8 +405,10 @@ export function predictImpact(s, path = null) {
     if (planChute && chuteK === 0 && vy < -10 && alt < CHUTE_MAX_ALT(s.planet) && q + Math.max(0, qRate) * 3 <= CHUTE_QMAX * CHUTE_SAFE) chuteK = 1;
     lastQ = q;
     // ...and until then the braking burn the HUD asks for (current thrust limit, against the airflow)
-    const brake = planChute && mustBrake && chuteK === 0 && vy < -10 && alt < CHUTE_MAX_ALT(s.planet) ? (F_MAX * s.limit) / m : 0;
-    const Fd = q * BODY_CDA + Math.min(q * CHUTE_CDA * chuteK, chuteK > 0 ? CHUTE_FMAX : 0);
+    const Fd = q * BODY_CDA + Math.min(q * s.spec.chuteCda * chuteK, chuteK > 0 ? s.spec.chuteFmax : 0);
+    // the braking burn at the thrust the HUD recommends (crew-safe together with the air drag)
+    const brake = planChute && mustBrake && chuteK === 0 && vy < -10 && alt < CHUTE_MAX_ALT(s.planet)
+      ? Math.max(0.05 * s.spec.fMax / m, Math.min(s.spec.fMax / m, gSafe - Fd / m)) : 0; // not the current limiter
     const k = v > 0.01 ? -Fd / v / m - brake / v : 0;
     const cv = curvature(s.planet, y, vx, vy, vz);
     vx += (k * rx + (cv ? cv.ax : 0)) * h; vy += (k * vy - (cv ? cv.gy : s.planet.g)) * h; vz += (k * rz + (cv ? cv.az : 0)) * h;
@@ -373,7 +440,7 @@ export function togglePanels(s) {
 /** P key / button: deploy the stowed chute, or cut an open one. Returns what happened. */
 export function toggleChute(s) {
   if (s.status !== 'flying') return null;
-  if (s.chute === 'stowed' && !s.lost.chute) {
+  if (s.chute === 'stowed' && hasPart(s, 'chute')) {
     s.chute = 'open'; s.chuteT = 0;
     return s.planet.rho > 0 ? 'open' : 'useless';
   }
@@ -401,7 +468,7 @@ export function timeToBurn(s) {
     probe.vy = -v; probe.y = s.y - (altitude(s) - alt);
     if (alt <= burnAltitude(probe)) return t;
     const q = 0.5 * rho * v * v;
-    const drag = q * BODY_CDA + Math.min(q * CHUTE_CDA * chuteK, chuteK > 0 ? CHUTE_FMAX : 0);
+    const drag = q * BODY_CDA + Math.min(q * s.spec.chuteCda * chuteK, chuteK > 0 ? s.spec.chuteFmax : 0);
     v += (s.planet.g - drag / m) * h;
     alt -= v * h; t += h;
   }
@@ -422,7 +489,7 @@ export function fineHint(s) {
 /** thick-air orbit levels where the canopy is never safe at terminal speed: brake with the engine first */
 export function brakeForChute(s) {
   const p = s.planet;
-  if (!(p.orbit && p.rho > 0.5) || s.chute !== 'stowed' || s.lost.chute) return false;
+  if (!(p.orbit && p.rho > 0.5) || s.chute !== 'stowed' || !hasPart(s, 'chute')) return false;
   const { m } = massProps(s);
   return (m * p.g) / BODY_CDA > CHUTE_QMAX * CHUTE_SAFE && altitude(s) < CHUTE_MAX_ALT(p) && s.vy < -10 && !chuteSafe(s);
 }
@@ -432,7 +499,7 @@ export function chuteBrakeLimit(s) {
   const { m } = massProps(s);
   const gMax = Math.min(...s.crew.map((c) => c.limit)) * 0.95 * G0;
   const fromAir = s.drag / m;
-  return Math.max(0, Math.min(1, ((gMax - fromAir) * m) / F_MAX));
+  return Math.max(0, Math.min(1, ((gMax - fromAir) * m) / s.spec.fMax));
 }
 /** safe to open the chute now: pressure low enough and not about to rise past the limit */
 export function chuteSafe(s) {
@@ -447,7 +514,7 @@ export function stoppingDistance(s) {
   const maxFrac = s.powered ? 1 : 0.6;
   // orbit levels: you fly lying on the side for a long time; assume you turn (nearly) upright for the burn
   const uy = s.planet.orbit ? Math.max(0.85, upVector(s).y) : upVector(s).y;
-  const aThr = ((F_MAX * Math.min(s.limit, maxFrac)) / m) * uy;
+  const aThr = ((s.spec.fMax * Math.min(s.limit, maxFrac)) / m) * uy;
   if (aThr <= s.planet.g) return Infinity;
   const rho = density(s);
   const chuteK = s.chute === 'open' && s.planet.rho > 0 ? s.chuteInflate : 0;
@@ -455,7 +522,7 @@ export function stoppingDistance(s) {
   const h = 0.02;
   for (let i = 0; i < 20000 && v > 0; i++) {
     const q = 0.5 * rho * v * v;
-    const drag = q * BODY_CDA + Math.min(q * CHUTE_CDA * chuteK, CHUTE_FMAX * (chuteK > 0 ? 1 : 0));
+    const drag = q * BODY_CDA + Math.min(q * s.spec.chuteCda * chuteK, s.spec.chuteFmax * (chuteK > 0 ? 1 : 0));
     v -= (aThr + drag / m - s.planet.g) * h;
     d += Math.max(0, v) * h;
   }
@@ -483,7 +550,7 @@ export const WRECK_V = 15;
 export const CAPSULE_V = 24;
 function classifyCrash(s, sink, drift) {
   const fuelLeft = fuel(s);
-  const rupture = sink > WRECK_V || (sink > LAND.vy[2] + 3 && drift > 6);
+  const rupture = sink > WRECK_V || (sink > s.spec.land.vy[2] + 3 && drift > 6);
   const fire = rupture && fuelLeft > 10;
   const crew = sink <= CAPSULE_V && !(fire && fuelLeft > 120 && sink > WRECK_V + 4);
   return { kind: fire ? 'explosion' : 'wreck', crew, fuelBurned: fire ? fuelLeft : 0 };
@@ -513,7 +580,7 @@ function retro2Targets(s, F, m, dt, moveX = 0, moveZ = 0) {
   if (s.chute === 'open' && s.planet.rho > 0) {
     // under the canopy: hang straight, the chute does the work
   } else if (burning || (steering && F > 0)) {
-    const Fe = Math.max(F, F_MAX * Math.max(s.limit, 0.3));
+    const Fe = Math.max(F, s.spec.fMax * Math.max(s.limit, 0.3));
     // lead the drift by the attitude lag (~0.4 s) so the lean is gone when the drift is
     const ax = (s.vx - (s.r2vx ?? s.vx)) / Math.max(dt, 1e-3), az = (s.vz - (s.r2vz ?? s.vz)) / Math.max(dt, 1e-3);
     const px = s.vx + ax * 0.4, pz = s.vz + az * 0.4;
@@ -588,7 +655,7 @@ export function step(s, input, dt) {
     const d = Math.hypot(s.pred.x, s.pred.z);
     if (d < 3000) { thr *= Math.max(0.06, d / 3000); s.fineBurn = true; }
   }
-  const mdot = (thr * F_MAX) / (ISP * G0);
+  const mdot = (thr * s.spec.fMax) / (s.spec.isp * G0);
   // both tanks feed the engine evenly; if one runs dry the other takes over
   const need = mdot * dt;
   const takeL = Math.min(s.fuelL, need / 2 + Math.max(0, need / 2 - s.fuelR));
@@ -598,7 +665,7 @@ export function step(s, input, dt) {
   s.throttle = thr;
 
   const { m, cx, cz, I } = massProps(s);
-  const F = thr * F_MAX;
+  const F = thr * s.spec.fMax;
   const u = upVector(s);
 
   // --- attitude: the same controller on both tilt axes ---
@@ -652,8 +719,9 @@ export function step(s, input, dt) {
     if (s.planet.rho > 0 && s.q > CHUTE_QMAX && s.chuteInflate > 0.2) s.chute = 'torn';
   } else s.chuteInflate = Math.max(0, s.chuteInflate - dt * 2);
   // reefed canopy: opens only as far as the riser load allows
-  const chuteCda = s.chute === 'open' && s.planet.rho > 0 ? Math.min(CHUTE_CDA * s.chuteInflate, CHUTE_FMAX / Math.max(s.q, 1)) : 0;
-  s.chuteOpen = chuteCda / CHUTE_CDA; // 0..1 how far the canopy is actually open
+  const CDA = s.spec.chuteCda, FMX = s.spec.chuteFmax;
+  const chuteCda = s.chute === 'open' && s.planet.rho > 0 ? Math.min(CDA * s.chuteInflate, FMX / Math.max(s.q, 1)) : 0;
+  s.chuteOpen = chuteCda / CDA; // 0..1 how far the canopy is actually open
   const Fd = s.q * (BODY_CDA + chuteCda);
   s.drag = Fd;
   const k = v > 0.01 ? -Fd / v : 0;
@@ -661,7 +729,7 @@ export function step(s, input, dt) {
   s.dragX = dx; s.dragZ = dz; // horizontal air force, used by Retro 2 as feed-forward
   // side force acts above the CoM and tips the lander downwind (body drag only, the canopy hangs free)
   const ks = v > 0.01 ? (-s.q * BODY_CDA) / v : 0;
-  const arm = WIND_ARM + (WIND_ARM_PANELS - WIND_ARM) * (1 - s.panelFold) * ((s.lost.solarL && s.lost.solarR) ? 0 : 1);
+  const arm = WIND_ARM + (WIND_ARM_PANELS - WIND_ARM) * (1 - s.panelFold) * (hasPart(s, 'solarL') || hasPart(s, 'solarR') ? 1 : 0);
   // torque = arm * u x F_perp, with F_perp the part of the body drag across the lander's axis. Upright this is
   // exactly the old side-wind model; engine first into the flow (u against the airflow) it vanishes and is
   // stable, so a lander lying in the airstream from orbit doesn't tumble
@@ -680,7 +748,7 @@ export function step(s, input, dt) {
   s.wb += (s.windTorqueB / I) * dt;
   if (s.chute === 'open' && s.planet.rho > 0 && s.chuteInflate > 0.05) {
     // canopy hangs above the CoM and pulls the lander upright
-    const pull = s.q * CHUTE_CDA * Math.min(s.chuteInflate, CHUTE_FMAX / Math.max(s.q, 1) / CHUTE_CDA) * CHUTE_ARM;
+    const pull = s.q * CDA * Math.min(s.chuteInflate, FMX / Math.max(s.q, 1) / CDA) * CHUTE_ARM;
     s.w += ((-Math.sin(s.a) * pull - s.w * pull * 0.6) / I) * dt;
     s.wb += ((-Math.sin(s.b) * pull - s.wb * pull * 0.6) / I) * dt;
   }
@@ -717,12 +785,12 @@ export function step(s, input, dt) {
   // --- power ---
   const use = 0.55 + (s.sas ? 0.25 : 0) + 2.2 * rcsUse + 1.2 * thr;
   s.panelFold = Math.max(0, Math.min(1, s.panelFold + (s.panels === 'in' ? dt : -dt) / 1.2));
-  const panels = (s.lost.solarL ? 0 : 1) + (s.lost.solarR ? 0 : 1);
+  const panels = (hasPart(s, 'solarL') ? 1 : 0) + (hasPart(s, 'solarR') ? 1 : 0);
   // orbit levels: above the air the sun shines fully; it dims to the planet's ground value with the air below
   const sun = p.orbit && p.rho > 0 ? p.solar + (1 - p.solar) * (1 - Math.min(1, density(s) / p.rho)) : p.solar;
   s.solarNow = sun;
   const gain = 1.6 * sun * (panels / 2) * (1 - s.panelFold);
-  s.battery = Math.max(0, Math.min(BAT_CAP, s.battery + (gain - use) * dt));
+  s.battery = Math.max(0, Math.min(BAT_CAP, s.battery + ((gain - use) / s.spec.batK) * dt)); // big pack: slower %
 
   // --- aerodynamic heating: hot parts glow, overheated parts blow off ---
   const flux = Math.sqrt(density(s)) * (v / 100) ** 3 * HEAT_K * (p.heatK ?? 1);
@@ -736,12 +804,19 @@ export function step(s, input, dt) {
     shield = Math.max(0, -((s.vx - wind.x) * ux.x + s.vy * ux.y + (s.vz - wind.z) * ux.z) / vr);
   }
   s.heatShield = shield;
-  for (const c of COMPONENTS) {
+  // heat shield (if built): protects everything above it while the engine end leads into the airflow
+  let facing = 0;
+  if (hasPart(s, 'shield')) {
+    const ux = upVector(s), vr = Math.hypot(s.vx - wind.x, s.vy, s.vz - wind.z) || 1;
+    facing = Math.max(0, -((s.vx - wind.x) * ux.x + s.vy * ux.y + (s.vz - wind.z) * ux.z) / vr);
+  }
+  for (const c of s.spec.comps) {
     if (s.lost[c.id] || !c.heat) continue;
     let exp = p.orbit
       ? c.heat[0] * (c.id === 'engine' ? 1 : (1 - (c.id === 'legs' ? 0.5 : 0.85) * shield) * (1 + 1.5 * (1 - shield)))
       : Math.max(0, c.heat[0] * (1 + Math.sign(c.pos[0]) * sa * 2.5 - Math.sign(c.pos[2]) * sb * 2.5));
     if (c.model === 'solar') exp *= 1 - 0.88 * s.panelFold; // folded panels sit in the lee of the frame
+    if (facing > 0 && c.id !== 'shield') exp *= 1 - (c.id === 'legs' ? 0.45 : 0.75) * facing;
     // heat[2] = heat capacity: big, thin parts like the solar wings warm up over a few seconds
     s.temp[c.id] += ((flux * exp - HEAT_COOL * (s.temp[c.id] - T_AMB)) / (c.heat[2] ?? 1)) * dt;
     if (s.temp[c.id] > c.heat[1]) destroy(s, c.id);
@@ -753,16 +828,18 @@ export function step(s, input, dt) {
     const tilt = tiltDeg(s);
     const hs = feet(s).map((f) => f[3]);
     const sink = -s.vy, drift = Math.hypot(s.vx, s.vz);
-    const g = { vy: grade(sink, LAND.vy), vx: grade(drift, LAND.vx), tilt: grade(tilt, LAND.tilt) };
+    const L = s.spec.land;
+    const g = { vy: grade(sink, L.vy), vx: grade(drift, L.vx), tilt: grade(tilt, L.tilt) };
     const why = [];
-    if (g.vy === 3) why.push(`zu schnell (${sink.toFixed(1)} m/s, max ${LAND.vy[2]})`);
-    if (g.vx === 3) why.push(`seitliche Drift (${drift.toFixed(1)} m/s, max ${LAND.vx[2]})`);
-    if (g.tilt === 3) why.push(`zu schräg (${tilt.toFixed(0)}°, max ${LAND.tilt[2]}°)`);
-    if (Math.max(...hs) - Math.min(...hs) > 0.8) why.push('Gelände zu uneben');
+    const r1 = (v) => +v.toFixed(1);
+    if (g.vy === 3) why.push(`zu schnell (${sink.toFixed(1)} m/s, max ${r1(L.vy[2])})`);
+    if (g.vx === 3) why.push(`seitliche Drift (${drift.toFixed(1)} m/s, max ${r1(L.vx[2])})`);
+    if (g.tilt === 3) why.push(`zu schräg (${tilt.toFixed(0)}°, max ${Math.round(L.tilt[2])}°)`);
+    if (Math.max(...hs) - Math.min(...hs) > s.spec.uneven) why.push('Gelände zu uneben');
     if (s.lost.legs) why.push('Landebeine verglüht');
     const overall = why.length ? 3 : Math.max(g.vy, g.vx, g.tilt);
     // crash energy 0..1: how violent the impact was (drives debris and explosion size)
-    const energy = Math.min(1, Math.max(0, (sink - LAND.vy[2]) / 18 + (drift - LAND.vx[2]) / 25 + 0.1));
+    const energy = Math.min(1, Math.max(0, (sink - L.vy[2]) / 18 + (drift - L.vx[2]) / 25 + 0.1));
     s.touch = { vy: sink, vx: drift, tilt, grades: g, grade: overall, energy };
     if (overall === 3) s.touch.crash = classifyCrash(s, sink, drift);
     s.status = overall === 3 ? 'crashed' : 'landed';

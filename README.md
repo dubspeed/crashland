@@ -114,6 +114,21 @@ The ground ring and cross are drawn on top of everything; in the downward views 
 
 Attitude control needs the flight computer and power; without them it is always "off".
 
+## Lander builder
+
+"Lander" in the start menu opens the builder (remembered; part of replays and of the best-score key). Six slots, each changing parts, mass, centre of mass and behaviour (`BUILD_SLOTS`, `makeSpec` in `sim.js`; every flight has its own `s.spec` instead of global constants, and the standard build reproduces the original lander bit-identically):
+
+| Slot | Options |
+|---|---|
+| Triebwerk | Standard 185 kN / Isp 290 s · Stark 240 kN / 280 s, +150 kg · Effizient 140 kN / 320 s, −70 kg |
+| Tanks | Klein 70 %, −100 kg · Standard · Groß 135 %, +120 kg |
+| Energie | Solarpaneele · Große Batterie (no panels, 2.2× capacity) · Beides (+250 kg) |
+| Fallschirm | Keiner (−120 kg) · Standard 110 m² / 70 kN · Groß 170 m² / 95 kN (+80 kg) |
+| Hitzeschild | Keiner · Hitzeschild (+240 kg): an ablative ring around the nozzle that shields everything above it while the engine end leads into the airflow (on a normal Terra entry the engine stays at ~150 °C instead of ~500 °C) |
+| Landebeine | Leicht (−120 kg, less tolerance) · Standard · Breit (+120 kg, more drift and tilt allowed, rougher ground) |
+
+The builder shows dry mass, thrust, Isp, battery, chute, the landing window, and per planet the fuel, Δv and thrust-to-weight of the build; the lander in the background is rebuilt live (`ship.reset(spec)`). In the tests every build lands both re-entries within 40 m when following the HUD (Brontes within 3 m), except Terra Orbit without a chute (falling at ~85 m/s needs more than the test pilot can do).
+
 ## Testing
 
 - `npm test` (node, ~15 s, also on every push via GitHub Actions): flight-model basics (determinism, orbit computer against a simulated orbit, terrain continuity, chute look-ahead), landings on every level by autopilots that only use player controls and follow the HUD (`tests/pilots.mjs`: normal levels with Retro 2, all orbit levels on the cue, braking early/late, wind, heat), replay identity, and a **golden snapshot** of ten reference flights (`tests/golden.json`): any change to the physics shows up there; if it was intended, refresh with `UPDATE_GOLDEN=1 npm test`.

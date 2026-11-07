@@ -20,12 +20,13 @@ export function createHud() {
   const partRows = [
     ['capsule', 'Kommandokapsel'], ['engine', 'Antrieb'], ['tankL', 'Tank L'], ['tankR', 'Tank R'],
     ['battery', 'Batterien'], ['solar', 'Solarpaneele'], ['computer', 'Bordcomputer'], ['chute', 'Fallschirm'], ['legs', 'Landebeine'],
+    ['shield', 'Hitzeschild'],
   ];
   for (const [id, label] of partRows) {
     const li = document.createElement('li');
     li.innerHTML = `<span>${label}</span><span></span><div class="bar"><i></i></div>`;
     list.append(li);
-    rows[id] = { val: li.children[1], bar: li.querySelector('i') };
+    rows[id] = { val: li.children[1], bar: li.querySelector('i'), li };
   }
   const setRow = (id, text, frac, color) => {
     rows[id].val.textContent = text;
@@ -48,19 +49,32 @@ export function createHud() {
     el.className = 'lw';
     el.innerHTML = `<i class="glyph" aria-hidden="true">${glyphs[key]}</i><div class="lw-head"><span>${label}</span><b></b></div><div class="lw-bar" style="background: linear-gradient(90deg, ${grad})"><i></i></div>`;
     $('landing').append(el);
-    lw[key] = { val: el.querySelector('b'), mark: el.querySelector('.lw-bar i'), unit, max };
+    lw[key] = { val: el.querySelector('b'), mark: el.querySelector('.lw-bar i'), bar: el.querySelector('.lw-bar'), unit, max };
+  }
+  let landFor = null;
+  function applyLand(land) {
+    if (landFor === land) return;
+    landFor = land;
+    for (const [key, , , max] of lwDefs) {
+      const stops = [0, ...land[key].map((l) => (l / max) * 100), 100];
+      lw[key].bar.style.background = `linear-gradient(90deg, ${tierColors.map((c, i) => `${c} ${stops[i]}% ${stops[i + 1]}%`).join(', ')})`;
+    }
+    tdStops = [0, ...land.vy, S.WRECK_V, TD_MAX];
+    $('td-scale').style.background = `linear-gradient(90deg, ${tdColors.map((c, i) => `${c} ${(tdStops[i] / TD_MAX) * 100}% ${(tdStops[i + 1] / TD_MAX) * 100}%`).join(', ')})`;
+    $('td-ticks').innerHTML = tdStops.slice(1, -1).map((v) => `<span style="left:${(v / TD_MAX) * 100}%">${fmt(v, v % 1 ? 1 : 0)}</span>`).join('')
+      + tdNames.map((n, i) => `<em style="left:${((tdStops[i] + tdStops[i + 1]) / 2 / TD_MAX) * 100}%">${n}</em>`).join('');
   }
 
   // big touchdown gauge: sink-rate scale with the exact limits, shown close to the ground
   const TD_MAX = 18;
-  const tdStops = [0, ...S.LAND.vy, S.WRECK_V, TD_MAX];
+  let tdStops = [0, ...S.LAND.vy, S.WRECK_V, TD_MAX];
   const tdNames = ['Sanft', 'Hart', 'Schaden', 'Bruch', 'Explosion'];
   const tdColors = ['var(--ok)', 'var(--warn)', 'var(--amber)', 'var(--bad)', '#8e1d16'];
   $('td-scale').style.background = `linear-gradient(90deg, ${tdColors.map((c, i) => `${c} ${(tdStops[i] / TD_MAX) * 100}% ${(tdStops[i + 1] / TD_MAX) * 100}%`).join(', ')})`;
   $('td-ticks').innerHTML = tdStops.slice(1, -1).map((v) => `<span style="left:${(v / TD_MAX) * 100}%">${fmt(v, v % 1 ? 1 : 0)}</span>`).join('')
     + tdNames.map((n, i) => `<em style="left:${((tdStops[i] + tdStops[i + 1]) / 2 / TD_MAX) * 100}%">${n}</em>`).join('');
   function tdZone(v, fuelLeft) {
-    const i = [...S.LAND.vy, S.WRECK_V].findIndex((l) => v <= l);
+    const i = [...tdStops.slice(1, 4), S.WRECK_V].findIndex((l) => v <= l);
     const k = i < 0 ? 4 : i;
     return k === 4 && fuelLeft <= 10 ? 3 : k; // no fuel, no explosion
   }
@@ -92,20 +106,28 @@ export function createHud() {
   const crew = createCrew($('crew-faces'), $('crew-say'));
   let tornAt;
 
-  const heatFrac = (s, id) => { const c = S.COMPONENTS.find((k) => k.id === id); return (s.temp[id] - S.T_AMB) / (c.heat[1] - S.T_AMB); };
+  const heatFrac = (s, id) => { const c = s.spec.comps.find((k) => k.id === id); return c ? (s.temp[id] - S.T_AMB) / (c.heat[1] - S.T_AMB) : 0; };
   const lostAt = {};
   const ttb = { at: undefined, v: 0 };
 
   function recentLoss(s) {
-    for (const c of S.COMPONENTS) if (s.lost[c.id] && s.t - (lostAt[c.id] ??= s.t) < 3) return c.name;
+    for (const c of s.spec.comps) if (s.lost[c.id] && s.t - (lostAt[c.id] ??= s.t) < 3) return c.name;
     return null;
   }
   function hottest(s) {
     let best = { f: 0, name: '' };
-    for (const c of S.COMPONENTS) if (c.heat && !s.lost[c.id]) { const f = heatFrac(s, c.id); if (f > best.f) best = { f, name: c.name, solar: c.model === 'solar' }; }
+    for (const c of s.spec.comps) if (c.heat && !s.lost[c.id]) { const f = heatFrac(s, c.id); if (f > best.f) best = { f, name: c.name, solar: c.model === 'solar' }; }
     return best;
   }
 
+  /** heat shield row: is the shield facing the airflow? */
+  function facingText(s) {
+    if (!s.spec.ids.has('shield')) return '';
+    if (s.lost.shield) return 'verglüht';
+    const u = S.upVector(s), v = Math.hypot(s.vx, s.vy, s.vz) || 1;
+    const f = -(s.vx * u.x + s.vy * u.y + s.vz * u.z) / v;
+    return f > 0.85 ? 'vorn' : f > 0.4 ? 'schräg' : 'seitlich';
+  }
   /** Arrow glyph for a world direction (x, z) as seen on screen (up = away from the camera). */
   function screenArrow(dx, dz, yaw) {
     const right = dx * Math.cos(yaw) - dz * Math.sin(yaw), fwd = -dx * Math.sin(yaw) - dz * Math.cos(yaw);
@@ -189,7 +211,9 @@ export function createHud() {
     $('v-alt').textContent = `${fmt(alt, alt < 100 ? 1 : 0)} m`;
     const live = { vy: Math.max(0, -s.vy), vx: S.drift(s), tilt };
     if (s.touch) Object.assign(live, { vy: s.touch.vy, vx: s.touch.vx, tilt: s.touch.tilt });
-    const gr = { vy: S.grade(live.vy, S.LAND.vy), vx: S.grade(live.vx, S.LAND.vx), tilt: S.grade(live.tilt, S.LAND.tilt) };
+    applyLand(s.spec.land);
+    const L = s.spec.land;
+    const gr = { vy: S.grade(live.vy, L.vy), vx: S.grade(live.vx, L.vx), tilt: S.grade(live.tilt, L.tilt) };
     for (const k of Object.keys(lw)) {
       const g = S.GRADES[gr[k]];
       lw[k].val.textContent = `${fmt(live[k], 1)} ${lw[k].unit} · ${g.name.split(' ')[0]}`;
@@ -197,7 +221,7 @@ export function createHud() {
       lw[k].mark.style.left = `${Math.min(1, live[k] / lw[k].max) * 100}%`;
     }
     const gradeCls = ['ok', 'warn', 'warn', 'bad'];
-    const twr = (S.F_MAX * s.limit) / (m * p.g);
+    const twr = (s.spec.fMax * s.limit) / (m * p.g);
     const tw = $('v-twr'); tw.textContent = fmt(twr, 2); cls(tw, twr > 1.15 ? '' : 'bad');
     $('v-mass').textContent = `${fmt(m)} kg`;
 
@@ -254,7 +278,7 @@ export function createHud() {
 
     // fuel: amount and how long it lasts at full thrust
     const fuelNow = S.fuel(s), fuelFrac = fuelNow / s.fuel0;
-    const fullBurn = fuelNow / (S.F_MAX / (S.ISP * S.G0));
+    const fullBurn = fuelNow / (s.spec.fMax / (s.spec.isp * S.G0));
     const vf = $('v-fuel'); vf.textContent = `${fmt(fuelNow)} kg`;
     cls(vf, `big ${fuelFrac < 0.1 ? 'bad' : fuelFrac < 0.25 ? 'warn' : ''}`);
     $('v-fuelpct').textContent = `${fmt(fuelFrac * 100)} %`;
@@ -302,20 +326,26 @@ export function createHud() {
     qEl.textContent = air ? `${fmt(s.q / 1000, 1)} kPa` : '–';
     cls(qEl, s.q > S.CHUTE_QMAX ? 'bad' : s.q > S.CHUTE_QMAX * 0.8 ? 'warn' : '');
     const pb = $('c-panels');
-    const solarGone = s.lost.solarL && s.lost.solarR;
-    setLabel(pb, solarGone ? 'Paneele weg' : s.panels === 'out' ? 'Paneele einklappen' : 'Paneele ausklappen', 'E');
+    const solarGone = !S.hasPart(s, 'solarL') && !S.hasPart(s, 'solarR');
+    const noPanels = !s.spec.ids.has('solarL');
+    setLabel(pb, noPanels ? 'Keine Paneele' : solarGone ? 'Paneele weg' : s.panels === 'out' ? 'Paneele einklappen' : 'Paneele ausklappen', 'E');
     pb.disabled = solarGone;
     pb.classList.toggle('on', s.panels === 'in' && !solarGone);
     const solarHeat = Math.max(...['solarL', 'solarR'].filter((id) => !s.lost[id]).map((id) => heatFrac(s, id)), 0);
     pb.classList.toggle('warn', s.panels === 'out' && solarHeat > 0.3 && !solarGone);
     const cb = $('c-chute');
-    setLabel(cb, { burned: 'Schirm verglüht', stowed: 'Fallschirm', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute], 'P');
-    cb.disabled = s.chute === 'cut' || s.chute === 'torn' || s.chute === 'burned' || (s.chute === 'open' && !air);
+    const noChute = !s.spec.ids.has('chute');
+    setLabel(cb, noChute ? 'Kein Schirm' : { burned: 'Schirm verglüht', stowed: 'Fallschirm', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute], 'P');
+    cb.disabled = noChute || s.chute === 'cut' || s.chute === 'torn' || s.chute === 'burned' || (s.chute === 'open' && !air);
     cb.classList.toggle('on', s.chute === 'open' && air);
     cb.classList.toggle('ready', s.chute === 'stowed' && air && s.status === 'flying' && S.chuteSafe(s) && s.t > 0.2);
     // heat: hot or destroyed components override their row
-    const rowParts = { capsule: ['capsule'], engine: ['engine'], tankL: ['tankL'], tankR: ['tankR'], battery: ['battery'], solar: ['solarL', 'solarR'], computer: ['computer'], chute: ['chute'], legs: ['legs'] };
-    for (const [row, ids] of Object.entries(rowParts)) {
+    const rowParts = { capsule: ['capsule'], engine: ['engine'], tankL: ['tankL'], tankR: ['tankR'], battery: ['battery'], solar: ['solarL', 'solarR'], computer: ['computer'], chute: ['chute'], legs: ['legs'], shield: ['shield'] };
+    rows.shield.li.hidden = !s.spec.ids.has('shield');
+    setRow('shield', facingText(s), 1, 'var(--ok)');
+    for (const [row, ids0] of Object.entries(rowParts)) {
+      const ids = ids0.filter((id) => s.spec.ids.has(id));
+      if (!ids.length) { setRow(row, 'nicht verbaut', 0); rows[row].val.style.color = 'var(--mute)'; continue; }
       const lost = ids.filter((id) => s.lost[id]);
       const hot = ids.filter((id) => !s.lost[id]).map((id) => ({ id, f: heatFrac(s, id) })).sort((a, b) => b.f - a.f)[0];
       if (lost.length) setRow(row, lost.length === ids.length ? 'verglüht' : `${lost.length}/${ids.length} verglüht`, 0, 'var(--bad)');
@@ -393,7 +423,7 @@ export function createHud() {
     else if (hints && s.chute === 'open' && p.rho > 0.5 && s.throttle === 0 && s.limit < (p.limit0 ?? 0.5) * 0.8 && alt > 150) { msg = `SCHUBGRENZE FÜR DIE LANDUNG HOCHSETZEN (${Math.round((p.limit0 ?? 0.5) * 100)} %)`; color = 'var(--cyan)'; pulse = false; }
     else if (hints && s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
     else if (s.battery < 20) { msg = 'BATTERIE SCHWACH'; color = 'var(--warn)'; pulse = false; }
-    else if (hints && s.panels === 'in' && !(s.lost.solarL && s.lost.solarR) && s.heatFlux < 4 && s.battery < 45 && s.t > 6) { msg = 'PANEELE AUSKLAPPEN – BATTERIE LÄDT NICHT'; color = 'var(--cyan)'; pulse = false; }
+    else if (hints && s.panels === 'in' && (S.hasPart(s, 'solarL') || S.hasPart(s, 'solarR')) && s.heatFlux < 4 && s.battery < 45 && s.t > 6) { msg = 'PANEELE AUSKLAPPEN – BATTERIE LÄDT NICHT'; color = 'var(--cyan)'; pulse = false; }
     else if (hints && s.chute === 'stowed' && p.rho > 0 && alt > 120 && alt < S.CHUTE_MAX_ALT(p) && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= burnAlt)) {
       if (S.chuteSafe(s)) { msg = 'FALLSCHIRM MÖGLICH'; color = 'var(--cyan)'; pulse = false; }
     }

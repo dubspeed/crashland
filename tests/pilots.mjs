@@ -21,13 +21,13 @@ export function makePilot(S, P, opt = {}) {
     if (chute && P.rho > 0 && s.chute === 'stowed' && s.t > 0.1 && s.q < S.CHUTE_QMAX * 0.9 && alt < 1200) act('chute');
     if (s.chute === 'open' && alt < 150) act('chute');
     const { m } = S.massProps(s);
-    const gcap = (S.G_LIMIT * 0.97 * S.G0 * m) / S.F_MAX;
+    const gcap = (S.G_LIMIT * 0.97 * S.G0 * m) / s.spec.fMax;
     s.limit = Math.min(1, gcap);
     if (!mem.burning && alt <= S.burnAltitude(s) * 1.3 + 10) mem.burning = true;
     let thrust = false;
     if (mem.burning) {
       const req = s.vy < -1.5 ? (s.vy * s.vy - 2.25) / (2 * Math.max(alt - 0.5, 0.3)) + P.g : P.g * 0.95 - s.drag / m;
-      s.limit = Math.max(0.05, Math.min(1, gcap, (req * m) / S.F_MAX / Math.max(0.5, S.upVector(s).y)));
+      s.limit = Math.max(0.05, Math.min(1, gcap, (req * m) / s.spec.fMax / Math.max(0.5, S.upVector(s).y)));
       thrust = true;
     }
     const dx = -s.x, dz = -s.z, d = Math.hypot(dx, dz);
@@ -48,6 +48,7 @@ export function makePilot(S, P, opt = {}) {
 
   function orbit(s, act) {
     const p = s.pred, alt = altOf(s);
+    const chute = opt.chute !== false && s.spec.ids.has('chute'); // a lander built without one
     let thrust = false;
     // when to brake: the HUD cue (vacuum / thin air) or the deorbit point (thick air)
     if (mem.phase === 'wait') {
@@ -83,7 +84,7 @@ export function makePilot(S, P, opt = {}) {
     if (mem.phase === 'land' && canLand) {
       const { m } = S.massProps(s);
       const req = s.vy < -1.5 ? (s.vy * s.vy - 2.25) / (2 * Math.max(alt - 0.5, 0.3)) + P.g - s.drag / m : P.g * 0.95 - s.drag / m;
-      s.limit = Math.max(0.05, Math.min(P.deorbitAt ? 1 : 0.75, (req * m) / S.F_MAX / Math.max(0.5, S.upVector(s).y)));
+      s.limit = Math.max(0.05, Math.min(P.deorbitAt ? 1 : 0.75, (req * m) / s.spec.fMax / Math.max(0.5, S.upVector(s).y)));
       thrust = true;
     }
     // steer the canopy towards the pad (the tilt pad does this for a player)

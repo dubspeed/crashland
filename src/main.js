@@ -148,9 +148,51 @@ function buildSettings() {
   row('hint-select', [[true, 'An', 'Tipps im HUD'], [false, 'Aus', `nur Warnungen · ${x(S.HINTS_OFF_BONUS)}`]], settings.hints, 'hints');
   row('auto-select', [[false, 'Aus', 'Feinregelung von Hand'], [true, 'An', `Computer regelt · ${x(S.AUTO_FINE_BONUS)}`]], settings.autoFine, 'autoFine');
 }
+// ---------- lander builder ----------
+let build = { ...S.DEFAULT_BUILD };
+try { Object.assign(build, JSON.parse(localStorage.getItem('crashland.build') || '{}')); } catch { /* defaults */ }
+const optName = (slot, id) => S.BUILD_SLOTS.find((x) => x.id === slot).options.find((o) => o.id === id)?.name ?? id;
+function buildSummary() {
+  const diff = S.BUILD_SLOTS.filter((sl) => build[sl.id] !== S.DEFAULT_BUILD[sl.id]).map((sl) => `${sl.name}: ${optName(sl.id, build[sl.id])}`);
+  return diff.length ? diff.join(' · ') : 'Standard';
+}
+function setBuild(slot, id) {
+  build[slot] = id;
+  try { localStorage.setItem('crashland.build', JSON.stringify(build)); } catch { /* storage unavailable */ }
+  renderBuilder();
+}
+function renderBuilder() {
+  $('build-slots').innerHTML = S.BUILD_SLOTS.map((sl) => `<div class="build-slot"><span>${sl.name}</span><div class="opt-select" role="radiogroup" aria-label="${sl.name}">${
+    sl.options.map((o) => `<button role="radio" aria-checked="${build[sl.id] === o.id}" class="${build[sl.id] === o.id ? 'on' : ''}" data-slot="${sl.id}" data-id="${o.id}">${o.name}<small>${o.desc || '&nbsp;'}</small></button>`).join('')}</div></div>`).join('');
+  $('build-slots').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setBuild(b.dataset.slot, b.dataset.id)));
+  // figures per planet: full tanks, delta-v and thrust-to-weight
+  const spec = S.makeSpec(build);
+  const f = (n, d = 0) => n.toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
+  const rowsHtml = [...S.PLANETS, ...S.ORBIT_PLANETS].map((p) => {
+    const st = S.createState(p, { build, fuelK: S.FUEL_LEVELS[settings.fuel]?.k ?? 1, rnd: () => 0.5, windHeading: 0 });
+    const m0 = S.massProps(st).m, fuel = st.fuel0, dv = spec.isp * S.G0 * Math.log(m0 / (m0 - fuel)), twr = spec.fMax / (m0 * p.g);
+    return `<tr><td>${p.name}</td><td>${f(fuel)} kg</td><td>${f(dv)} m/s</td><td class="${twr < 1.3 ? 'bad' : twr < 2 ? 'warn' : ''}">${f(twr, 1)}</td></tr>`;
+  }).join('');
+  const st0 = S.createState(S.PLANETS[0], { build, rnd: () => 0.5, windHeading: 0 }), mp = S.massProps(st0);
+  const dry = mp.m - st0.fuel0;
+  $('build-stats').innerHTML = `<div class="bs-top"><span>Leermasse <b>${f(dry)} kg</b></span><span>Schub <b>${f(spec.fMax / 1000)} kN</b></span><span>Isp <b>${spec.isp} s</b></span>
+    <span>Batterie <b>×${f(spec.batK, 1)}</b>${spec.ids.has('solarL') ? '' : ' (keine Paneele)'}</span><span>Schirm <b>${spec.ids.has('chute') ? `${f(spec.chuteCda)} m²` : 'keiner'}</b></span>
+    <span>Landefenster <b>≤ ${f(spec.land.vy[2], 1)} m/s · ${f(spec.land.vx[2], 1)} m/s · ${f(spec.land.tilt[2])}°</b></span></div>
+    <table><tr><th>Planet</th><th>Treibstoff</th><th>Δv</th><th>Schub/Gewicht</th></tr>${rowsHtml}</table>`;
+  $('build-btn').innerHTML = `${buildSummary() === 'Standard' ? 'Standard-Lander' : 'Eigener Lander'} · bearbeiten<small>${buildSummary()}</small>`;
+  if (mode === 'menu') { ship.reset(spec); }
+}
+// while building, the start menu steps aside so the lander in the background is visible
+$('build-btn').addEventListener('click', () => { renderBuilder(); $('builder').hidden = false; $('menu').hidden = true; });
+const closeBuilder = () => { $('builder').hidden = true; $('menu').hidden = false; buildMenu(); };
+$('builder-close').addEventListener('click', closeBuilder);
+$('build-done').addEventListener('click', closeBuilder);
+$('build-reset').addEventListener('click', () => { build = { ...S.DEFAULT_BUILD }; setBuild('engine', 'std'); });
+$('builder').addEventListener('click', (e) => { if (e.target === $('builder')) closeBuilder(); });
+
 /** score multiplier of the chosen settings (wind is applied separately, only where there is air) */
 const settingsBonus = (set) => (S.FUEL_LEVELS[set.fuel]?.bonus ?? 1) * (set.hints ? 1 : S.HINTS_OFF_BONUS) * (set.autoFine ? S.AUTO_FINE_BONUS : 1);
-const bestKey = (id) => `${id}${windLevel ? `.wind${windLevel}` : ''}${settings.fuel !== 1 ? `.fuel${settings.fuel}` : ''}${settings.hints ? '' : '.nohints'}${settings.autoFine ? '.auto' : ''}`;
+const bestKey = (id) => `${id}${windLevel ? `.wind${windLevel}` : ''}${settings.fuel !== 1 ? `.fuel${settings.fuel}` : ''}${settings.hints ? '' : '.nohints'}${settings.autoFine ? '.auto' : ''}${buildSummary() === 'Standard' ? '' : '.b' + S.BUILD_SLOTS.map((sl) => build[sl.id]).join('-')}`;
 function best(id) { try { return JSON.parse(localStorage.getItem(`crashland.best.${id}`)); } catch { return null; } }
 function saveBest(id, v) { try { localStorage.setItem(`crashland.best.${id}`, JSON.stringify(v)); } catch { /* storage unavailable */ } }
 
@@ -159,6 +201,7 @@ function buildMenu() {
   wrap.innerHTML = '';
   buildWindSelect();
   buildSettings();
+  $('build-btn').innerHTML = `${buildSummary() === 'Standard' ? 'Standard-Lander' : 'Eigener Lander'} · bearbeiten<small>${buildSummary()}</small>`;
   for (const p of [...S.PLANETS, ...S.ORBIT_PLANETS]) {
     const b = document.createElement('button');
     b.className = 'planet';
@@ -196,8 +239,9 @@ function showMenu() {
   $('menu').hidden = false; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = true;
   buildMenu();
   // ship parked on the pad as a backdrop
-  debris.clear(); ship.reset();
-  s = S.createState(planet); s.x = 0; s.z = 0; s.y = 0; s.vy = 0; s.vx = 0; s.vz = 0; s.a = 0; s.b = 0; s.status = 'parked';
+  debris.clear();
+  s = S.createState(planet, { build });
+  ship.reset(s.spec); s.x = 0; s.z = 0; s.y = 0; s.vy = 0; s.vx = 0; s.vz = 0; s.a = 0; s.b = 0; s.status = 'parked';
   ship.update(s, 0);
 }
 
@@ -238,8 +282,9 @@ function start(p) {
   // a round is fully determined by its seed and the recorded inputs (replays, see tests/replay.mjs)
   const seed = (forceSeed ?? Math.floor(Math.random() * 2 ** 31)) >>> 0;
   forceSeed = null;
-  s = S.newRound(planet, windLevel, seed, settings);
-  rec = { v: 1, planet: planet.id, wind: windLevel, seed, settings: { ...settings }, ev: [] };
+  s = S.newRound(planet, windLevel, seed, settings, build);
+  ship.reset(s.spec);
+  rec = { v: 1, planet: planet.id, wind: windLevel, seed, settings: { ...settings }, build: { ...build }, ev: [] };
   lastRec = { thrust: false, rcs: 0, rcsZ: 0, limit: s.limit };
   hud.reset();
   cam.tgtD = 0; cam.intro = 0; cam.tgt = null; cam.pitch = 0;
@@ -263,7 +308,7 @@ function rate(st) {
   const fainted = st.crew.some((c) => c.fainted > 0);
   if (fainted || fuelPct < 0.1 || Object.keys(st.lost).length) stars--;
   stars = Math.max(1, stars);
-  const base = fuelPct * 1000 + (S.LAND.vy[2] - st.touch.vy) * 60 + (S.LAND.tilt[1] - st.touch.tilt) * 10
+  const base = fuelPct * 1000 + (st.spec.land.vy[2] - st.touch.vy) * 60 + (st.spec.land.tilt[1] - st.touch.tilt) * 10
     - st.touch.grade * 150 + st.crew.filter((c) => !c.fainted).length * 70 + st.planet.g * 20 - Object.keys(st.lost).length * 120
     + precisionBonus(st);
   const score = Math.max(0, Math.round(base * (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings)));
@@ -304,7 +349,7 @@ function showResult() {
     ['Fallschirm', { burned: 'verglüht', stowed: 'nicht benutzt', open: s.planet.rho > 0 ? 'offen gelandet' : 'nutzlos (keine Luft)', cut: 'abgeworfen', torn: 'gerissen' }[s.chute]],
     ['Crew', !ok ? (s.touch.crash.crew ? 'überlebt' : 'Kein Kontakt mehr') : s.crew.some((c) => c.fainted) ? s.crew.filter((c) => c.fainted).map((c) => `${c.name} ${c.fainted}× ohnmächtig`).join(', ') : 'alle bei Bewusstsein'],
     ['Abstand zum Pad', `${f1(precision(s).d)} m · ${precision(s).label}`],
-    ['Hitzeschäden', Object.keys(s.lost).length ? S.COMPONENTS.filter((c) => s.lost[c.id]).map((c) => c.name).join(', ') + ' verglüht' : 'keine'],
+    ['Hitzeschäden', Object.keys(s.lost).length ? s.spec.comps.filter((c) => s.lost[c.id]).map((c) => c.name).join(', ') + ' verglüht' : 'keine'],
     ['Batterie', `${Math.round(s.battery)} %`],
     ['Flugzeit', `${f1(s.t)} s`],
   ];
@@ -605,6 +650,8 @@ renderer.setAnimationLoop(() => {
     cam.shake = Math.max(0, cam.shake - dt);
     camera.position.add(new THREE.Vector3().randomDirection().multiplyScalar(cam.shake * 0.8));
   }
+  // builder open on a wide screen: look past the lander so it turns in the free left part of the screen
+  if (mode === 'menu' && !$('builder').hidden && innerWidth > 900) lookAt.addScaledVector(_hull.set(Math.cos(cam.yaw), 0, -Math.sin(cam.yaw)), dist * 0.45);
   camera.lookAt(lookAt);
   placeShipMark();
   if (mode === 'flight') orbitMap.draw(s);

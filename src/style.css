@@ -412,3 +412,22 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 #debug { position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); top: calc(4px + env(safe-area-inset-top, 0px)); margin: 0; padding: 6px 9px; background: rgba(0,0,0,0.78); color: #9ff0b0; font: 600 10.5px/1.35 "IBM Plex Mono", monospace; border-radius: 6px; pointer-events: none; white-space: pre; }
 
 .wind-label { min-width: 74px; }
+
+/* lander builder */
+.build-btn { padding: 7px 12px; border-radius: 8px; border: 1px solid var(--cyan); color: var(--cyan); background: var(--glass); font: 700 13px var(--display); letter-spacing: 0.03em; text-align: left; }
+.build-btn small { display: block; font: 400 10px var(--mono); color: var(--mute); letter-spacing: 0; }
+.builder-sheet { width: min(720px, calc(100vw - 32px)); }
+.builder-lead { margin: 0 0 10px; color: var(--mute); font-size: 12px; }
+.build-slot { display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid var(--glass-edge); }
+.build-slot > span { font: 600 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); }
+.build-slot .opt-select button { min-width: 112px; }
+#build-stats { margin: 12px 0; font-size: 12px; }
+#build-stats .bs-top { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-bottom: 8px; }
+#build-stats .bs-top b { color: var(--ink); }
+#build-stats table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+#build-stats th, #build-stats td { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--glass-edge); }
+#build-stats th:first-child, #build-stats td:first-child { text-align: left; }
+#build-stats th { font: 600 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--mute); }
+#build-stats td.bad { color: var(--bad); } #build-stats td.warn { color: var(--warn); }
+@media (max-width: 520px) { .build-slot { grid-template-columns: 1fr; gap: 4px; } .build-slot .opt-select button { min-width: 0; } }
+@media (min-width: 900px) { #builder { justify-items: end; padding-right: 28px; } #builder .builder-sheet { width: min(600px, 55vw); } }
