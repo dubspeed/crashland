@@ -241,6 +241,27 @@ export function createHud() {
       vp.innerHTML += ` <span class="aim">· Kreuz ${miss < 4 ? 'auf dem Pad' : `${fmt(miss, 0)} m daneben`}</span>`;
     }
 
+    // big readout: altitude above ground (large below 1000 m) and both speeds, coloured by the landing window
+    {
+      const ro = $('readout');
+      ro.hidden = s.status !== 'flying';
+      const low = alt < 1000;
+      ro.classList.toggle('low', low);
+      const altTxt = alt >= 1000 ? `${fmt(alt / 1000, 1)} km` : `${fmt(Math.max(0, alt), alt < 100 ? 1 : 0)} m`;
+      const tone = ['ok', 'warn', 'amber', 'bad'];
+      const sink = -s.vy, vh = S.drift(s);
+      const vyCls = low && sink > 0 ? tone[S.grade(sink, L.vy)] : '';
+      const vhCls = low ? tone[S.grade(vh, L.vx)] : '';
+      const vyTxt = `${s.vy <= 0 ? '↓' : '↑'} ${fmt(Math.abs(s.vy), Math.abs(s.vy) < 100 ? 1 : 0)} m/s`, vhTxt = `→ ${fmt(vh, vh < 100 ? 1 : 0)} m/s`;
+      const key = altTxt + vyTxt + vhTxt + vyCls + vhCls;
+      if (ro.dataset.k !== key) {
+        ro.dataset.k = key;
+        $('ro-alt').textContent = altTxt;
+        const a = $('ro-vy'), b = $('ro-vh');
+        a.textContent = vyTxt; a.className = vyCls; b.textContent = vhTxt; b.className = vhCls;
+      }
+    }
+
     // orbit computer line (orbit levels): apoapsis / periapsis while still high and fast
     const vo = $('v-orbit');
     const oi = p.orbit && s.status === 'flying' && (alt > 600 || Math.hypot(s.vx, s.vz) > 40) ? S.orbitInfo(s) : null;

@@ -95,7 +95,11 @@ The flight computer's burn point includes air drag and the parachute and adds a 
 
 Measured with a sim pilot that only uses these aids: Luna ~4 m, Mars without wind 1–4 m, Terra without to strong wind 2–6 m from the centre (10/10 landed); without aiming the same flights end 35–65 m away.
 
-### Camera views
+### Flight readout
+
+At the top centre (below the message line) the HUD always shows the altitude above ground and the vertical (↓/↑) and horizontal (→) speed. Above 1000 m the altitude is small (in km); from 1000 m down it is large, below 100 m with one decimal, and the two speeds are coloured by the lander's landing window (green soft, yellow hard, orange gear damage, red crash).
+
+## Camera views
 
 - **Hinten**: chase camera beside/behind the lander.
 - **Schräg**: behind and above, about 50° down, so the ground ahead is visible.
