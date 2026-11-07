@@ -170,7 +170,9 @@ export function createWorld(scene, models) {
 
   function setPlanet(p) {
     scene.background = new THREE.Color(p.sky);
-    scene.fog = new THREE.Fog(p.fog, p.orbit ? 4000 : 150, p.orbit ? 60000 : p.stars ? 2600 : 1400);
+    // haze: none in vacuum, thicker the denser the air (orbit levels see tens of kilometres)
+    const haze = p.orbit ? (p.rho === 0 ? [80000, 300000] : p.rho < 0.1 ? [3000, 50000] : p.rho < 2 ? [2500, 32000] : [1500, 18000]) : null;
+    scene.fog = new THREE.Fog(p.fog, haze ? haze[0] : 150, haze ? haze[1] : p.stars ? 2600 : 1400);
     stars.scale.setScalar(p.orbit ? 10 : 1);
     hemi.color.set(p.sky).lerp(new THREE.Color(0xffffff), 0.6);
     hemi.groundColor.set(p.ground2);

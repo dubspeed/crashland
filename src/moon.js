@@ -80,6 +80,23 @@ const LAYOUTS = {
     volcano: [-7600, 3600, 1900, 380, 320, 90],          // x, z, base radius, height, caldera radius, depth
     hero: null,
   },
+  'terra-orbit': {
+    style: 2, mount: 300, craterK: 0.15,
+    arcs: [[-12000, -2600, -5200, 3400, 210, 38, 170],   // river valley across the approach
+           [-6000, -9000, 1800, -4800, 260, 45, 190],
+           [2600, 3400, 11000, 6400, 180, 30, 150],
+           [-15000, 5200, -9000, 9800, 240, 40, 160]],
+    volcano: null, hero: null,
+  },
+  'brontes-orbit': {
+    style: 3, mount: 230, craterK: 0.35,
+    arcs: [[-14000, -4200, -6400, 3000, 520, 160, 90],   // deep rift across the approach
+           [-4200, 4600, 4800, 8800, 200, 70, 60],
+           [-9000, -10000, -1200, -6800, 160, 55, 70],
+           [3000, -3000, 9800, -7600, 260, 80, 40]],
+    volcano: [-10500, 4800, 2400, 450, 420, 120],
+    hero: null,
+  },
 };
 
 function flatDir(x, z, R) {
@@ -100,7 +117,7 @@ export function moonFeatures(id, R) {
   });
   const vol = L.volcano ? { d: flatDir(L.volcano[0], L.volcano[1], R), r: L.volcano[2], h: L.volcano[3], cr: L.volcano[4], cd: L.volcano[5] } : null;
   const hero = L.hero ? { d: flatDir(L.hero[0], L.hero[1], R), r: L.hero[2], depth: L.hero[3] } : null;
-  return { style: L.style, mount: L.mount, arcs, vol, hero };
+  return { style: L.style, mount: L.mount, craterK: L.craterK ?? 1, arcs, vol, hero };
 }
 
 /** everything outside the landing zone at direction (dx, dy, dz); returns { h, s (crater shade), ... } */
@@ -111,7 +128,7 @@ function relief(dx, dy, dz, R, F, out) {
   out.s = 0;
   for (const [C, prob, dk] of OCTAVES) {
     const k = C * 0.12, wob = 1 + (vn(px / k + 19, py / k, pz / k) - 0.5) * 0.3;
-    craters(px, py, pz, C, prob, dk, wob, out);
+    craters(px, py, pz, C, prob, dk * F.craterK, wob, out); // weathered worlds keep only faint craters
   }
   // mountain ranges: ridged noise, only where the region mask allows
   const mask = smooth(0.52, 0.72, vn(px / 6000 + 17, py / 6000, pz / 6000));
@@ -176,6 +193,7 @@ uniform vec3 uC1;
 uniform vec3 uC2;
 uniform float uStyle;
 uniform float uMount;
+uniform float uCraterK;
 uniform vec4 uArcN[4];   // n.xyz, width
 uniform vec4 uArcC[4];   // c.xyz, cos(half length)
 uniform vec4 uArcT[4];   // t.xyz, depth
@@ -253,7 +271,7 @@ float moonHeight(vec3 dir, float spacing, bool wantCol, out vec3 col) {
       if (f <= 0.0) continue;
       vec2 a = vec2(0.0);
       float wob = 1.0 + (vn(p / (C[o] * 0.12) + vec3(19.0, 0.0, 0.0)) - 0.5) * 0.3;
-      moonCraters(p, C[o], P[o], K[o], wob, a);
+      moonCraters(p, C[o], P[o], K[o] * uCraterK, wob, a);
       hh += a.x * f; shade += a.y * f;
     }
     // mountain ranges
@@ -330,13 +348,35 @@ float moonHeight(vec3 dir, float spacing, bool wantCol, out vec3 col) {
     float mare = smoothstep(0.42, 0.58, big) * (1.0 - mnt);
     gc = mix(uC1 * 1.18, uC2 * 0.5, mare);
     gc *= 1.0 + mnt * 0.35 + rays * 0.55;
-  } else {
+  } else if (uStyle < 1.5) {
     // Mars: dark basalt plains vs bright dust, dark canyon floors, darker volcano with dusty flanks
     float basalt = smoothstep(0.45, 0.62, big);
     gc = mix(uC1 * 1.12 + vec3(0.05, 0.03, 0.0), uC2 * 0.62, basalt);
     gc = mix(gc, uC2 * 0.45 + vec3(0.04, 0.0, 0.0), canyon * 0.7);
     gc = mix(gc, uC2 * 0.55, volc * 0.5);
     gc *= 1.0 + mnt * 0.25;
+  } else if (uStyle < 2.5) {
+    // Terra: meadows and darker forests, dry brown uplands, grey rock and snow on the high ranges,
+    // rivers in the valley floors
+    float forest = smoothstep(0.5, 0.62, vn(p / 1700.0 + vec3(2.0, 9.0, 0.0)));
+    float dry = smoothstep(0.55, 0.7, big);
+    gc = mix(uC1 * 1.05, uC1 * vec3(0.55, 0.7, 0.55), forest);
+    gc = mix(gc, uC2 * 1.1, dry * 0.8);
+    float rock = smoothstep(0.2, 0.5, mnt);
+    gc = mix(gc, vec3(0.45, 0.42, 0.38), rock);
+    gc = mix(gc, vec3(0.93, 0.95, 0.98), smoothstep(0.66, 0.76, mnt)); // snow only on the peaks
+    gc = mix(gc, vec3(0.16, 0.33, 0.48), smoothstep(0.55, 0.85, canyon));
+    gc = mix(gc, uC1 * 0.75, smoothstep(0.1, 0.55, canyon) * (1.0 - smoothstep(0.55, 0.85, canyon)));
+  } else {
+    // Brontes: teal plains, dark basalt fields, ochre sulphur deposits, darker rift floor and volcano
+    float basalt = smoothstep(0.46, 0.6, big);
+    float sft = clamp(spacing / 500.0, 0.0, 0.12); // softer edges where the grid is coarse (no blocks)
+    float sulphur = smoothstep(0.7 - sft, 0.78 + sft, vn(p / 1500.0 + vec3(13.0, 4.0, 0.0))) * (1.0 - sft * 2.5);
+    gc = mix(uC1 * 1.45, uC2 * 0.85, basalt);
+    gc = mix(gc, vec3(0.78, 0.64, 0.2), sulphur * 0.85);
+    gc = mix(gc, uC2 * 0.4, canyon * 0.75);
+    gc = mix(gc, vec3(0.16, 0.17, 0.2), volc * 0.6);
+    gc *= 1.0 + mnt * 0.3;
   }
   gc *= 0.93 + fine * 0.14;
   gc *= 1.0 + clamp(shade, -0.6, 0.5) * 0.45;
@@ -460,7 +500,7 @@ export function createMoonTerrain(THREE, R, edge, c1, c2, id) {
   const uniforms = {
     uCam: { value: new THREE.Vector3() }, uR: { value: R }, uEdge: { value: edge },
     uC1: { value: new THREE.Color(c1) }, uC2: { value: new THREE.Color(c2) },
-    uStyle: { value: F.style }, uMount: { value: F.mount },
+    uStyle: { value: F.style }, uMount: { value: F.mount }, uCraterK: { value: F.craterK },
     uArcN: { value: [0, 1, 2, 3].map((i) => F.arcs[i] ? new THREE.Vector4(...F.arcs[i].n, F.arcs[i].W) : new THREE.Vector4(0, 1, 0, 1)) },
     uArcC: { value: [0, 1, 2, 3].map((i) => F.arcs[i] ? new THREE.Vector4(...F.arcs[i].c, F.arcs[i].cosL) : new THREE.Vector4(0, 1, 0, 2)) },
     uArcT: { value: [0, 1, 2, 3].map((i) => F.arcs[i] ? new THREE.Vector4(...F.arcs[i].t, F.arcs[i].D) : new THREE.Vector4(1, 0, 0, 0)) },
@@ -471,7 +511,7 @@ export function createMoonTerrain(THREE, R, edge, c1, c2, id) {
     uHeroD: { value: F.hero?.depth ?? 0 },
     uDetail: { value: (detailTex ??= makeDetailTexture(THREE)) },
     uNV: { value: new THREE.Matrix3() }, // planet frame -> view space (for the per-pixel normal)
-    uDetailK: { value: F.style === 1 ? 0.8 : 1.0 },
+    uDetailK: { value: [1.0, 0.8, 0.35, 0.6][F.style] ?? 1.0 },
   };
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 });
   mat.onBeforeCompile = (sh) => {

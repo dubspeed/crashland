@@ -302,7 +302,7 @@ export function createHud() {
     setLabel(cb, { burned: 'Schirm verglüht', stowed: 'Fallschirm', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute], 'P');
     cb.disabled = s.chute === 'cut' || s.chute === 'torn' || s.chute === 'burned' || (s.chute === 'open' && !air);
     cb.classList.toggle('on', s.chute === 'open' && air);
-    cb.classList.toggle('ready', s.chute === 'stowed' && air && s.status === 'flying' && s.q <= S.CHUTE_QMAX * S.CHUTE_SAFE && s.t > 0.2);
+    cb.classList.toggle('ready', s.chute === 'stowed' && air && s.status === 'flying' && S.chuteSafe(s) && s.t > 0.2);
     // heat: hot or destroyed components override their row
     const rowParts = { capsule: ['capsule'], engine: ['engine'], tankL: ['tankL'], tankR: ['tankR'], battery: ['battery'], solar: ['solarL', 'solarR'], computer: ['computer'], chute: ['chute'], legs: ['legs'] };
     for (const [row, ids] of Object.entries(rowParts)) {
@@ -349,6 +349,9 @@ export function createHud() {
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
     else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
+    else if (p.deorbitAt && s.pred && alt > 4000 && Math.hypot(s.pred.x, s.pred.z) < 60 && Math.hypot(s.vx, s.vz) > 80) { msg = s.throttle > 0 ? 'KREUZ AUF DEM PAD – SCHUB AUS' : 'KURS STIMMT – WIEDEREINTRITT, RETRO HALTEN'; color = 'var(--ok)'; pulse = s.throttle > 0; }
+    else if (s.fineBurn) { msg = 'FEINREGELUNG – KREUZ WANDERT ZUM PAD'; color = 'var(--cyan)'; pulse = false; }
+    else if (S.brakeForChute(s)) { msg = s.throttle > 0 ? 'BREMSEN … BIS DER SCHIRM GEHT' : 'SCHUB: FÜR DEN SCHIRM BREMSEN'; color = 'var(--amber)'; pulse = s.throttle === 0; }
     else if (S.orbitGuide(s)) {
       // orbit level: count down to the braking burn, then keep burning until the orbit speed is gone
       const og = S.orbitGuide(s);
@@ -359,8 +362,8 @@ export function createHud() {
     else if (s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
     else if (s.battery < 20) { msg = 'BATTERIE SCHWACH'; color = 'var(--warn)'; pulse = false; }
     else if (s.panels === 'in' && !(s.lost.solarL && s.lost.solarR) && s.heatFlux < 4 && s.battery < 45 && s.t > 6) { msg = 'PANEELE AUSKLAPPEN – BATTERIE LÄDT NICHT'; color = 'var(--cyan)'; pulse = false; }
-    else if (s.chute === 'stowed' && p.rho > 0 && alt > 120 && alt < 1200 && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= burnAlt)) {
-      if (s.q <= S.CHUTE_QMAX * S.CHUTE_SAFE) { msg = 'FALLSCHIRM MÖGLICH'; color = 'var(--cyan)'; pulse = false; }
+    else if (s.chute === 'stowed' && p.rho > 0 && alt > 120 && alt < S.CHUTE_MAX_ALT(p) && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= burnAlt)) {
+      if (S.chuteSafe(s)) { msg = 'FALLSCHIRM MÖGLICH'; color = 'var(--cyan)'; pulse = false; }
     }
     if (s.chute !== 'torn') tornAt = undefined;
     al.hidden = !msg || s.status !== 'flying';

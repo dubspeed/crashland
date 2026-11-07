@@ -84,6 +84,14 @@ export const ORBIT_PLANETS = [
   { id: 'mars-orbit', name: 'Mars Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 3.71, alt: 2500, downrange: 9000, cueLead: 2, vy: 0, vx: 0, tilt: 0, solar: 0.45, fuel: 650,
     rho: 0.02, H: 1100, atmo: 'sehr dünn', drift: 4, text: 'Orbit in dünner Luft: bremsen, Luftwiderstand nutzen, Schirm, landen.',
     sky: 0xd4a27c, fog: 0xc89670, ground: 0xb4552f, ground2: 0x7d3a22, sun: 0xffe2c4 },
+  // Terra and Brontes: thick air squeezed into a thin shell so the orbit sits above it. Only a short
+  // deorbit burn is needed (until the cross is on the pad), then the air brakes: heat, then parachute.
+  { id: 'terra-orbit', name: 'Terra Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 9.81, alt: 8000, downrange: 20000, deorbitAt: 13000, vy: 0, vx: 0, tilt: 0, solar: 0.75, fuel: 330,
+    rho: 1.225, H: 1000, heatK: 0.6, atmo: 'normal', drift: 17, text: 'Wiedereintritt: kurz bremsen, Hitze überstehen, Schirm, landen.',
+    sky: 0x8ec5ff, fog: 0xa9d2ff, ground: 0x5f9a4c, ground2: 0x7a6145, sun: 0xffffff },
+  { id: 'brontes-orbit', name: 'Brontes Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 15.2, alt: 9000, downrange: 26000, deorbitAt: 18500, limit0: 0.75, vy: 0, vx: 0, tilt: 0, solar: 0.3, fuel: 420,
+    rho: 2.8, H: 1000, heatK: 0.6, atmo: 'dicht', drift: 20, text: 'Schwer und dicht: Eintritt glüht, Schirm erst spät.',
+    sky: 0x3b2f5c, fog: 0x463868, ground: 0x2f6e6a, ground2: 0x1f4442, sun: 0xd8c8ff },
 ];
 export const ORBIT_PLANET = ORBIT_PLANETS[0];
 /** circular orbit speed at height y above the surface */
@@ -107,6 +115,12 @@ export function orbitGuide(s) {
   const k = s.planet.R / (s.planet.R + s.y);
   const dist = ((vh * vh) / (2 * acc)) * k;
   const along = -(s.x * s.vx + s.z * s.vz) / vh; // pad distance ahead along the track
+  if (s.planet.deorbitAt) {
+    // thick air: a short deorbit burn at a fixed distance, then the cross guides; done once the burn
+    // has put the touchdown point on the track (the air does the braking from there)
+    if (s.deorbited || (s.pred && Math.hypot(s.pred.x, s.pred.z) < 3000)) { s.deorbited = true; return null; }
+    return { vh, dist: 0, brakeIn: (along - s.planet.deorbitAt) / (vh * k), deorbit: true };
+  }
   return { vh, dist, brakeIn: (along - dist) / (vh * k) + 1 - (s.planet.cueLead ?? 0) }; // a little early: early is forgiving, late overshoots
 }
 
@@ -179,7 +193,7 @@ export function createState(planet, opts = {}) {
     const v = orbitSpeed(planet, planet.alt);
     const s = createState({ ...planet, orbit: false }, { ...opts, wind: planet.rho > 0 ? opts.wind : 0, pitch0: 0, vz0: 0 });
     return Object.assign(s, { planet, x: -planet.downrange, z: 0, y: planet.alt, vx: v, vy: 0, vz: 0,
-      a: Math.PI / 2, holdA: Math.PI / 2, b: 0, holdB: 0, sas: 'retro', limit: 0.5 });
+      a: Math.PI / 2, holdA: Math.PI / 2, b: 0, holdB: 0, sas: 'retro', limit: planet.limit0 ?? 0.5 });
   }
   return {
     planet, t: 0,
@@ -219,19 +233,31 @@ export function massProps(s) {
  *  current canopy, wind and its shear included. Returns { x, z, t } or null if it never gets there. */
 export function predictImpact(s) {
   const { m } = massProps(s);
-  const chuteK = s.chute === 'open' && s.planet.rho > 0 ? s.chuteInflate : 0;
+  let chuteK = s.chute === 'open' && s.planet.rho > 0 ? s.chuteInflate : 0;
+  // orbit levels with thick air: assume the chute opens as soon as it is safe (that is what the HUD asks
+  // for), otherwise the cross lies kilometres long and a burn "until the cross is on the pad" falls short
+  const planChute = s.planet.orbit && s.planet.rho > 0.5 && s.chute === 'stowed' && !s.lost.chute;
+  const mustBrake = (m * s.planet.g) / BODY_CDA > CHUTE_QMAX * CHUTE_SAFE; // terminal pressure above the canopy limit
+  let lastQ = Infinity;
   let x = s.x, y = s.y, z = s.z, vx = s.vx, vy = s.vy, vz = s.vz, t = 0;
   const h = s.planet.orbit ? 0.2 : 0.1;
   for (let i = 0, n = s.planet.orbit ? 2000 : 1200; i < n; i++) {
     const ground = s.planet.orbit && y > 600 ? -1e9 : terrainHeight(x, z);
     if (y <= ground) return { x, z, t };
-    const alt = y - ground;
+    const alt = ground < -1e8 ? y : y - ground;
     const w = windAt(s, alt, s.t + t);
     const rx = vx - w.x, rz = vz - w.z, v = Math.hypot(rx, vy, rz);
     const rho = s.planet.rho * Math.exp(-Math.max(0, y) / s.planet.H);
     const q = 0.5 * rho * v * v;
+    const qRate = lastQ === Infinity ? 0 : (q - lastQ) / h;
+    // (where the canopy is never safe at terminal speed, Brontes, the HUD asks you to brake with the engine
+    // below the chute altitude until it is safe, then open it)
+    if (planChute && chuteK === 0 && vy < -10 && alt < CHUTE_MAX_ALT(s.planet) && q + Math.max(0, qRate) * 3 <= CHUTE_QMAX * CHUTE_SAFE) chuteK = 1;
+    lastQ = q;
+    // ...and until then the braking burn the HUD asks for (current thrust limit, against the airflow)
+    const brake = planChute && mustBrake && chuteK === 0 && vy < -10 && alt < CHUTE_MAX_ALT(s.planet) ? (F_MAX * s.limit) / m : 0;
     const Fd = q * BODY_CDA + Math.min(q * CHUTE_CDA * chuteK, chuteK > 0 ? CHUTE_FMAX : 0);
-    const k = v > 0.01 ? -Fd / v / m : 0;
+    const k = v > 0.01 ? -Fd / v / m - brake / v : 0;
     const cv = curvature(s.planet, y, vx, vy, vz);
     vx += (k * rx + (cv ? cv.ax : 0)) * h; vy += (k * vy - (cv ? cv.gy : s.planet.g)) * h; vz += (k * rz + (cv ? cv.az : 0)) * h;
     const kk = cv ? cv.k : 1;
@@ -297,6 +323,19 @@ export function timeToBurn(s) {
   return t;
 }
 export const CHUTE_SAFE = 0.95; // deploy hint/button below this share of CHUTE_QMAX
+/** highest altitude at which the HUD suggests the chute (higher on the orbit levels' compressed air) */
+export const CHUTE_MAX_ALT = (p) => (p.orbit && p.rho > 0.5 ? 2500 : 1200);
+/** thick-air orbit levels where the canopy is never safe at terminal speed: brake with the engine first */
+export function brakeForChute(s) {
+  const p = s.planet;
+  if (!(p.orbit && p.rho > 0.5) || s.chute !== 'stowed' || s.lost.chute) return false;
+  const { m } = massProps(s);
+  return (m * p.g) / BODY_CDA > CHUTE_QMAX * CHUTE_SAFE && altitude(s) < CHUTE_MAX_ALT(p) && s.vy < -10 && !chuteSafe(s);
+}
+/** safe to open the chute now: pressure low enough and not about to rise past the limit */
+export function chuteSafe(s) {
+  return s.q + Math.max(0, s.qRate ?? 0) * 3 <= CHUTE_QMAX * CHUTE_SAFE; // and still below the limit in 3 s
+}
 
 /** Bordcomputer: stopping distance (m) burning at the current throttle limit, including air drag
  *  and the parachute as it is right now. Infinity if the engine cannot stop the descent. */
@@ -440,6 +479,13 @@ export function step(s, input, dt) {
   let thr = input.thrust && !s.blackout ? s.limit : 0;
   if (!s.powered) thr = Math.min(thr, 0.6); // pumps off -> pressure-fed only
   if (fuel(s) <= 0) thr = 0;
+  // deorbit fine control (thick-air orbit levels): high up, the computer throttles down as the predicted
+  // touchdown nears the pad; 1 m/s there moves the landing point by a few hundred metres
+  s.fineBurn = false;
+  if (p.deorbitAt && thr > 0 && s.pred && altitude(s) > 4000 && s.computerOK) {
+    const d = Math.hypot(s.pred.x, s.pred.z);
+    if (d < 3000) { thr *= Math.max(0.06, d / 3000); s.fineBurn = true; }
+  }
   const mdot = (thr * F_MAX) / (ISP * G0);
   // both tanks feed the engine evenly; if one runs dry the other takes over
   const need = mdot * dt;
@@ -462,10 +508,12 @@ export function step(s, input, dt) {
   let tA = s.sas === 'retro' && thr > 0 ? lean(s.vx) : 0;
   let tB = s.sas === 'retro' && thr > 0 ? -lean(s.vz) : 0;
   if (s.sas === 'retro' && p.orbit) {
-    // orbit level: point the engine against the velocity (any angle), so it can brake the orbital speed
+    // orbit level: point the engine against the velocity (any angle), so it can brake the orbital speed and
+    // shield the lander on entry. Slow and low it becomes the normal capped retro lean again: near the end
+    // of a burn the velocity direction is meaningless and would tip the lander over
     const vh = Math.hypot(s.vx, s.vz), v = Math.hypot(vh, s.vy);
-    if (v > 0.5) { tA = Math.atan2(s.vx, -s.vy); tB = -Math.asin(Math.max(-1, Math.min(1, s.vz / v))) ; }
-    else { tA = 0; tB = 0; }
+    // (under an open canopy it hangs straight instead of fighting the chute)
+    if (v > 0.5 && (vh > 25 || altitude(s) > 400) && !(s.chute === 'open' && p.rho > 0)) { tA = Math.atan2(s.vx, -s.vy); tB = -Math.asin(Math.max(-1, Math.min(1, s.vz / v))); }
   }
   let cmdA = input.rcs || 0, cmdB = input.rcsZ || 0;
   // under an open canopy the pad steers the parachute (pulls the risers) instead of tilting the lander
@@ -490,7 +538,10 @@ export function step(s, input, dt) {
   s.windNow = wind.speed; s.windX = wind.x; s.windZ = wind.z;
   const rx = s.vx - wind.x, rz = s.vz - wind.z;
   const v = Math.hypot(rx, s.vy, rz);
-  s.q = 0.5 * density(s) * v * v;
+  const qNew = 0.5 * density(s) * v * v;
+  // trend of the dynamic pressure (Pa/s, smoothed): rising means the chute would see more than it does now
+  s.qRate = (s.qRate ?? 0) + (((qNew - (s.q ?? qNew)) / dt) - (s.qRate ?? 0)) * Math.min(1, dt * 2);
+  s.q = qNew;
   s.maxQ = Math.max(s.maxQ, s.q);
   if (s.chute === 'open') {
     s.chuteT += dt;
@@ -509,8 +560,20 @@ export function step(s, input, dt) {
   // side force acts above the CoM and tips the lander downwind (body drag only, the canopy hangs free)
   const ks = v > 0.01 ? (-s.q * BODY_CDA) / v : 0;
   const arm = WIND_ARM + (WIND_ARM_PANELS - WIND_ARM) * (1 - s.panelFold) * ((s.lost.solarL && s.lost.solarR) ? 0 : 1);
-  s.windTorque = -arm * ks * rx;
-  s.windTorqueB = arm * ks * rz;
+  // torque = arm * u x F_perp, with F_perp the part of the body drag across the lander's axis. Upright this is
+  // exactly the old side-wind model; engine first into the flow (u against the airflow) it vanishes and is
+  // stable, so a lander lying in the airstream from orbit doesn't tumble
+  if (!p.orbit) {
+    // normal levels: the original side-wind model (horizontal airflow only), tuned and played as is
+    s.windTorque = -arm * ks * rx;
+    s.windTorqueB = arm * ks * rz;
+  } else {
+    const u0 = upVector(s), Fx = ks * rx, Fy = ks * s.vy, Fz = ks * rz;
+    const along = Fx * u0.x + Fy * u0.y + Fz * u0.z;
+    const px = Fx - along * u0.x, py = Fy - along * u0.y, pz = Fz - along * u0.z;
+    s.windTorque = arm * (u0.x * py - u0.y * px);  // z component of u x F_perp
+    s.windTorqueB = arm * (u0.y * pz - u0.z * py); // x component
+  }
   s.w += (s.windTorque / I) * dt;
   s.wb += (s.windTorqueB / I) * dt;
   if (s.chute === 'open' && s.planet.rho > 0 && s.chuteInflate > 0.05) {
@@ -553,16 +616,29 @@ export function step(s, input, dt) {
   const use = 0.55 + (s.sas ? 0.25 : 0) + 2.2 * rcsUse + 1.2 * thr;
   s.panelFold = Math.max(0, Math.min(1, s.panelFold + (s.panels === 'in' ? dt : -dt) / 1.2));
   const panels = (s.lost.solarL ? 0 : 1) + (s.lost.solarR ? 0 : 1);
-  const gain = 1.6 * p.solar * (panels / 2) * (1 - s.panelFold);
+  // orbit levels: above the air the sun shines fully; it dims to the planet's ground value with the air below
+  const sun = p.orbit && p.rho > 0 ? p.solar + (1 - p.solar) * (1 - Math.min(1, density(s) / p.rho)) : p.solar;
+  s.solarNow = sun;
+  const gain = 1.6 * sun * (panels / 2) * (1 - s.panelFold);
   s.battery = Math.max(0, Math.min(BAT_CAP, s.battery + (gain - use) * dt));
 
   // --- aerodynamic heating: hot parts glow, overheated parts blow off ---
-  const flux = Math.sqrt(density(s)) * (v / 100) ** 3 * HEAT_K;
+  const flux = Math.sqrt(density(s)) * (v / 100) ** 3 * HEAT_K * (p.heatK ?? 1);
   s.heatFlux = flux;
   const sa = Math.sin(s.a), sb = Math.sin(s.b); // tilt exposes one side more
+  // orbit levels: engine first into the airflow works as a heat shield for the rest of the lander
+  // (1 = engine leading, 0 = sideways or worse); sideways flight exposes everything more
+  let shield = 0;
+  if (p.orbit) {
+    const ux = upVector(s), vr = Math.hypot(s.vx - wind.x, s.vy, s.vz - wind.z) || 1;
+    shield = Math.max(0, -((s.vx - wind.x) * ux.x + s.vy * ux.y + (s.vz - wind.z) * ux.z) / vr);
+  }
+  s.heatShield = shield;
   for (const c of COMPONENTS) {
     if (s.lost[c.id] || !c.heat) continue;
-    let exp = Math.max(0, c.heat[0] * (1 + Math.sign(c.pos[0]) * sa * 2.5 - Math.sign(c.pos[2]) * sb * 2.5));
+    let exp = p.orbit
+      ? c.heat[0] * (c.id === 'engine' ? 1 : (1 - (c.id === 'legs' ? 0.5 : 0.85) * shield) * (1 + 1.5 * (1 - shield)))
+      : Math.max(0, c.heat[0] * (1 + Math.sign(c.pos[0]) * sa * 2.5 - Math.sign(c.pos[2]) * sb * 2.5));
     if (c.model === 'solar') exp *= 1 - 0.88 * s.panelFold; // folded panels sit in the lee of the frame
     // heat[2] = heat capacity: big, thin parts like the solar wings warm up over a few seconds
     s.temp[c.id] += ((flux * exp - HEAT_COOL * (s.temp[c.id] - T_AMB)) / (c.heat[2] ?? 1)) * dt;

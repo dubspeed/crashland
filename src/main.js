@@ -482,4 +482,4 @@ world.setPlanet(planet); world.ready = true; fogBase = scene.fog.far;
 showMenu();
 
 // handle for automated tests
-window.__crashland = { renderer, camera, cam, get state() { return s; }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANETS[0] : i === 'mars-orbit' ? S.ORBIT_PLANETS[1] : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };
+window.__crashland = { renderer, camera, cam, get state() { return s; }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANETS[0] : typeof i === 'string' ? S.ORBIT_PLANETS.find((p) => p.id === i) : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };
