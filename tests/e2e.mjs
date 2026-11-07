@@ -33,22 +33,25 @@ const CASES = [
   ['mars-orbit', 0, 1, ['BREMSEN IN', 'BREMSEN ·']],
   ['terra-orbit', 0, 1, ['BREMSEN IN', 'KURS STIMMT']],
   ['brontes-orbit', 0, 1, ['BREMSEN IN', 'KURS STIMMT']], // the chute braking burn lasts < 1 s: may not show at 10x
+  // hints off: none of the advice may appear (warnings still may)
+  ['terra-orbit', 0, 2, [], { hints: false }, ['BREMSEN IN', 'JETZT BREMSEN', 'FEIN', 'KURS STIMMT', 'FALLSCHIRM MÖGLICH', 'BURN!']],
 ];
 const pilotSrc = readFileSync(new URL('./pilots.mjs', import.meta.url), 'utf8').replace(/^export /m, '');
 
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader'] });
 let failures = 0;
-for (const [id, wind, seed, expect] of CASES) {
+for (const [id, wind, seed, expect, settings = {}, forbid = []] of CASES) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
   await page.goto(`http://localhost:${PORT}/?speed=10`);
   await page.waitForFunction(() => window.__crashland);
-  await page.evaluate(([id, wind, seed, src]) => {
+  await page.evaluate(([id, wind, seed, src, settings]) => {
     const c = window.__crashland, S = c.S;
     const P = [...S.PLANETS, ...S.ORBIT_PLANETS].find((p) => p.id === id);
     c.setWind(wind);
+    c.setSettings({ ...S.DEFAULT_SETTINGS, ...settings });
     c.startSeed(P, seed);
     const makePilot = new Function(`${src}; return makePilot;`)();
     c.setAutopilot(makePilot(S, P, {}));
@@ -59,7 +62,7 @@ for (const [id, wind, seed, expect] of CASES) {
     const kind = (txt) => txt.replace(/[\d.,:]+/g, '#');
     const log = () => { if (!al.hidden) { const txt = al.textContent; const last = window.__alerts.at(-1); if (!last || kind(last[1]) !== kind(txt)) window.__alerts.push([+c.state.t.toFixed(1), txt]); } };
     new MutationObserver(log).observe(al, { childList: true, characterData: true, subtree: true, attributes: true });
-  }, [id, wind, seed, pilotSrc]);
+  }, [id, wind, seed, pilotSrc, settings]);
   const t0 = Date.now();
   let mapShot = false;
   while (Date.now() - t0 < 6 * 60 * 1000) {
@@ -88,10 +91,11 @@ for (const [id, wind, seed, expect] of CASES) {
   let k = 0;
   for (const [, txt] of res.alerts) if (k < expect.length && txt.includes(expect[k])) k++;
   if (k < expect.length) problems.push(`HUD message missing or out of order: "${expect[k]}"`);
+  for (const f of forbid) if (res.alerts.some(([, txt]) => txt.includes(f))) problems.push(`hint shown although hints are off: "${f}"`);
   const again = summary(replay(res.rec));
   if (JSON.stringify(again) !== JSON.stringify(r)) problems.push(`replay differs: ${JSON.stringify(again)} vs ${JSON.stringify(r)}`);
   failures += problems.length ? 1 : 0;
-  console.log(`${problems.length ? 'FAIL' : 'ok  '} ${id.padEnd(14)} ${r.status} ${Math.hypot(r.x, r.z).toFixed(1)} m, ${r.t.toFixed(0)} s sim in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${res.rec.ev.length} events${problems.length ? '\n     ' + problems.join('\n     ') : ''}`);
+  console.log(`${problems.length ? 'FAIL' : 'ok  '} ${(id + (Object.keys(settings).length ? ' ' + JSON.stringify(settings) : '')).padEnd(14)} ${r.status} ${Math.hypot(r.x, r.z).toFixed(1)} m, ${r.t.toFixed(0)} s sim in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${res.rec.ev.length} events${problems.length ? '\n     ' + problems.join('\n     ') : ''}`);
   console.log('     HUD: ' + res.alerts.map(([t, a]) => `${t}s ${a}`).join(' → ').slice(0, 600));
 }
 await browser.close();

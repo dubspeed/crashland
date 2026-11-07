@@ -144,10 +144,23 @@ export function setupTerrain(p) {
   setTerrainEdge(sr ? surfaceEdge(p) : null, sr, surfaceId(p));
 }
 /** a new round: everything random comes from the seed */
-export function newRound(planet, wind = 0, seed = 1) {
+// difficulty settings (start menu); defaults: normal fuel, hints on, no automatic fine control
+export const FUEL_LEVELS = [
+  { id: 'low', name: 'Knapp', k: 0.75, bonus: 1.25 },
+  { id: 'normal', name: 'Normal', k: 1, bonus: 1 },
+  { id: 'high', name: 'Reichlich', k: 1.25, bonus: 0.85 },
+];
+export const HINTS_OFF_BONUS = 1.15; // score multiplier without hints
+export const AUTO_FINE_BONUS = 0.9;  // score multiplier with the automatic deorbit fine control
+export const DEFAULT_SETTINGS = { fuel: 1, hints: true, autoFine: false };
+
+export function newRound(planet, wind = 0, seed = 1, settings = {}) {
   const rnd = seededRandom(seed);
   setupTerrain(planet);
-  return createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2 });
+  const set = { ...DEFAULT_SETTINGS, ...settings };
+  const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: FUEL_LEVELS[set.fuel]?.k ?? 1 });
+  s.settings = set;
+  return s;
 }
 export const STEP = 1 / 120;
 /** player / autopilot actions between steps (recorded for replays) */
@@ -275,7 +288,7 @@ export function createState(planet, opts = {}) {
     x: -Math.cos(heading) * off, z: -Math.sin(heading) * off, y: planet.alt,
     vx: planet.vx, vy: planet.vy, vz: opts.vz0 ?? side * Math.abs(planet.vx) * 0.7,
     a: t0, w: 0, b: b0, wb: 0,
-    fuel0: planet.fuel, fuelL: planet.fuel / 2, fuelR: planet.fuel / 2, battery: BAT_CAP,
+    fuel0: planet.fuel * (opts.fuelK ?? 1), fuelL: (planet.fuel * (opts.fuelK ?? 1)) / 2, fuelR: (planet.fuel * (opts.fuelK ?? 1)) / 2, battery: BAT_CAP,
     limit: 1, throttle: 0, sas: 'hold', holdA: t0, holdB: b0, sasI: 0, sasIB: 0,
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
     crew: CREW.map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
@@ -397,6 +410,15 @@ export function timeToBurn(s) {
 export const CHUTE_SAFE = 0.95; // deploy hint/button below this share of CHUTE_QMAX
 /** highest altitude at which the HUD suggests the chute (higher on the orbit levels' compressed air) */
 export const CHUTE_MAX_ALT = (p) => (p.orbit && p.rho > 0.5 ? 2500 : 1200);
+/** deorbit fine control as a hint (thick-air orbit levels, while high): as the cross nears the pad, the thrust
+ *  limit that keeps it from overshooting (the same law the optional automatic fine control applies) */
+export function fineHint(s) {
+  const p = s.planet;
+  if (!p.deorbitAt || !s.pred || altitude(s) <= 4000 || Math.hypot(s.vx, s.vz) < 80) return null;
+  const d = Math.hypot(s.pred.x, s.pred.z);
+  if (d >= 3000) return null;
+  return { d, limit: Math.max(0.05, Math.round((p.limit0 ?? 0.5) * Math.max(0.06, d / 3000) * 100) / 100) };
+}
 /** thick-air orbit levels where the canopy is never safe at terminal speed: brake with the engine first */
 export function brakeForChute(s) {
   const p = s.planet;
@@ -562,7 +584,7 @@ export function step(s, input, dt) {
   // deorbit fine control (thick-air orbit levels): high up, the computer throttles down as the predicted
   // touchdown nears the pad; 1 m/s there moves the landing point by a few hundred metres
   s.fineBurn = false;
-  if (p.deorbitAt && thr > 0 && s.pred && altitude(s) > 4000 && s.computerOK) {
+  if (p.deorbitAt && thr > 0 && s.pred && altitude(s) > 4000 && s.computerOK && s.settings?.autoFine) {
     const d = Math.hypot(s.pred.x, s.pred.z);
     if (d < 3000) { thr *= Math.max(0.06, d / 3000); s.fineBurn = true; }
   }

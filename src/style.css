@@ -288,11 +288,11 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 /* wind setting in the menu */
 .wind-row { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; flex-wrap: wrap; }
 .wind-label { font: 600 11px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--mute); }
-#wind-select { display: flex; gap: 6px; flex-wrap: wrap; }
-#wind-select button { display: grid; gap: 1px; text-align: left; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--glass-edge); background: var(--glass); font: 700 14px var(--display); letter-spacing: 0.04em; }
-#wind-select button small { font: 400 10px var(--mono); color: var(--mute); }
-#wind-select button.on { border-color: var(--amber); color: var(--amber); }
-#wind-select button.on small { color: var(--amber); }
+#wind-select, .opt-select { display: flex; gap: 6px; flex-wrap: wrap; }
+#wind-select button, .opt-select button { display: grid; gap: 1px; text-align: left; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--glass-edge); background: var(--glass); font: 700 14px var(--display); letter-spacing: 0.04em; }
+#wind-select button small, .opt-select button small { font: 400 10px var(--mono); color: var(--mute); }
+#wind-select button.on, .opt-select button.on { border-color: var(--amber); color: var(--amber); }
+#wind-select button.on small, .opt-select button.on small { color: var(--amber); }
 
 /* wind + pad navigation */
 .nav { display: grid; gap: 1px; margin: 2px 0 4px; font-size: 12px; color: var(--mute); }
@@ -410,3 +410,5 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 
 /* debug overlay (F3, ?debug, or tap the title three times) */
 #debug { position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); top: calc(4px + env(safe-area-inset-top, 0px)); margin: 0; padding: 6px 9px; background: rgba(0,0,0,0.78); color: #9ff0b0; font: 600 10.5px/1.35 "IBM Plex Mono", monospace; border-radius: 6px; pointer-events: none; white-space: pre; }
+
+.wind-label { min-width: 74px; }

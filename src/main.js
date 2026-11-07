@@ -126,7 +126,28 @@ function buildWindSelect() {
   box.innerHTML = S.WIND_LEVELS.map((w, i) => `<button role="radio" aria-checked="${i === windLevel}" class="${i === windLevel ? 'on' : ''}" data-i="${i}">${w.name}${w.speed ? `<small>${w.speed} m/s · ×${w.bonus.toLocaleString('de-DE')}</small>` : '<small>ruhig</small>'}</button>`).join('');
   box.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setWind(+b.dataset.i)));
 }
-const bestKey = (id) => `${id}${windLevel ? `.wind${windLevel}` : ''}`;
+// difficulty settings besides the wind (start menu, remembered)
+let settings = { ...S.DEFAULT_SETTINGS };
+try { Object.assign(settings, JSON.parse(localStorage.getItem('crashland.settings') || '{}')); } catch { /* defaults */ }
+function setSetting(k, v) {
+  settings[k] = v;
+  try { localStorage.setItem('crashland.settings', JSON.stringify(settings)); } catch { /* storage unavailable */ }
+  buildMenu();
+}
+function buildSettings() {
+  const row = (id, opts, cur, key) => {
+    const box = $(id);
+    box.innerHTML = opts.map(([v, name, sub], i) => `<button role="radio" aria-checked="${v === cur}" class="${v === cur ? 'on' : ''}" data-i="${i}">${name}<small>${sub}</small></button>`).join('');
+    box.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setSetting(key, opts[+b.dataset.i][0])));
+  };
+  const x = (k) => `×${k.toLocaleString('de-DE')}`;
+  row('fuel-select', S.FUEL_LEVELS.map((f, i) => [i, f.name, `${Math.round(f.k * 100)} % · ${x(f.bonus)}`]), settings.fuel, 'fuel');
+  row('hint-select', [[true, 'An', 'Tipps im HUD'], [false, 'Aus', `nur Warnungen · ${x(S.HINTS_OFF_BONUS)}`]], settings.hints, 'hints');
+  row('auto-select', [[false, 'Aus', 'Feinregelung von Hand'], [true, 'An', `Computer regelt · ${x(S.AUTO_FINE_BONUS)}`]], settings.autoFine, 'autoFine');
+}
+/** score multiplier of the chosen settings (wind is applied separately, only where there is air) */
+const settingsBonus = (set) => (S.FUEL_LEVELS[set.fuel]?.bonus ?? 1) * (set.hints ? 1 : S.HINTS_OFF_BONUS) * (set.autoFine ? S.AUTO_FINE_BONUS : 1);
+const bestKey = (id) => `${id}${windLevel ? `.wind${windLevel}` : ''}${settings.fuel !== 1 ? `.fuel${settings.fuel}` : ''}${settings.hints ? '' : '.nohints'}${settings.autoFine ? '.auto' : ''}`;
 function best(id) { try { return JSON.parse(localStorage.getItem(`crashland.best.${id}`)); } catch { return null; } }
 function saveBest(id, v) { try { localStorage.setItem(`crashland.best.${id}`, JSON.stringify(v)); } catch { /* storage unavailable */ } }
 
@@ -134,6 +155,7 @@ function buildMenu() {
   const wrap = $('planets');
   wrap.innerHTML = '';
   buildWindSelect();
+  buildSettings();
   for (const p of [...S.PLANETS, ...S.ORBIT_PLANETS]) {
     const b = document.createElement('button');
     b.className = 'planet';
@@ -213,8 +235,8 @@ function start(p) {
   // a round is fully determined by its seed and the recorded inputs (replays, see tests/replay.mjs)
   const seed = (forceSeed ?? Math.floor(Math.random() * 2 ** 31)) >>> 0;
   forceSeed = null;
-  s = S.newRound(planet, windLevel, seed);
-  rec = { v: 1, planet: planet.id, wind: windLevel, seed, ev: [] };
+  s = S.newRound(planet, windLevel, seed, settings);
+  rec = { v: 1, planet: planet.id, wind: windLevel, seed, settings: { ...settings }, ev: [] };
   lastRec = { thrust: false, rcs: 0, rcsZ: 0, limit: s.limit };
   hud.reset();
   cam.tgtD = 0; cam.intro = 0; cam.tgt = null; cam.pitch = 0;
@@ -241,7 +263,7 @@ function rate(st) {
   const base = fuelPct * 1000 + (S.LAND.vy[2] - st.touch.vy) * 60 + (S.LAND.tilt[1] - st.touch.tilt) * 10
     - st.touch.grade * 150 + st.crew.filter((c) => !c.fainted).length * 70 + st.planet.g * 20 - Object.keys(st.lost).length * 120
     + precisionBonus(st);
-  const score = Math.max(0, Math.round(base * (st.planet.rho > 0 ? st.wind.bonus : 1)));
+  const score = Math.max(0, Math.round(base * (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings)));
   return { stars, score };
 }
 
@@ -257,7 +279,8 @@ function finish() {
 function showResult() {
   const ok = s.status === 'landed';
   const { stars, score } = rate(s);
-  $('r-kicker').textContent = `${planet.name} · ${planet.g.toLocaleString('de-DE')} m/s²${s.wind.speed && planet.rho > 0 ? ` · Wind ${s.wind.name} ×${s.wind.bonus.toLocaleString('de-DE')}` : ''}`;
+  const setTxt = [s.settings.fuel !== 1 ? `Treibstoff ${S.FUEL_LEVELS[s.settings.fuel].name}` : '', s.settings.hints ? '' : 'ohne Hinweise', s.settings.autoFine ? 'Feinregelung an' : ''].filter(Boolean);
+  $('r-kicker').textContent = `${planet.name} · ${planet.g.toLocaleString('de-DE')} m/s²${s.wind.speed && planet.rho > 0 ? ` · Wind ${s.wind.name} ×${s.wind.bonus.toLocaleString('de-DE')}` : ''}${setTxt.length ? ` · ${setTxt.join(' · ')} ×${settingsBonus(s.settings).toLocaleString('de-DE', { maximumFractionDigits: 2 })}` : ''}`;
   const g = s.touch.grade;
   const crash = s.touch.crash;
   $('r-title').textContent = ok ? ['Butterweich gelandet', 'Gelandet', 'Harte Landung'][g]
@@ -583,4 +606,4 @@ showMenu();
 
 // handle for automated tests
 window.__crashland = { renderer, camera, cam, get state() { return s; }, exportFlight: flightRecord, act: doAct,
-  setTimeScale(k) { timeScale = Math.max(1, Math.min(50, k)); }, setWind(i) { setWind(i); }, get record() { return rec; }, startSeed(p, seed) { forceSeed = seed; start(p); }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANETS[0] : typeof i === 'string' ? S.ORBIT_PLANETS.find((p) => p.id === i) : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; }, get world() { return world; } };
+  setTimeScale(k) { timeScale = Math.max(1, Math.min(50, k)); }, setWind(i) { setWind(i); }, setSettings(o) { Object.assign(settings, o); }, get record() { return rec; }, startSeed(p, seed) { forceSeed = seed; start(p); }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANETS[0] : typeof i === 'string' ? S.ORBIT_PLANETS.find((p) => p.id === i) : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; }, get world() { return world; } };

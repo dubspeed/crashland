@@ -350,6 +350,9 @@ export function createHud() {
     // alerts, most important first
     const al = $('alert');
     let msg = null, color = 'var(--bad)', pulse = true;
+    // hints (advice) can be switched off in the start menu; warnings always show
+    const hints = s.settings?.hints !== false;
+    const fh = hints && !s.settings?.autoFine ? S.fineHint(s) : null;
     if (s.blackout) msg = 'PILOTIN BEWUSSTLOS – KEINE STEUERUNG';
     // name the cause: only the engine can be throttled; air drag or the canopy's jerk can't
     else if (s.gNow > S.G_LIMIT) msg = s.throttle > 0 ? 'G-LAST ZU HOCH – SCHUB DROSSELN' : s.chute === 'open' ? 'G-LAST ZU HOCH – SCHIRM REISST AN' : 'G-LAST ZU HOCH – LUFTWIDERSTAND';
@@ -360,26 +363,38 @@ export function createHud() {
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
     else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
-    else if (p.deorbitAt && s.pred && alt > 4000 && Math.hypot(s.pred.x, s.pred.z) < 60 && Math.hypot(s.vx, s.vz) > 80) { msg = s.throttle > 0 ? 'KREUZ AUF DEM PAD – SCHUB AUS' : 'KURS STIMMT – WIEDEREINTRITT, RETRO HALTEN'; color = 'var(--ok)'; pulse = s.throttle > 0; }
+    else if (hints && p.deorbitAt && s.pred && alt > 4000 && Math.hypot(s.pred.x, s.pred.z) < 60 && Math.hypot(s.vx, s.vz) > 80) { const lim0 = p.limit0 ?? 0.5;
+      msg = s.throttle > 0 ? 'KREUZ AUF DEM PAD – SCHUB AUS' : s.limit < lim0 * 0.8 ? `KURS STIMMT – SCHUBGRENZE ZURÜCK AUF ${Math.round(lim0 * 100)} %` : 'KURS STIMMT – WIEDEREINTRITT, RETRO HALTEN'; color = 'var(--ok)'; pulse = s.throttle > 0; }
     else if (s.fineBurn) { msg = 'FEINREGELUNG – KREUZ WANDERT ZUM PAD'; color = 'var(--cyan)'; pulse = false; }
-    else if (S.brakeForChute(s)) {
+    else if (fh) {
+      // deorbit fine control as advice: the cross reacts to every m/s now
+      const pct = Math.round(fh.limit * 100), long = s.pred.x > 0;
+      // within ~300 m the steerable canopy does the rest
+      const close = fh.d < 300;
+      if (s.throttle > 0) msg = s.limit > fh.limit + 0.015 ? `FEIN: SCHUB AUF ${pct} % – KREUZ NAHE AM ZIEL` : `FEIN: GUT · KREUZ ${fmt(fh.d)} m VOM ZIEL`;
+      else if (close) msg = `KURS STIMMT – ${fmt(fh.d)} m MIT DEM SCHIRM STEUERN`;
+      else msg = long ? `KREUZ ${fmt(fh.d)} m HINTER DEM ZIEL – WEITER BREMSEN (≤ ${pct} %)` : `ZU VIEL GEBREMST – KREUZ ${fmt(fh.d)} m VOR DEM ZIEL`;
+      color = s.throttle > 0 || long ? 'var(--cyan)' : close ? 'var(--ok)' : 'var(--warn)'; pulse = false;
+    }
+    else if (hints && S.brakeForChute(s)) {
       // hint only: the thrust that keeps the crew below their G limit (the air already brakes hard)
       const rec = S.chuteBrakeLimit(s), pct = Math.round(rec * 20) * 5;
       const how = pct >= 5 ? ` · SCHUB ≤ ${pct} %` : ' · LUFT BREMST GENUG';
       msg = (s.throttle > 0 ? 'BREMSEN … BIS DER SCHIRM GEHT' : 'FÜR DEN SCHIRM BREMSEN') + how;
       color = 'var(--amber)'; pulse = s.throttle === 0;
     }
-    else if (S.orbitGuide(s)) {
+    else if (hints && S.orbitGuide(s)) {
       // orbit level: count down to the braking burn, then keep burning until the orbit speed is gone
       const og = S.orbitGuide(s);
       if (s.throttle > 0) { msg = `BREMSEN · ${fmt(og.vh)} m/s`; color = 'var(--amber)'; pulse = false; }
       else if (og.brakeIn > 2.5) { msg = `ORBIT ${fmt(og.vh)} m/s · BREMSEN IN ${fmt(og.brakeIn)} s`; color = 'var(--cyan)'; pulse = false; }
       else { msg = og.brakeIn > -8 ? 'JETZT BREMSEN (RETRO)' : 'ZU SPÄT – BREMSEN!'; color = 'var(--amber)'; }
     }
-    else if (s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
+    else if (hints && s.chute === 'open' && p.rho > 0.5 && s.throttle === 0 && s.limit < (p.limit0 ?? 0.5) * 0.8 && alt > 150) { msg = `SCHUBGRENZE FÜR DIE LANDUNG HOCHSETZEN (${Math.round((p.limit0 ?? 0.5) * 100)} %)`; color = 'var(--cyan)'; pulse = false; }
+    else if (hints && s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
     else if (s.battery < 20) { msg = 'BATTERIE SCHWACH'; color = 'var(--warn)'; pulse = false; }
-    else if (s.panels === 'in' && !(s.lost.solarL && s.lost.solarR) && s.heatFlux < 4 && s.battery < 45 && s.t > 6) { msg = 'PANEELE AUSKLAPPEN – BATTERIE LÄDT NICHT'; color = 'var(--cyan)'; pulse = false; }
-    else if (s.chute === 'stowed' && p.rho > 0 && alt > 120 && alt < S.CHUTE_MAX_ALT(p) && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= burnAlt)) {
+    else if (hints && s.panels === 'in' && !(s.lost.solarL && s.lost.solarR) && s.heatFlux < 4 && s.battery < 45 && s.t > 6) { msg = 'PANEELE AUSKLAPPEN – BATTERIE LÄDT NICHT'; color = 'var(--cyan)'; pulse = false; }
+    else if (hints && s.chute === 'stowed' && p.rho > 0 && alt > 120 && alt < S.CHUTE_MAX_ALT(p) && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= burnAlt)) {
       if (S.chuteSafe(s)) { msg = 'FALLSCHIRM MÖGLICH'; color = 'var(--cyan)'; pulse = false; }
     }
     if (s.chute !== 'torn') tornAt = undefined;

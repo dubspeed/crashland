@@ -13,7 +13,7 @@ export function planetById(id) {
 export function replay(record, onStep) {
   const planet = planetById(record.planet);
   if (!planet) throw new Error(`unknown planet ${record.planet}`);
-  const s = S.newRound(planet, record.wind, record.seed);
+  const s = S.newRound(planet, record.wind, record.seed, record.settings ?? {});
   const input = { thrust: false, rcs: 0, rcsZ: 0 };
   const ev = record.ev;
   let i = 0;
@@ -37,9 +37,9 @@ export function summary(s) {
 }
 
 /** fly a pilot (tests/pilots.mjs) like the game does and record it, without a browser */
-export function recordPilot(planet, wind, seed, pilot, maxT = 600) {
-  const s = S.newRound(planet, wind, seed);
-  const record = { v: 1, planet: planet.id, wind, seed, ev: [] };
+export function recordPilot(planet, wind, seed, pilot, maxT = 600, settings = {}) {
+  const s = S.newRound(planet, wind, seed, settings);
+  const record = { v: 1, planet: planet.id, wind, seed, settings: s.settings, ev: [] };
   const input = { thrust: false, rcs: 0, rcsZ: 0 };
   const last = { thrust: false, rcs: 0, rcsZ: 0, limit: s.limit };
   const q3 = (v) => Math.round((v || 0) * 1000) / 1000;

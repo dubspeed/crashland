@@ -54,7 +54,14 @@ export function makePilot(S, P, opt = {}) {
       if (P.deorbitAt) { if (-s.x < P.deorbitAt + (opt.dD ?? 0)) mem.phase = 'brake'; }
       else { const og = S.orbitGuide(s); if (!og || og.brakeIn < (opt.offset ?? 0)) mem.phase = 'brake'; }
     }
-    if (mem.phase === 'brake') { thrust = !p || p.x > 0; if (!thrust) mem.phase = 'coast'; }
+    if (mem.phase === 'brake') {
+      mem.lim0 ??= s.limit;
+      thrust = !p || p.x > 0;
+      if (!thrust) { mem.phase = 'coast'; s.limit = mem.lim0; } // limiter back up after the fine part (HUD reminds)
+      // follow the fine-control hint (unless the optional automatic fine control does it)
+      const fh = s.settings?.autoFine || !thrust ? null : S.fineHint(s);
+      if (fh) s.limit = fh.limit;
+    }
     // panels: by temperature, like a player watching the parts panel
     const solar = Math.max(s.temp.solarL, s.temp.solarR);
     if (s.panels === 'out' && solar > 200) act('panels');
@@ -62,7 +69,10 @@ export function makePilot(S, P, opt = {}) {
     // chute when the HUD says it is possible, cut low; on Brontes brake for it first
     if (chute && P.rho > 0 && s.chute === 'stowed' && mem.phase !== 'wait' && S.chuteSafe(s) && alt < S.CHUTE_MAX_ALT(P) && s.vy < -10) act('chute');
     if (s.chute === 'open' && alt < (P.deorbitAt ? 150 : 120)) act('chute');
-    if (chute && mem.phase === 'coast' && S.brakeForChute(s)) thrust = true;
+    if (chute && mem.phase === 'coast' && S.brakeForChute(s)) {
+      mem.limChute ??= s.limit;
+      thrust = true; s.limit = Math.max(0.05, Math.round(S.chuteBrakeLimit(s) * 20) / 20);
+    } else if (mem.limChute !== undefined && s.chute === 'open') { s.limit = mem.limChute; mem.limChute = undefined; } // back up (HUD reminds)
     // final burn
     // thick air: chute first, cut it, then burn; thin air (Mars): the canopy alone is far too fast, so the
     // burn starts with it still open

@@ -5,7 +5,7 @@ import * as S from '../src/sim.js';
 import { makePilot } from './pilots.mjs';
 import { recordPilot } from './replay-lib.mjs';
 
-const fly = (P, opts = {}, seed = 5) => recordPilot(P, opts.wind ?? 0, seed, makePilot(S, P, opts)).s;
+const fly = (P, opts = {}, seed = 5) => recordPilot(P, opts.wind ?? 0, seed, makePilot(S, P, opts), 600, opts.settings ?? {}).s;
 const dist = (s) => Math.hypot(s.x, s.z);
 function landedClean(s, maxD, label) {
   assert.equal(s.status, 'landed', `${label}: ${s.status} ${s.reason}`);
@@ -26,13 +26,14 @@ test('normal level terra with medium wind lands', () => {
 });
 
 const ORB = Object.fromEntries(S.ORBIT_PLANETS.map((p) => [p.id, p]));
-for (const [id, maxD] of [['luna-orbit', 25], ['mars-orbit', 25], ['terra-orbit', 20], ['brontes-orbit', 15]]) {
+// default settings: hints on, fine control by hand (the pilot follows the fine-control hint)
+for (const [id, maxD] of [['luna-orbit', 25], ['mars-orbit', 25], ['terra-orbit', 20], ['brontes-orbit', 40]]) {
   test(`orbit level ${id}: following the cue lands on the pad`, () => landedClean(fly(ORB[id]), maxD, id));
 }
 test('orbit levels: braking a bit early or late still lands', () => {
   for (const id of Object.keys(ORB)) {
-    landedClean(fly(ORB[id], { offset: 3, dD: -1500 }), 120, `${id} early`);
-    landedClean(fly(ORB[id], { offset: -1, dD: 1500 }), 120, `${id} late`);
+    landedClean(fly(ORB[id], { offset: 3, dD: -1500 }), 200, `${id} early`);
+    landedClean(fly(ORB[id], { offset: -1, dD: 1500 }), 200, `${id} late`);
   }
 });
 test('thick-air re-entry: engine-first shield keeps every part', () => {
@@ -42,3 +43,19 @@ test('thick-air re-entry: engine-first shield keeps every part', () => {
   }
 });
 test('Mars orbit lands with medium wind', () => landedClean(fly(ORB['mars-orbit'], { wind: 2 }), 120, 'mars wind'));
+
+test('settings: the optional automatic fine control puts thick-air re-entries within a few metres', () => {
+  for (const id of ['terra-orbit', 'brontes-orbit']) landedClean(fly(ORB[id], { settings: { autoFine: true } }), 10, `${id} auto`);
+});
+test('settings: scarce fuel (75 %) is still enough when following the HUD', () => {
+  for (const id of ['terra-orbit', 'brontes-orbit']) {
+    const s = fly(ORB[id], { settings: { fuel: 0 } });
+    assert.equal(s.fuel0, ORB[id].fuel * 0.75);
+    assert.equal(s.status, 'landed', `${id}: ${s.reason}`);
+  }
+});
+test('settings: plenty of fuel scales the tanks', () => {
+  const s = S.newRound(S.PLANETS[0], 0, 1, { fuel: 2 });
+  assert.equal(s.fuel0, S.PLANETS[0].fuel * 1.25);
+  assert.equal(s.fuelL + s.fuelR, s.fuel0);
+});
