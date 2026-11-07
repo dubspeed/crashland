@@ -56,9 +56,10 @@ function updateMarkers() {
   const alt = Math.max(0, S.altitude(s));
   // predicted touchdown without thrust (gravity, drag, wind, canopy), shared with the HUD compass
   // the forward integration is the costliest bit per frame: refresh it ~12 times a second
-  if (!s.pred || (s.predAt ?? -1) > s.t || s.t - s.predAt > 0.08) {
-    s.predPath = planet.orbit ? [] : null; // the orbit map draws the predicted path
-    s.pred = S.predictImpact(s, s.predPath); s.predAt = s.t;
+  // the prediction itself is refreshed inside the simulation step (S.advance); the orbit map's path is
+  // computed here, a few times a second, only while the map is open
+  if (orbitMap.visible && (s.predPathAt === undefined || time - s.predPathAt > 0.25 || time < s.predPathAt)) {
+    s.predPath = []; S.predictImpact(s, s.predPath); s.predPathAt = time;
   }
   const pred = s.pred;
   impact.visible = !!pred;
@@ -175,16 +176,46 @@ function showMenu() {
   ship.update(s, 0);
 }
 
+// ---------- recording (replays) ----------
+let rec = null, lastRec = null, forceSeed = null;
+/** player / autopilot action: applied to the state and recorded at the current step */
+function doAct(name) {
+  if (mode !== 'flight' || s.status !== 'flying') return;
+  rec?.ev.push([s.stepN ?? 0, 'a', name]);
+  return S.act(s, name);
+}
+const q3 = (v) => Math.round((v || 0) * 1000) / 1000;
+/** quantise this step's inputs (so the record is compact and the live flight equals the replay) and record
+ *  whatever changed */
+function recordStep() {
+  input.rcs = q3(input.rcs); input.rcsZ = q3(input.rcsZ);
+  s.limit = Math.round(s.limit * 1000) / 1000;
+  const th = !!input.thrust;
+  if (th !== lastRec.thrust || input.rcs !== lastRec.rcs || input.rcsZ !== lastRec.rcsZ) {
+    rec.ev.push([s.stepN ?? 0, 'i', th ? 1 : 0, input.rcs, input.rcsZ]);
+    lastRec.thrust = th; lastRec.rcs = input.rcs; lastRec.rcsZ = input.rcsZ;
+  }
+  if (s.limit !== lastRec.limit) { rec.ev.push([s.stepN ?? 0, 'l', s.limit]); lastRec.limit = s.limit; }
+}
+function flightRecord() {
+  return { ...rec, steps: s.stepN ?? 0, result: { status: s.status, t: +s.t.toFixed(3), x: +s.x.toFixed(3), z: +s.z.toFixed(3), vy: +s.vy.toFixed(3), fuel: +S.fuel(s).toFixed(3) } };
+}
+
 function start(p) {
   if (p !== planet || !world.ready) {
     planet = p;
     const sr = S.surfaceR(p); // every planet is drawn as a sphere now; only orbit levels fly on a curved planet
-    S.setTerrainEdge(sr ? S.surfaceEdge(p) : null, sr, S.surfaceId(p)); // before the ground is built from the terrain
+    S.setupTerrain(p); // before the ground is built from the terrain
     world.setPlanet(p); world.ready = true; fogBase = scene.fog.far;
     camera.far = sr ? 45000 : 6000; camera.updateProjectionMatrix();
   }
   debris.clear(); ship.reset();
-  s = S.createState(planet, { wind: windLevel });
+  // a round is fully determined by its seed and the recorded inputs (replays, see tests/replay.mjs)
+  const seed = (forceSeed ?? Math.floor(Math.random() * 2 ** 31)) >>> 0;
+  forceSeed = null;
+  s = S.newRound(planet, windLevel, seed);
+  rec = { v: 1, planet: planet.id, wind: windLevel, seed, ev: [] };
+  lastRec = { thrust: false, rcs: 0, rcsZ: 0, limit: s.limit };
   hud.reset();
   cam.tgtD = 0; cam.intro = 0; cam.tgt = null; cam.pitch = 0;
   mode = 'flight';
@@ -275,10 +306,11 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyT') cycleSas();
   if (e.code === 'KeyV') toggleView();
   if (e.code === 'KeyK') toggleMap();
+  if (e.code === 'F3') { e.preventDefault(); setDebug(!dbg.on); }
   const digit = /^(Digit|Numpad)(\d)$/.exec(e.code);
   if (digit) s.limit = digit[2] === '0' ? 1 : +digit[2] / 10;
-  if (e.code === 'KeyP') S.toggleChute(s);
-  if (e.code === 'KeyE') S.togglePanels(s);
+  if (e.code === 'KeyP') doAct('chute');
+  if (e.code === 'KeyE') doAct('panels');
   if (e.code === 'KeyC') toggleCom();
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
@@ -315,14 +347,38 @@ bindPointer($('c-rcs'), (e, r) => {
   touch.px = shape((e.clientX - (r.left + r.width / 2)) / (r.width / 2));
   touch.py = shape(((r.top + r.height / 2) - e.clientY) / (r.height / 2));
 }, () => { touch.px = 0; touch.py = 0; });
-function cycleSas() { s.sas = { hold: 'retro', retro: 'retro2', retro2: 'up', up: false }[s.sas] ?? 'hold'; s.holdA = s.a; s.holdB = s.b; }
+function cycleSas() { doAct('sas'); }
 function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
 $('c-sas').addEventListener('click', cycleSas);
-$('c-chute').addEventListener('click', () => S.toggleChute(s));
+$('c-chute').addEventListener('click', () => doAct('chute'));
 $('c-view').addEventListener('click', toggleView);
-$('c-panels').addEventListener('click', () => S.togglePanels(s));
+$('c-panels').addEventListener('click', () => doAct('panels'));
 $('c-com').addEventListener('click', toggleCom);
 $('c-com').classList.add('on');
+// ---------- debug overlay: F3, ?debug, or three taps on the title (phone) ----------
+const dbg = { on: false, frames: 0, acc: 0, worst: 0, steps: 0, at: 0 };
+function setDebug(on) { dbg.on = on; $('debug').hidden = !on; try { localStorage.setItem('crashland.debug', on ? '1' : ''); } catch { /* storage unavailable */ } }
+try { if (new URLSearchParams(location.search).has('debug') || localStorage.getItem('crashland.debug')) setDebug(true); } catch { /* ignore */ }
+let taps = [];
+for (const el of document.querySelectorAll('.brand, #menu h1')) {
+  el.addEventListener('pointerdown', () => {
+    const now = performance.now(); taps = taps.filter((x) => now - x < 700); taps.push(now);
+    if (taps.length >= 3) { taps = []; setDebug(!dbg.on); }
+  });
+}
+function debugFrame(raw, steps) {
+  if (!dbg.on) return;
+  dbg.frames++; dbg.acc += raw; dbg.worst = Math.max(dbg.worst, raw); dbg.steps += steps;
+  if (time - dbg.at < 0.5 && time >= dbg.at) return;
+  const info = renderer.info.render, n = Math.max(1, dbg.frames);
+  $('debug').textContent =
+    `${(n / dbg.acc).toFixed(0)} fps  ${(dbg.acc / n * 1000).toFixed(1)} ms (max ${(dbg.worst * 1000).toFixed(0)})\n` +
+    `${info.calls} calls  ${(info.triangles / 1000).toFixed(1)}k tris  ${world.stats().tiles} tiles\n` +
+    `px ${renderer.getPixelRatio().toFixed(2)}  ${(dbg.steps / n).toFixed(1)} steps/frame  x${timeScale}\n` +
+    `${planet.id}  seed ${rec?.seed ?? '-'}  t ${s.t.toFixed(1)}`;
+  dbg.frames = 0; dbg.acc = 0; dbg.worst = 0; dbg.steps = 0; dbg.at = time;
+}
+
 // orbit map (orbit levels): K or the button
 const orbitMap = createOrbitMap($('orbitmap'));
 function toggleMap(force) {
@@ -339,6 +395,22 @@ $('r-again').addEventListener('click', () => start(planet));
 $('result-open').addEventListener('click', () => { $('result').hidden = false; $('result-open').hidden = true; $('r-again').focus(); });
 $('r-close').addEventListener('click', () => { $('result').hidden = true; $('result-open').hidden = false; });
 $('r-menu').addEventListener('click', showMenu);
+// flight export (replay file): download, or copy if downloads are blocked
+$('r-export').addEventListener('click', async () => {
+  const json = JSON.stringify(flightRecord());
+  const name = `crashland-${rec.planet}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+  let ok = false;
+  try {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+    a.download = name; document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    ok = true;
+  } catch { /* fall back to the clipboard */ }
+  try { await navigator.clipboard.writeText(json); $('r-export').textContent = ok ? 'Exportiert und kopiert' : 'In die Zwischenablage kopiert'; }
+  catch { $('r-export').textContent = ok ? 'Exportiert' : 'Export nicht möglich'; }
+  setTimeout(() => { $('r-export').textContent = 'Flug exportieren'; }, 2500);
+});
 
 // camera orbit by dragging the canvas, zoom with the wheel
 // sideways = around the lander, up/down = camera height (orbit pitch); only the finger that started on the canvas
@@ -365,11 +437,12 @@ addEventListener('resize', () => {
 const timer = new THREE.Timer();
 let acc = 0, time = 0;
 const focus = new THREE.Vector3();
-const STEP = 1 / 120;
+const STEP = S.STEP;
+let timeScale = Math.max(1, Math.min(50, +(new URLSearchParams(location.search).get('speed')) || 1));
 
 let autopilot = null; // optional (state) => {thrust, rcs}, used by automated tests
 function readInput(dt) {
-  if (autopilot) { Object.assign(input, autopilot(s)); return; }
+  if (autopilot) return; // the autopilot sets the inputs per simulation step
   input.thrust = keys.has('Space') || touch.lever;
   // tilt: WASD / arrows or the pad, in screen terms (px right, py away from the camera)
   const kx = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
@@ -395,8 +468,16 @@ renderer.setAnimationLoop(() => {
 
   if (mode === 'flight') {
     readInput(dt);
-    acc += dt;
-    while (acc >= STEP) { S.step(s, input, STEP); acc -= STEP; }
+    acc += (timeScale > 1 ? Math.min(raw, 0.25) : dt) * timeScale; // fast-forward (tests): more steps per frame
+    var stepsThisFrame = 0; // eslint-disable-line no-var
+    while (acc >= STEP && s.status === 'flying') {
+      stepsThisFrame++;
+      if (autopilot) { const r = autopilot(s, doAct); if (r) Object.assign(input, r); }
+      recordStep();
+      S.advance(s, input);
+      acc -= STEP;
+    }
+    if (s.status !== 'flying') acc = 0;
     for (const ev of s.events.splice(0)) {
       if (ev.type === 'lost') {
         const pos = ship.blowOff(ev.id, s);
@@ -494,10 +575,12 @@ renderer.setAnimationLoop(() => {
   if (mode === 'flight') orbitMap.draw(s);
   world.update(camera, focus, time, mode === 'menu' ? { x: 0, z: 0 } : { x: s.windX, z: s.windZ }, dt);
   renderer.render(scene, camera);
+  debugFrame(raw, typeof stepsThisFrame === 'number' ? stepsThisFrame : 0);
 });
 
 world.setPlanet(planet); world.ready = true; fogBase = scene.fog.far;
 showMenu();
 
 // handle for automated tests
-window.__crashland = { renderer, camera, cam, get state() { return s; }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANETS[0] : typeof i === 'string' ? S.ORBIT_PLANETS.find((p) => p.id === i) : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; } };
+window.__crashland = { renderer, camera, cam, get state() { return s; }, exportFlight: flightRecord, act: doAct,
+  setTimeScale(k) { timeScale = Math.max(1, Math.min(50, k)); }, setWind(i) { setWind(i); }, get record() { return rec; }, startSeed(p, seed) { forceSeed = seed; start(p); }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANETS[0] : typeof i === 'string' ? S.ORBIT_PLANETS.find((p) => p.id === i) : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; }, get world() { return world; } };

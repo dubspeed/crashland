@@ -11,6 +11,7 @@
 </head>
 <body>
   <div id="tunnel" aria-hidden="true"></div>
+  <pre id="debug" hidden aria-hidden="true"></pre>
   <div id="hud" hidden>
     <canvas id="orbitmap" hidden aria-label="Bahnkarte: Planet, Bahn, Apoapsis, Periapsis, Ziel"></canvas>
     <div id="ship-mark" hidden aria-hidden="true"><svg viewBox="0 0 24 28"><path d="M3 3 L21 3 L12 24 Z" fill="rgba(143,227,255,0.25)" stroke="#8fe3ff" stroke-width="3" stroke-linejoin="round"/></svg></div>
@@ -122,6 +123,7 @@
           <dt>Schubhebel rechts</dt><dd>gedrückt halten = Schub, Höhe des Fingers = Stärke</dd>
           <dt>Steuerkreuz links</dt><dd>in die Richtung drücken, in die du kippen willst; oben = vom Bildschirm weg</dd>
           <dt>Schalter</dt><dd>Fallschirm, Paneele, Lageregler, Ansicht</dd>
+          <dt>Titel 3× tippen</dt><dd>Technik-Anzeige (FPS, Draw Calls) ein/aus</dd>
           <dt>Wischen</dt><dd>Kamera um das Schiff drehen: seitlich = rundherum, hoch/runter = von oben oder unten; Doppeltipp = zurück</dd>
         </dl>
         <dl class="help-keys key-hint">
@@ -132,6 +134,7 @@
           <dt><kbd>T</kbd> · <kbd>V</kbd></dt><dd>Lageregler · Ansicht (Hinten, Schräg, Ziel, Oben)</dd>
           <dt><kbd>R</kbd> · <kbd>M</kbd></dt><dd>Neustart · Menü</dd>
           <dt><kbd>K</kbd></dt><dd>Bahnkarte (Orbit-Level)</dd>
+          <dt><kbd>F3</kbd></dt><dd>Technik-Anzeige (FPS, Draw Calls), am Handy: Titel dreimal antippen</dd>
           <dt>Maus ziehen</dt><dd>Kamera um das Schiff drehen (auch hoch/runter), Doppelklick = zurück, Rad = Zoom</dd>
         </dl>
       </section>
@@ -197,6 +200,7 @@
         <button id="r-menu">Planet wählen <kbd>M</kbd></button>
       </div>
       <button id="r-close" class="r-close">Szene ansehen</button>
+      <button id="r-export" class="r-close">Flug exportieren</button>
     </div>
   </div>
   <button id="result-open" class="result-open" hidden></button>

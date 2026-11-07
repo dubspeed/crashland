@@ -252,5 +252,5 @@ export function createWorld(scene, models) {
     return out;
   }
 
-  return { setPlanet, update, align, toRender };
+  return { setPlanet, update, align, toRender, stats: () => ({ tiles: moon ? moon.tiles() : 0 }) };
 }

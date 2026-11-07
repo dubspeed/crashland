@@ -128,6 +128,43 @@ export function orbitInfo(s) {
   return out;
 }
 
+/** small seeded random generator (mulberry32): a round is fully determined by its seed and the inputs */
+export function seededRandom(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+/** set up the terrain the flight model uses for a planet (the renderer draws the same) */
+export function setupTerrain(p) {
+  const sr = surfaceR(p);
+  setTerrainEdge(sr ? surfaceEdge(p) : null, sr, surfaceId(p));
+}
+/** a new round: everything random comes from the seed */
+export function newRound(planet, wind = 0, seed = 1) {
+  const rnd = seededRandom(seed);
+  setupTerrain(planet);
+  return createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2 });
+}
+export const STEP = 1 / 120;
+/** player / autopilot actions between steps (recorded for replays) */
+export function act(s, name) {
+  if (name === 'chute') return toggleChute(s);
+  if (name === 'panels') return togglePanels(s);
+  if (name === 'sas') { s.sas = { hold: 'retro', retro: 'retro2', retro2: 'up', up: false }[s.sas] ?? 'hold'; s.holdA = s.a; s.holdB = s.b; }
+}
+/** one fixed simulation step, including the touchdown prediction the flight computer uses (refreshed every
+ *  0.1 s of sim time, independent of the frame rate, so a round replays exactly) */
+export function advance(s, input) {
+  s.stepN = s.stepN ?? 0;
+  if (s.status === 'flying' && s.stepN % 12 === 0) s.pred = predictImpact(s);
+  step(s, input, STEP);
+  s.stepN++;
+}
+
 /** circular orbit speed at height y above the surface */
 export function orbitSpeed(p, y) { const r = p.R + y; return Math.sqrt((p.g * p.R * p.R) / r); }
 /** curvature terms for the flat sim frame (x, z = arc length on the surface, y = height): gravity falls off

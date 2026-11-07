@@ -6,7 +6,10 @@
     "dev": "vite --host",
     "build": "vite build",
     "preview": "vite preview --host",
-    "assets": "blender --background --python blender/build_assets.py"
+    "assets": "blender --background --python blender/build_assets.py",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "e2e": "npm run build && node tests/e2e.mjs",
+    "replay": "node tests/replay.mjs"
   },
   "repository": {
     "type": "git",

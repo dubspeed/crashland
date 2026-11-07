@@ -1,0 +1,66 @@
+// Flight-model basics: determinism, orbit computer, terrain, chute safety.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import * as S from '../src/sim.js';
+
+test('a round is deterministic for the same seed and inputs', () => {
+  const run = () => {
+    const s = S.newRound(S.PLANETS[2], 2, 42);
+    for (let i = 0; i < 120 * 40; i++) S.advance(s, { thrust: i % 300 < 120, rcs: Math.sin(i / 200), rcsZ: 0 });
+    return [s.x, s.y, s.z, s.vx, s.vy, s.a, s.b, s.fuelL];
+  };
+  assert.deepEqual(run(), run());
+});
+
+test('different seeds give different wind', () => {
+  const a = S.newRound(S.PLANETS[2], 3, 1), b = S.newRound(S.PLANETS[2], 3, 2);
+  assert.notEqual(a.wind.heading, b.wind.heading);
+});
+
+test('orbit computer: apoapsis / periapsis match a simulated orbit', () => {
+  S.setTerrainEdge(null);
+  for (const P of [S.ORBIT_PLANETS[0], { ...S.ORBIT_PLANETS[0], g: 3.71, alt: 2500, rho: 0 }]) {
+    const s = S.createState(P); s.vx -= 2; s.vy = 3;
+    const o = S.orbitInfo(s);
+    let mn = Infinity, mx = -Infinity, tmn = 0, tmx = 0;
+    for (let i = 0; i < 120 * o.period; i++) {
+      S.step(s, { thrust: false }, S.STEP);
+      if (s.y < mn) { mn = s.y; tmn = s.t; }
+      if (s.y > mx) { mx = s.y; tmx = s.t; }
+    }
+    assert.ok(Math.abs(mx - o.ap) < 1, `ap ${o.ap} vs ${mx}`);
+    assert.ok(Math.abs(mn - o.pe) < 1, `pe ${o.pe} vs ${mn}`);
+    assert.ok(Math.abs(tmx - o.tAp) < 1.5 && Math.abs(tmn - o.tPe) < 1.5, 'times');
+  }
+});
+
+test('circular start orbit: ap = pe = start height, no impact predicted on vacuum orbits', () => {
+  const s = S.newRound(S.ORBIT_PLANETS[0], 0, 1);
+  const o = S.orbitInfo(s);
+  assert.ok(Math.abs(o.ap - 1500) < 0.5 && Math.abs(o.pe - 1500) < 0.5 && o.e < 1e-6);
+  assert.equal(S.predictImpact(s), null);
+});
+
+test('terrain: every planet surface is continuous and within sane heights', () => {
+  for (const P of [...S.PLANETS, ...S.ORBIT_PLANETS]) {
+    S.setupTerrain(P);
+    let mn = Infinity, mx = -Infinity, jump = 0, prev = S.terrainHeight(-12000, 7);
+    for (let x = -12000; x < 12000; x += 1) {
+      const h = S.terrainHeight(x + 1, 7);
+      jump = Math.max(jump, Math.abs(h - prev)); prev = h;
+      mn = Math.min(mn, h); mx = Math.max(mx, h);
+    }
+    assert.ok(jump < 15, `${P.id}: step ${jump.toFixed(2)} m per m`);
+    assert.ok(mn > -250 && mx < 500, `${P.id}: ${mn.toFixed(0)}..${mx.toFixed(0)}`);
+    // the pad itself stays flat
+    assert.equal(S.terrainHeight(0, 0), 0);
+    assert.equal(S.terrainHeight(40, -30), 0);
+  }
+});
+
+test('chute safety looks ahead: rising pressure near the limit is not safe', () => {
+  const s = S.newRound(S.PLANETS[2], 0, 1);
+  s.q = S.CHUTE_QMAX * 0.7; s.qRate = 0; assert.ok(S.chuteSafe(s));
+  s.qRate = S.CHUTE_QMAX * 0.2; assert.ok(!S.chuteSafe(s));
+  s.q = S.CHUTE_QMAX * 0.99; s.qRate = -100; assert.ok(!S.chuteSafe(s));
+});

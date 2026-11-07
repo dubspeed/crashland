@@ -111,6 +111,13 @@ The ground ring and cross are drawn on top of everything; in the downward views 
 
 Attitude control needs the flight computer and power; without them it is always "off".
 
+## Testing
+
+- `npm test` (node, ~15 s, also on every push via GitHub Actions): flight-model basics (determinism, orbit computer against a simulated orbit, terrain continuity, chute look-ahead), landings on every level by autopilots that only use player controls and follow the HUD (`tests/pilots.mjs`: normal levels with Retro 2, all orbit levels on the cue, braking early/late, wind, heat), replay identity, and a **golden snapshot** of ten reference flights (`tests/golden.json`): any change to the physics shows up there; if it was intended, refresh with `UPDATE_GOLDEN=1 npm test`.
+- `npm run e2e` (needs Playwright with Chromium): builds, serves `dist/`, and flies each level in the real game in headless Chromium at 10× speed (`?speed=10`, `setTimeScale`), with the autopilot per simulation step. It logs every HUD message with its sim time and checks the expected sequence, opens the orbit map, collects console errors, saves screenshots to `tests/e2e-out/`, and replays the exported flight in node, which must end identically.
+- **Replays:** a round is determined by planet, wind, a seed and the recorded inputs (`S.newRound`, `S.advance`; the touchdown prediction the flight computer uses runs inside the fixed step). "Flug exportieren" in the result window downloads (or copies) the flight as JSON; `npm run replay -- file.json [--every 2]` replays it and prints a timeline (height, speeds, thrust, limiter, tilt, fuel, battery, distance, attitude mode, chute, panels, actions, lost parts, fainting) and confirms it matches the flight as played.
+- **Debug overlay:** F3, `?debug`, or three taps on the title (phone): FPS, frame time (average / worst), draw calls, triangles, planet tiles, pixel ratio, simulation steps per frame, time scale, planet, seed, time.
+
 ## Structure
 
 - `src/sim.js`: flight model (pure, no three.js; runs in node for balancing): components, masses, centre of mass, fuel, power, g-load, touchdown

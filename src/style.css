@@ -407,3 +407,6 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 .orbitline { color: var(--cyan); font-size: 11px; line-height: 1.35; margin: 2px 0 4px; }
 .orbitline b { color: var(--text, #e8f2ff); font-weight: 600; }
 @media (max-width: 520px), (max-height: 520px) { #v-orbit { display: none !important; } } /* phone: the map shows Ap/Pe */
+
+/* debug overlay (F3, ?debug, or tap the title three times) */
+#debug { position: fixed; z-index: 50; left: 50%; transform: translateX(-50%); top: calc(4px + env(safe-area-inset-top, 0px)); margin: 0; padding: 6px 9px; background: rgba(0,0,0,0.78); color: #9ff0b0; font: 600 10.5px/1.35 "IBM Plex Mono", monospace; border-radius: 6px; pointer-events: none; white-space: pre; }
