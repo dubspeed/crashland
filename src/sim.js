@@ -94,12 +94,18 @@ export const ORBIT_PLANETS = [
     sky: 0x3b2f5c, fog: 0x463868, ground: 0x2f6e6a, ground2: 0x1f4442, sun: 0xd8c8ff },
 ];
 export const ORBIT_PLANET = ORBIT_PLANETS[0];
+/** radius of the sphere a planet is drawn on (orbit levels: their R; normal levels: the shared moon size,
+ *  rendering only - their flight model stays flat) and the layout of its surface features */
+export function surfaceR(p) { return p.R || (p.surface ? ORBIT.R : 0); }
+export function surfaceId(p) { return p.surface ?? p.id; }
+export function surfaceEdge(p) { return p.edge ?? ORBIT.edge; }
+
 /** circular orbit speed at height y above the surface */
 export function orbitSpeed(p, y) { const r = p.R + y; return Math.sqrt((p.g * p.R * p.R) / r); }
 /** curvature terms for the flat sim frame (x, z = arc length on the surface, y = height): gravity falls off
  *  with height, horizontal speed gives centrifugal lift, and the arc rate shrinks with height. */
 function curvature(p, y, vx, vy, vz) {
-  if (!p.R) return null;
+  if (!p.orbit || !p.R) return null;
   const r = p.R + y;
   return { gy: p.g * (p.R / r) ** 2 - (vx * vx + vz * vz) / r, ax: (-vx * vy) / r, az: (-vz * vy) / r, k: p.R / r };
 }
@@ -125,16 +131,16 @@ export function orbitGuide(s) {
 }
 
 export const PLANETS = [
-  { id: 'luna', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0, fuel: 175, rho: 0, H: 1, atmo: 'keine', drift: 0,
+  { id: 'luna', surface: 'luna-orbit', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0, fuel: 175, rho: 0, H: 1, atmo: 'keine', drift: 0,
     text: 'Wenig Schwerkraft, keine Luft. Zum Üben.',
     sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true },
-  { id: 'mars', name: 'Mars', g: 3.71, alt: 1500, vy: -110, vx: -4, tilt: -3, solar: 0.45, fuel: 305, rho: 0.02, H: 11000, atmo: 'sehr dünn', drift: 4,
+  { id: 'mars', surface: 'mars-orbit', name: 'Mars', g: 3.71, alt: 1500, vy: -110, vx: -4, tilt: -3, solar: 0.45, fuel: 305, rho: 0.02, H: 11000, atmo: 'sehr dünn', drift: 4,
     text: 'Dünne Luft, schwache Sonne.',
     sky: 0xd4a27c, fog: 0xc89670, ground: 0xb4552f, ground2: 0x7d3a22, sun: 0xffe2c4 },
-  { id: 'terra', name: 'Terra', g: 9.81, alt: 1800, vy: -165, vx: 5, tilt: 4, solar: 0.75, fuel: 200, rho: 1.225, H: 8500, atmo: 'normal', drift: 17,
+  { id: 'terra', surface: 'terra-orbit', name: 'Terra', g: 9.81, alt: 1800, vy: -165, vx: 5, tilt: 4, solar: 0.75, fuel: 200, rho: 1.225, H: 8500, atmo: 'normal', drift: 17,
     text: 'Hitze beim Eintritt, Fallschirm hilft.',
     sky: 0x8ec5ff, fog: 0xa9d2ff, ground: 0x5f9a4c, ground2: 0x7a6145, sun: 0xffffff },
-  { id: 'brontes', name: 'Brontes', g: 15.2, alt: 1800, vy: -90, vx: -3, tilt: -2, solar: 0.3, fuel: 230, rho: 2.8, H: 7000, atmo: 'dicht', drift: 20,
+  { id: 'brontes', surface: 'brontes-orbit', name: 'Brontes', g: 15.2, alt: 1800, vy: -90, vx: -3, tilt: -2, solar: 0.3, fuel: 230, rho: 2.8, H: 7000, atmo: 'dicht', drift: 20,
     text: 'Supererde. Erst bremsen, dann Schirm.',
     sky: 0x3b2f5c, fog: 0x463868, ground: 0x2f6e6a, ground2: 0x1f4442, sun: 0xd8c8ff },
 ];

@@ -34,6 +34,10 @@ Landing window (same on all planets). Below 80 m a slim gauge bar shows the sink
 | Explosion | above that | | | tanks rupture; only the **remaining fuel** explodes (fireball scales with it). Crew survives up to 24 m/s unless a big fuel fire engulfs the capsule. No fuel, no explosion. |
 
 
+## Planets as spheres
+
+Every level, not only the orbit levels, draws its planet as a sphere with the same surface (`surfaceR`, `surfaceId` in `sim.js`): normal Luna, Mars, Terra and Brontes look like their orbit versions, with the landing zone, pad and boulders embedded. Only the look changes for the normal levels: their flight model stays flat (no curvature, no orbit-only heat or aero rules), and inside about 1 km around the pad the terrain is exactly the old one; beyond it the planet's craters, mountains and valleys start. The precision test gives identical results. The old flat 2.4 km terrain (`flatGround` in `world.js`) remains only as a fallback for a planet without a surface. The sun's shadow box grows with altitude, and the light column over the pad fades out when the camera looks down along it.
+
 ## Orbit levels (experimental)
 
 

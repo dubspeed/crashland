@@ -174,9 +174,10 @@ function showMenu() {
 function start(p) {
   if (p !== planet || !world.ready) {
     planet = p;
-    S.setTerrainEdge(p.orbit ? S.ORBIT.edge : null, p.orbit ? p.R : 0, p.id); // before the ground is built from the terrain
+    const sr = S.surfaceR(p); // every planet is drawn as a sphere now; only orbit levels fly on a curved planet
+    S.setTerrainEdge(sr ? S.surfaceEdge(p) : null, sr, S.surfaceId(p)); // before the ground is built from the terrain
     world.setPlanet(p); world.ready = true; fogBase = scene.fog.far;
-    camera.far = p.orbit ? 45000 : 6000; camera.updateProjectionMatrix();
+    camera.far = sr ? 45000 : 6000; camera.updateProjectionMatrix();
   }
   debris.clear(); ship.reset();
   s = S.createState(planet, { wind: windLevel });
@@ -399,8 +400,9 @@ renderer.setAnimationLoop(() => {
   if (mode !== 'menu') hud.update(s, input, cam.yaw);
 
   // orbit level: turn the moon under the lander (frozen once it is down, so debris and wreck stay put)
-  if (planet.orbit && (s.status === 'flying' || mode === 'menu')) world.align(s.x, s.z, S.altitude(s));
-  if (planet.orbit) {
+  const sphere = S.surfaceR(planet) > 0;
+  if (sphere && (s.status === 'flying' || mode === 'menu')) world.align(s.x, s.z, S.altitude(s));
+  if (sphere) {
     const near = Math.min(3, Math.max(0.1, S.altitude(s) / 300));
     if (Math.abs(near - camera.near) > 0.05) { camera.near = near; camera.updateProjectionMatrix(); }
   } else if (camera.near !== 0.1) { camera.near = 0.1; camera.updateProjectionMatrix(); }

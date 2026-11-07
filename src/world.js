@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { terrainHeight } from './sim.js';
+import { terrainHeight, surfaceR, surfaceId, surfaceEdge } from './sim.js';
 import { createMoonTerrain } from './moon.js';
 
 function hash(x, z) {
@@ -67,10 +67,10 @@ export function createWorld(scene, models) {
     if (ground) { scene.remove(ground); ground.traverse((o) => { o.geometry?.dispose(); }); }
     ground = new THREE.Group();
 
-    curveR = p.orbit ? p.R : 0;
+    curveR = surfaceR(p);
     moon = null;
     if (curveR) {
-      moon = createMoonTerrain(THREE, p.R, p.edge, p.ground, p.ground2, p.id);
+      moon = createMoonTerrain(THREE, curveR, surfaceEdge(p), p.ground, p.ground2, surfaceId(p));
       ground.add(moon.mesh);
     } else {
       const terrain = new THREE.Mesh(flatGround(p), new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.95 }));
@@ -171,12 +171,12 @@ export function createWorld(scene, models) {
   function setPlanet(p) {
     scene.background = new THREE.Color(p.sky);
     // haze: none in vacuum, thicker the denser the air (orbit levels see tens of kilometres)
-    const haze = p.orbit ? (p.rho === 0 ? [80000, 300000] : p.rho < 0.1 ? [3000, 50000] : p.rho < 2 ? [2500, 32000] : [1500, 18000]) : null;
+    const haze = surfaceR(p) ? (p.rho === 0 ? [80000, 300000] : p.rho < 0.1 ? [3000, 50000] : p.rho < 2 ? [2500, 32000] : [1500, 18000]) : null;
     scene.fog = new THREE.Fog(p.fog, haze ? haze[0] : 150, haze ? haze[1] : p.stars ? 2600 : 1400);
-    stars.scale.setScalar(p.orbit ? 10 : 1);
+    stars.scale.setScalar(surfaceR(p) ? 10 : 1);
     hemi.color.set(p.sky).lerp(new THREE.Color(0xffffff), 0.6);
     hemi.groundColor.set(p.ground2);
-    hemi.intensity = p.orbit ? 0.35 : p.stars ? 0.6 : 1.0;
+    hemi.intensity = surfaceR(p) ? 0.35 : p.stars ? 0.6 : 1.0;
     sun.color.set(p.sun);
     stars.material.opacity = p.stars ? 1 : p.id === 'brontes' ? 0.45 : 0;
     stars.visible = stars.material.opacity > 0;
@@ -188,7 +188,13 @@ export function createWorld(scene, models) {
     for (let i = 0; i < DUST; i++) { dustPos[i * 3] += wind.x * dt; dustPos[i * 3 + 2] += wind.z * dt; }
     const ws = Math.hypot(wind.x, wind.z);
     const beam = ground?.userData.beam;
-    if (beam) beam.material.opacity = (curveR ? 0.22 : 0.12) * Math.min(1, Math.max(0, (camera.position.distanceTo(beam.getWorldPosition(_g)) - 90) / 400));
+    if (beam) {
+      // fade out near the column, and when looking along it from close to its axis (seen from inside, the
+      // 8-sided cylinder becomes a big see-through polygon over the screen)
+      const lp = beam.worldToLocal(_g.copy(camera.position)), axis = Math.hypot(lp.x, lp.z);
+      beam.material.opacity = (curveR ? 0.22 : 0.12) * Math.min(1, Math.max(0, (camera.position.distanceTo(beam.getWorldPosition(_g)) - 90) / 400))
+        * Math.min(1, Math.max(0, (axis - 25) / 60));
+    }
     const sock = ground?.userData.sock;
     if (sock) {
       // sock lifts from hanging (0) to horizontal (strong wind) and points downwind, with a little flutter
@@ -198,9 +204,17 @@ export function createWorld(scene, models) {
       sock.rotation.set(0, sock.userData.yawTarget ?? 0, 0.15 + k * 1.35 + Math.sin(t * 7) * 0.05 * k, 'YXZ');
     }
     // orbit level: low sun (~20°) so the craters get lit rims and shadowed bowls
-    if (curveR) sun.position.set(focus.x + 70, focus.y + 32, focus.z + 45);
+    if (curveR) { const k = Math.max(1, focus.y / 60); sun.position.set(focus.x + 70 * k, focus.y + 32 * k, focus.z + 45 * k); }
     else sun.position.set(focus.x + 30, focus.y + 60, focus.z + 25);
     sun.target.position.copy(focus);
+    // the shadow box must reach the ground below a high lander, else its far end cuts straight edges into it
+    // high up the box also widens to cover all the ground in view (the lander's own shadow is invisible from
+    // there anyway); near the ground it shrinks back to a sharp 50 m box
+    const far = Math.max(200, Math.min(30000, focus.y * 4 + 300)), half = Math.max(25, Math.min(12000, focus.y * 3));
+    const sc = sun.shadow.camera;
+    if (Math.abs(far - sc.far) > 20 || Math.abs(half - sc.right) > 5) {
+      sc.far = far; sc.left = sc.bottom = -half; sc.right = sc.top = half; sc.updateProjectionMatrix();
+    }
     stars.position.copy(camera.position);
     dust.visible = !curveR || camera.position.y < 400; // speed dust only near the ground, not in orbit
     // orbit level: pick the terrain tiles for this camera (camera in the moon's frame, from its centre)

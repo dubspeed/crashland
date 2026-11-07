@@ -381,7 +381,8 @@ float moonHeight(vec3 dir, float spacing, bool wantCol, out vec3 col) {
   gc *= 0.93 + fine * 0.14;
   gc *= 1.0 + clamp(shade, -0.6, 0.5) * 0.45;
   gc *= 1.0 - crack * 0.45 - canyon * 0.15;
-  col = mix(zc, gc, w);
+  // landing zone: the planet's own colours, only shaded a little by its relief (no patchwork)
+  col = gc * (w + (1.0 - w) * (1.06 - 0.2 * clamp(zone / 25.0, 0.0, 1.0)));
   return h;
 }
 `;
