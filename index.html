@@ -113,7 +113,10 @@
 
   <div id="builder" class="overlay" hidden>
     <div class="sheet help-sheet builder-sheet" role="dialog" aria-modal="true" aria-labelledby="builder-title">
-      <div class="help-top"><h2 id="builder-title">Lander bauen</h2><button id="builder-close" class="help-close" aria-label="Fertig">×</button></div>
+      <div class="builder-pin">
+        <div class="help-top"><h2 id="builder-title">Lander bauen</h2><button id="builder-close" class="help-close" aria-label="Fertig">×</button></div>
+        <div id="build-pinned" aria-live="polite"></div>
+      </div>
       <p class="builder-lead">Jede Wahl ändert Masse, Schwerpunkt und Verhalten. Der Lander im Hintergrund zeigt deinen Bau.</p>
       <div id="build-slots"></div>
       <div id="build-stats"></div>

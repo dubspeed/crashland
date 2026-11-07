@@ -165,25 +165,36 @@ function renderBuilder() {
   $('build-slots').innerHTML = S.BUILD_SLOTS.map((sl) => `<div class="build-slot"><span>${sl.name}</span><div class="opt-select" role="radiogroup" aria-label="${sl.name}">${
     sl.options.map((o) => `<button role="radio" aria-checked="${build[sl.id] === o.id}" class="${build[sl.id] === o.id ? 'on' : ''}" data-slot="${sl.id}" data-id="${o.id}">${o.name}<small>${o.desc || '&nbsp;'}</small></button>`).join('')}</div></div>`).join('');
   $('build-slots').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setBuild(b.dataset.slot, b.dataset.id)));
-  // figures per planet: full tanks, delta-v and thrust-to-weight
+  // figures: pinned summary (always in view) and the full table below the options
   const spec = S.makeSpec(build);
   const f = (n, d = 0) => n.toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
-  const rowsHtml = [...S.PLANETS, ...S.ORBIT_PLANETS].map((p) => {
+  const per = [...S.PLANETS, ...S.ORBIT_PLANETS].map((p) => {
     const st = S.createState(p, { build, fuelK: S.FUEL_LEVELS[settings.fuel]?.k ?? 1, rnd: () => 0.5, windHeading: 0 });
-    const m0 = S.massProps(st).m, fuel = st.fuel0, dv = spec.isp * S.G0 * Math.log(m0 / (m0 - fuel)), twr = spec.fMax / (m0 * p.g);
-    return `<tr><td>${p.name}</td><td>${f(fuel)} kg</td><td>${f(dv)} m/s</td><td class="${twr < 1.3 ? 'bad' : twr < 2 ? 'warn' : ''}">${f(twr, 1)}</td></tr>`;
-  }).join('');
-  const st0 = S.createState(S.PLANETS[0], { build, rnd: () => 0.5, windHeading: 0 }), mp = S.massProps(st0);
-  const dry = mp.m - st0.fuel0;
-  $('build-stats').innerHTML = `<div class="bs-top"><span>Leermasse <b>${f(dry)} kg</b></span><span>Schub <b>${f(spec.fMax / 1000)} kN</b></span><span>Isp <b>${spec.isp} s</b></span>
-    <span>Batterie <b>×${f(spec.batK, 1)}</b>${spec.ids.has('solarL') ? '' : ' (keine Paneele)'}</span><span>Schirm <b>${spec.ids.has('chute') ? `${f(spec.chuteCda)} m²` : 'keiner'}</b></span>
-    <span>Landefenster <b>≤ ${f(spec.land.vy[2], 1)} m/s · ${f(spec.land.vx[2], 1)} m/s · ${f(spec.land.tilt[2])}°</b></span></div>
-    <table><tr><th>Planet</th><th>Treibstoff</th><th>Δv</th><th>Schub/Gewicht</th></tr>${rowsHtml}</table>`;
+    const m0 = S.massProps(st).m, fuel = st.fuel0;
+    return { p, fuel, m0, dv: spec.isp * S.G0 * Math.log(m0 / (m0 - fuel)), twr: spec.fMax / (m0 * p.g) };
+  });
+  const twrCls = (x) => (x < 1.3 ? 'bad' : x < 2 ? 'warn' : '');
+  const st0 = S.createState(S.PLANETS[0], { build, rnd: () => 0.5, windHeading: 0 });
+  const dry = S.massProps(st0).m - st0.fuel0;
+  // highlight what changed with the last choice
+  const vals = {
+    dry: `${f(dry)} kg`, thrust: `${f(spec.fMax / 1000)} kN`, isp: `${spec.isp} s`,
+    bat: `×${f(spec.batK, 1)}${spec.ids.has('solarL') ? '' : ', keine Paneele'}`, chute: spec.ids.has('chute') ? `${f(spec.chuteCda)} m²` : 'keiner',
+    land: `≤ ${f(spec.land.vy[2], 1)} m/s · ${f(spec.land.vx[2], 1)} m/s · ${f(spec.land.tilt[2])}°`,
+  };
+  for (const r of per) vals[r.p.id] = `${f(r.dv)}|${f(r.twr, 1)}`;
+  const prev = renderBuilder.prev ?? {}; renderBuilder.prev = vals;
+  const c = (k) => (prev[k] !== undefined && prev[k] !== vals[k] ? ' class="chg"' : '');
+  $('build-pinned').innerHTML = `<div class="bp-row"><span${c('dry')}>Leermasse <b>${vals.dry}</b></span><span${c('thrust')}>Schub <b>${vals.thrust}</b></span><span${c('isp')}>Isp <b>${vals.isp}</b></span>
+      <span${c('bat')}>Batterie <b>${vals.bat}</b></span><span${c('chute')}>Schirm <b>${vals.chute}</b></span><span${c('land')}>Landefenster <b>${vals.land}</b></span></div>
+    <div class="bp-grid">${per.map((r) => `<div class="bp-cell${prev[r.p.id] !== undefined && prev[r.p.id] !== vals[r.p.id] ? ' chg' : ''}">${r.p.name}<b>Δv ${f(r.dv)} · <span class="${twrCls(r.twr)}">${f(r.twr, 1)}</span></b></div>`).join('')}</div>`;
+  $('build-stats').innerHTML = `<table><tr><th>Planet</th><th>Treibstoff</th><th>Startmasse</th><th>Δv</th><th>Schub/Gewicht</th></tr>${
+    per.map((r) => `<tr><td>${r.p.name}</td><td>${f(r.fuel)} kg</td><td>${f(r.m0)} kg</td><td>${f(r.dv)} m/s</td><td class="${twrCls(r.twr)}">${f(r.twr, 1)}</td></tr>`).join('')}</table>`;
   $('build-btn').innerHTML = `${buildSummary() === 'Standard' ? 'Standard-Lander' : 'Eigener Lander'} · bearbeiten<small>${buildSummary()}</small>`;
   if (mode === 'menu') { ship.reset(spec); }
 }
 // while building, the start menu steps aside so the lander in the background is visible
-$('build-btn').addEventListener('click', () => { renderBuilder(); $('builder').hidden = false; $('menu').hidden = true; });
+$('build-btn').addEventListener('click', () => { renderBuilder.prev = null; renderBuilder(); $('builder').hidden = false; $('menu').hidden = true; });
 const closeBuilder = () => { $('builder').hidden = true; $('menu').hidden = false; buildMenu(); };
 $('builder-close').addEventListener('click', closeBuilder);
 $('build-done').addEventListener('click', closeBuilder);
