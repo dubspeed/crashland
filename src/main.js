@@ -6,6 +6,7 @@ import { createShip } from './ship.js';
 import { createDebris } from './debris.js';
 import { createHud, setLabel } from './hud.js';
 import { createOrbitMap } from './orbitmap.js';
+import { createReentry } from './reentry.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -36,6 +37,8 @@ const world = createWorld(scene, models);
 const ship = createShip(models);
 scene.add(ship.group);
 const debris = createDebris(scene);
+const reentry = createReentry(scene);
+const _hull = new THREE.Vector3();
 
 // aiming aids on the ground: ring right below the lander, cross where it would hit if it kept falling
 const markMat = new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false });
@@ -515,6 +518,13 @@ renderer.setAnimationLoop(() => {
   if (mode === 'menu') cam.yaw += dt * 0.12;
 
   ship.update(s, time);
+  // re-entry glow around the hull centre, and the sky / haze by how much air is above
+  reentry.update(s, _hull.set(s.x, s.y + 2.8, s.z), dt, time);
+  if (planet.rho > 0) {
+    const air = Math.pow(Math.min(1, S.density(s) / planet.rho), 0.35);
+    const R = S.surfaceR(planet) || 1e7, h = Math.max(0, S.altitude(s));
+    world.setAir(mode === 'menu' ? 1 : air, Math.acos(Math.min(1, R / (R + h))));
+  }
   debris.update(dt);
   if (mode !== 'menu') hud.update(s, input, cam.yaw);
 
@@ -589,6 +599,8 @@ renderer.setAnimationLoop(() => {
   ship.setCanopyAlpha(view === 'top' ? 0.25 : view === 'chase' ? 1 : 0.45);
   const minY = S.terrainHeight(camera.position.x, camera.position.z) + 1.5;
   if (camera.position.y < minY) camera.position.y = minY;
+  // buffeting in dense, fast airflow (and while the canopy jerks)
+  if (mode === 'flight' && s.status === 'flying' && s.q > 300) camera.position.add(_hull.randomDirection().multiplyScalar(Math.min(0.35, s.q / 25000)));
   if (cam.shake > 0) {
     cam.shake = Math.max(0, cam.shake - dt);
     camera.position.add(new THREE.Vector3().randomDirection().multiplyScalar(cam.shake * 0.8));

@@ -42,6 +42,29 @@ export function createWorld(scene, models) {
   scene.add(dust);
 
   let ground = null;
+
+  // sky dome (planets with air): horizon colour fading to a darker zenith, and to black space as the air
+  // thins; a thin glowing limb at the (dipped) horizon when seen from high up
+  const skyUni = { uHorizon: { value: new THREE.Color() }, uZenith: { value: new THREE.Color() }, uSpace: { value: new THREE.Color(0x05060c) }, uAir: { value: 1 }, uDip: { value: 0 } };
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), new THREE.ShaderMaterial({
+    uniforms: skyUni, side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false,
+    vertexShader: /* glsl */ `varying vec3 vD; void main() { vD = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uHorizon; uniform vec3 uZenith; uniform vec3 uSpace; uniform float uAir; uniform float uDip;
+      varying vec3 vD;
+      void main() {
+        float e = normalize(vD).y + uDip;                 // elevation above the visible horizon
+        vec3 air = mix(uHorizon, uZenith, smoothstep(0.0, 0.7, e));
+        vec3 col = mix(uSpace, air, uAir);
+        float limb = exp(-abs(e) * 30.0) * (1.0 - uAir) * 0.8; // thin bright band from orbit
+        col += uHorizon * limb;
+        gl_FragColor = vec4(col, 1.0);
+      }`,
+  }));
+  sky.renderOrder = -100; sky.frustumCulled = false;
+  sky.scale.setScalar(5000);
+  scene.add(sky);
+  let skyBase = null, starBase = 0;
   let curveR = 0; // orbit level: radius of the moon the ground is bent onto (0 = flat world)
 
   // flat sim coordinates (x, z = arc length from the pad, h = height) -> point in the ground group.
@@ -178,7 +201,11 @@ export function createWorld(scene, models) {
     hemi.groundColor.set(p.ground2);
     hemi.intensity = surfaceR(p) ? 0.35 : p.stars ? 0.6 : 1.0;
     sun.color.set(p.sun);
-    stars.material.opacity = p.stars ? 1 : p.id === 'brontes' ? 0.45 : 0;
+    stars.material.opacity = p.stars ? 1 : p.id.startsWith('brontes') ? 0.45 : 0;
+    starBase = stars.material.opacity;
+    sky.visible = p.rho > 0;
+    skyBase = { horizon: new THREE.Color(p.fog), zenith: new THREE.Color(p.sky).multiplyScalar(0.6), fog: new THREE.Color(p.fog), bg: new THREE.Color(p.sky) };
+    skyUni.uHorizon.value.copy(skyBase.horizon); skyUni.uZenith.value.copy(skyBase.zenith);
     stars.visible = stars.material.opacity > 0;
     dust.material.color.set(p.stars ? 0xbfc6d6 : 0xffffff);
     buildGround(p);
@@ -216,6 +243,7 @@ export function createWorld(scene, models) {
       sc.far = far; sc.left = sc.bottom = -half; sc.right = sc.top = half; sc.updateProjectionMatrix();
     }
     stars.position.copy(camera.position);
+    sky.position.copy(camera.position);
     dust.visible = !curveR || camera.position.y < 400; // speed dust only near the ground, not in orbit
     // orbit level: pick the terrain tiles for this camera (camera in the moon's frame, from its centre)
     if (moon) { ground.updateMatrixWorld(); moon.update(ground.worldToLocal(_cam.copy(camera.position)).add(_up.set(0, curveR, 0))); }
@@ -252,5 +280,18 @@ export function createWorld(scene, models) {
     return out;
   }
 
-  return { setPlanet, update, align, toRender, stats: () => ({ tiles: moon ? moon.tiles() : 0 }) };
+  /** air: 0 (space) .. 1 (ground density); dip: how far the horizon sinks below eye level (rad) */
+  function setAir(air, dip) {
+    if (!skyBase) return;
+    skyUni.uAir.value = air; skyUni.uDip.value = Math.sin(dip);
+    // distant haze and the background follow the sky; stars come out as the air thins
+    if (sky.visible) {
+      scene.fog.color.copy(skyUni.uSpace.value).lerp(skyBase.fog, Math.pow(air, 0.6));
+      scene.background.copy(skyUni.uSpace.value).lerp(skyBase.bg, air);
+      stars.material.opacity = Math.max(starBase, Math.pow(1 - air, 2));
+      stars.visible = stars.material.opacity > 0.02;
+    }
+  }
+
+  return { setPlanet, update, align, toRender, setAir, stats: () => ({ tiles: moon ? moon.tiles() : 0 }) };
 }
