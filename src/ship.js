@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COMPONENTS, SHIELD, makeSpec, massProps } from './sim.js';
+import { COMPONENTS, SHIELD, makeSpec, massProps, PIVOT_Y } from './sim.js';
 
 /** heat shield: a dark ablative cone ring around the nozzle (no Blender model needed) */
 function shieldModel() {
@@ -138,11 +138,14 @@ export function createShip(models) {
   }
 
   let lastT = 0;
+  const pivotV = new THREE.Vector3();
   function update(s, t) {
     const dt = Math.min(0.05, Math.max(0, t - lastT)); lastT = t;
     if (!group.userData.physics) {
-      group.position.set(s.x, s.y - (group.userData.sink || 0), s.z);
+      // turn about the pivot at centre-of-mass height (same as the flight model's feet), not the foot plane
       group.rotation.set(s.b, 0, s.a);
+      pivotV.set(0, PIVOT_Y, 0).applyEuler(group.rotation);
+      group.position.set(s.x - pivotV.x, s.y - (group.userData.sink || 0) + PIVOT_Y - pivotV.y, s.z - pivotV.z);
     }
     updateChute(s, t, dt);
     // solar wings fold up around their root at the frame (root is 1.25 m inboard of the panel centre)

@@ -531,10 +531,15 @@ export function stoppingDistance(s) {
 
 const FEET = [[-FOOT_X, 0], [FOOT_X, 0], [0, -FOOT_X], [0, FOOT_X]];
 /** World position of each foot pad: [x, y, z, groundHeight]. */
+/** the lander turns about this body point (about its centre of mass), not about its foot plane;
+ *  (s.x, s.y, s.z) stays the foot-plane centre of the upright lander, so upright nothing changes */
+export const PIVOT_Y = 3.0;
 export function feet(s) {
   const ca = Math.cos(s.a), sa = Math.sin(s.a), cb = Math.cos(s.b || 0), sb = Math.sin(s.b || 0);
   return FEET.map(([fx, fz]) => {
-    const x = s.x + fx * ca, y = s.y + fx * sa * cb - fz * sb, z = (s.z || 0) + fx * sa * sb + fz * cb;
+    // body point (fx, -PIVOT_Y, fz) relative to the pivot, rotated Rx(b) * Rz(a)
+    const rx = fx * ca + PIVOT_Y * sa, ry = fx * sa - PIVOT_Y * ca;
+    const x = s.x + rx, y = s.y + PIVOT_Y + ry * cb - fz * sb, z = (s.z || 0) + ry * sb + fz * cb;
     return [x, y, z, terrainHeight(x, z)];
   });
 }
@@ -614,7 +619,7 @@ function controlAxis(s, ang, rate, holdKey, integKey, cmd, target, comTorque, I,
   s[tauKey] = 0;
   if (s.blackout) return 0;
   const A = s[ang], W = s[rate];
-  if (cmd && s.sas === 'hold' && s.computerOK) {
+  if (cmd && s.sas && s.computerOK) {
     // rate command (Apollo LM style): the pad sets a turn rate, the computer fires the jets to match it
     s[tauKey] = clamp((cmd * MAX_RATE - W) * 6 * I - comTorque);
     s[holdKey] = null; s[integKey] = 0;

@@ -1,43 +1,43 @@
 {
  "luna retro2 wind0 seed3": {
   "status": "landed",
-  "t": 16.242,
-  "x": 1.632,
-  "z": -4.526,
+  "t": 16.25,
+  "x": 1.573,
+  "z": -4.514,
   "vy": -1.642,
-  "fuel": 34.973
+  "fuel": 34.949
  },
  "luna hold wind0 seed3": {
   "status": "crashed",
-  "t": 16.1,
-  "x": 5.508,
-  "z": -3.685,
-  "vy": -1.702,
-  "fuel": 35.668
+  "t": 16.133,
+  "x": 5.357,
+  "z": -3.583,
+  "vy": -1.674,
+  "fuel": 35.532
  },
  "mars hold wind2 seed7": {
   "status": "crashed",
-  "t": 17.433,
-  "x": -19.274,
-  "z": 6.453,
-  "vy": -1.788,
-  "fuel": 62.607
+  "t": 17.458,
+  "x": -19.091,
+  "z": 6.388,
+  "vy": -1.751,
+  "fuel": 62.397
  },
  "terra retro2 wind3 seed4": {
   "status": "crashed",
-  "t": 27.542,
-  "x": 29.341,
-  "z": -10.579,
-  "vy": -1.562,
-  "fuel": 46.736
+  "t": 27.533,
+  "x": 29.354,
+  "z": -10.602,
+  "vy": -1.56,
+  "fuel": 46.862
  },
  "terra hold wind0 seed8": {
   "status": "landed",
-  "t": 27.775,
-  "x": 2.526,
-  "z": -2.058,
+  "t": 27.783,
+  "x": 2.51,
+  "z": -2.042,
   "vy": -1.56,
-  "fuel": 49.416
+  "fuel": 49.284
  },
  "brontes retro2 wind1 seed2": {
   "status": "crashed",
@@ -52,29 +52,29 @@
   "t": 113.625,
   "x": -12.586,
   "z": 0,
-  "vy": -1.576,
+  "vy": -1.575,
   "fuel": 110.092
  },
  "mars-orbit orbit wind2 seed1": {
   "status": "landed",
   "t": 117.55,
-  "x": -58.732,
-  "z": -12.657,
+  "x": -58.626,
+  "z": -12.598,
   "vy": -1.606,
-  "fuel": 140.239
+  "fuel": 140.244
  },
  "terra-orbit orbit wind1 seed1": {
   "status": "landed",
-  "t": 211.133,
-  "x": -36.215,
-  "z": -35.804,
-  "vy": -1.553,
-  "fuel": 79.614
+  "t": 211.042,
+  "x": -36.153,
+  "z": -35.578,
+  "vy": -1.554,
+  "fuel": 79.747
  },
  "brontes-orbit orbit wind0 seed1": {
   "status": "landed",
   "t": 228.317,
-  "x": 2.705,
+  "x": 2.7,
   "z": 0,
   "vy": -1.568,
   "fuel": 144.726
