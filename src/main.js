@@ -5,6 +5,7 @@ import { createWorld } from './world.js';
 import { createShip } from './ship.js';
 import { createDebris } from './debris.js';
 import { createHud, setLabel } from './hud.js';
+import { createOrbitMap } from './orbitmap.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -55,7 +56,10 @@ function updateMarkers() {
   const alt = Math.max(0, S.altitude(s));
   // predicted touchdown without thrust (gravity, drag, wind, canopy), shared with the HUD compass
   // the forward integration is the costliest bit per frame: refresh it ~12 times a second
-  if (!s.pred || (s.predAt ?? -1) > s.t || s.t - s.predAt > 0.08) { s.pred = S.predictImpact(s); s.predAt = s.t; }
+  if (!s.pred || (s.predAt ?? -1) > s.t || s.t - s.predAt > 0.08) {
+    s.predPath = planet.orbit ? [] : null; // the orbit map draws the predicted path
+    s.pred = S.predictImpact(s, s.predPath); s.predAt = s.t;
+  }
   const pred = s.pred;
   impact.visible = !!pred;
   if (pred) world.toRender(pred.x, S.terrainHeight(pred.x, pred.z) + 0.2, pred.z, impact.position, impact.quaternion);
@@ -184,6 +188,7 @@ function start(p) {
   hud.reset();
   cam.tgtD = 0; cam.intro = 0; cam.tgt = null; cam.pitch = 0;
   mode = 'flight';
+  $('c-map').hidden = !p.orbit; toggleMap(false);
   $('menu').hidden = true; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = false;
   ship.helpers.visible = showCom;
 }
@@ -269,6 +274,7 @@ addEventListener('keydown', (e) => {
   if (mode !== 'flight') return;
   if (e.code === 'KeyT') cycleSas();
   if (e.code === 'KeyV') toggleView();
+  if (e.code === 'KeyK') toggleMap();
   const digit = /^(Digit|Numpad)(\d)$/.exec(e.code);
   if (digit) s.limit = digit[2] === '0' ? 1 : +digit[2] / 10;
   if (e.code === 'KeyP') S.toggleChute(s);
@@ -317,6 +323,15 @@ $('c-view').addEventListener('click', toggleView);
 $('c-panels').addEventListener('click', () => S.togglePanels(s));
 $('c-com').addEventListener('click', toggleCom);
 $('c-com').classList.add('on');
+// orbit map (orbit levels): K or the button
+const orbitMap = createOrbitMap($('orbitmap'));
+function toggleMap(force) {
+  if (!planet.orbit) { orbitMap.visible = false; return; }
+  orbitMap.visible = force ?? !orbitMap.visible;
+  $('c-map').classList.toggle('on', orbitMap.visible);
+}
+$('c-map').addEventListener('click', () => toggleMap());
+setLabel($('c-map'), 'Karte', 'K');
 setLabel($('c-com'), 'Schwerpunkt', 'C');
 // buttons never take keyboard focus: otherwise Space (thrust) or Enter would also "press" the last clicked button
 for (const b of document.querySelectorAll('#controls .tog')) b.addEventListener('mousedown', (e) => e.preventDefault());
@@ -476,6 +491,7 @@ renderer.setAnimationLoop(() => {
   }
   camera.lookAt(lookAt);
   placeShipMark();
+  if (mode === 'flight') orbitMap.draw(s);
   world.update(camera, focus, time, mode === 'menu' ? { x: 0, z: 0 } : { x: s.windX, z: s.windZ }, dt);
   renderer.render(scene, camera);
 });

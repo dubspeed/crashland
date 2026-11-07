@@ -401,3 +401,9 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 @media (pointer: coarse) { .tog kbd, .lever .lbl kbd { display: none; } }
 /* the button itself is always the click target, never its text or the shortcut chip */
 .tog > * { pointer-events: none; }
+
+/* orbit map: full-screen 2D view under the HUD panels and controls */
+#orbitmap { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; background: radial-gradient(ellipse at 50% 45%, rgba(10,16,30,0.9), rgba(3,5,10,0.96)); }
+.orbitline { color: var(--cyan); font-size: 11px; line-height: 1.35; margin: 2px 0 4px; }
+.orbitline b { color: var(--text, #e8f2ff); font-weight: 600; }
+@media (max-width: 520px), (max-height: 520px) { #v-orbit { display: none !important; } } /* phone: the map shows Ap/Pe */

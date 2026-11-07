@@ -12,6 +12,7 @@
 <body>
   <div id="tunnel" aria-hidden="true"></div>
   <div id="hud" hidden>
+    <canvas id="orbitmap" hidden aria-label="Bahnkarte: Planet, Bahn, Apoapsis, Periapsis, Ziel"></canvas>
     <div id="ship-mark" hidden aria-hidden="true"><svg viewBox="0 0 24 28"><path d="M3 3 L21 3 L12 24 Z" fill="rgba(143,227,255,0.25)" stroke="#8fe3ff" stroke-width="3" stroke-linejoin="round"/></svg></div>
     <header id="top">
       <span class="brand">CRASHLAND</span>
@@ -31,6 +32,7 @@
       <h2>Höhe</h2>
       <div id="v-alt" class="huge"></div>
       <div id="nav" class="nav"><span id="v-wind"></span><span id="v-pad"></span></div>
+      <div id="v-orbit" class="orbitline" hidden></div>
       <canvas id="radar" width="128" height="128" aria-label="Kompass: Landeplatz, Wind und eigene Bewegung"></canvas>
       <h2>Treibstoff</h2>
       <div class="gline"><span id="v-fuel" class="big"></span><span id="v-fuelpct" class="lim"></span></div>
@@ -76,6 +78,7 @@
           <button id="c-sas" class="tog"></button>
           <button id="c-view" class="tog"></button>
           <button id="c-com" class="tog">Schwerpunkt</button>
+          <button id="c-map" class="tog" hidden>Karte</button>
         </div>
         <div id="c-rcs" class="rcs" role="group" aria-label="Neigen: in die gewünschte Richtung drücken, oben ist vom Bildschirm weg">
           <span class="ar u">▲</span><span class="ar d">▼</span><span class="ar l">◀</span><span class="ar r">▶</span><i class="knob"></i>
@@ -128,6 +131,7 @@
           <dt><kbd>P</kbd> · <kbd>E</kbd></dt><dd>Fallschirm · Paneele ein/aus</dd>
           <dt><kbd>T</kbd> · <kbd>V</kbd></dt><dd>Lageregler · Ansicht (Hinten, Schräg, Ziel, Oben)</dd>
           <dt><kbd>R</kbd> · <kbd>M</kbd></dt><dd>Neustart · Menü</dd>
+          <dt><kbd>K</kbd></dt><dd>Bahnkarte (Orbit-Level)</dd>
           <dt>Maus ziehen</dt><dd>Kamera um das Schiff drehen (auch hoch/runter), Doppelklick = zurück, Rad = Zoom</dd>
         </dl>
       </section>

@@ -100,6 +100,34 @@ export function surfaceR(p) { return p.R || (p.surface ? ORBIT.R : 0); }
 export function surfaceId(p) { return p.surface ?? p.id; }
 export function surfaceEdge(p) { return p.edge ?? ORBIT.edge; }
 
+/** Keplerian orbit from the current state (vacuum, point mass; planar: arc x and height y). Angles are
+ *  measured on the planet from the pad (theta = x / R), positive in the direction of +x.
+ *  Returns heights above the mean surface for apoapsis/periapsis, times to them, period, and the
+ *  geometry for drawing the ellipse (p, e, omega = theta of periapsis, dir = +1/-1 sense of motion). */
+export function orbitInfo(s) {
+  const p = s.planet;
+  if (!p.R) return null;
+  const R = p.R, mu = p.g * R * R, r = R + s.y;
+  const vt = s.vx, vr = s.vy, v2 = vt * vt + vr * vr;
+  const h = r * vt, H = Math.abs(h) || 1e-9;
+  const energy = v2 / 2 - mu / r;
+  const e = Math.sqrt(Math.max(0, 1 + (2 * energy * H * H) / (mu * mu)));
+  const pp = (H * H) / mu;
+  const nu = Math.atan2((H * vr) / mu, pp / r - 1); // true anomaly now
+  const dir = h >= 0 ? 1 : -1, theta = s.x / R;
+  const out = { R, mu, e, p: pp, nu, dir, theta, omega: theta - dir * nu, speed: Math.sqrt(v2), escape: e >= 1 };
+  out.pe = pp / (1 + e) - R;
+  if (e < 1) {
+    const a = pp / (1 - e * e), n = Math.sqrt(mu / (a * a * a));
+    out.a = a; out.ap = a * (1 + e) - R; out.period = (2 * Math.PI) / n;
+    const E = 2 * Math.atan(Math.sqrt((1 - e) / (1 + e)) * Math.tan(nu / 2));
+    const M = E - e * Math.sin(E), TAU = 2 * Math.PI;
+    out.tPe = (((TAU - M) % TAU) + TAU) % TAU / n;
+    out.tAp = (((Math.PI - M) % TAU) + TAU) % TAU / n;
+  } else { out.ap = Infinity; out.period = Infinity; }
+  return out;
+}
+
 /** circular orbit speed at height y above the surface */
 export function orbitSpeed(p, y) { const r = p.R + y; return Math.sqrt((p.g * p.R * p.R) / r); }
 /** curvature terms for the flat sim frame (x, z = arc length on the surface, y = height): gravity falls off
@@ -237,7 +265,7 @@ export function massProps(s) {
 
 /** Where the lander would touch down if nothing changes from now on (no thrust): gravity, drag with the
  *  current canopy, wind and its shear included. Returns { x, z, t } or null if it never gets there. */
-export function predictImpact(s) {
+export function predictImpact(s, path = null) {
   const { m } = massProps(s);
   let chuteK = s.chute === 'open' && s.planet.rho > 0 ? s.chuteInflate : 0;
   // orbit levels with thick air: assume the chute opens as soon as it is safe (that is what the HUD asks
@@ -248,8 +276,9 @@ export function predictImpact(s) {
   let x = s.x, y = s.y, z = s.z, vx = s.vx, vy = s.vy, vz = s.vz, t = 0;
   const h = s.planet.orbit ? 0.2 : 0.1;
   for (let i = 0, n = s.planet.orbit ? 2000 : 1200; i < n; i++) {
+    if (path && i % 5 === 0) path.push(x, y);
     const ground = s.planet.orbit && y > 600 ? -1e9 : terrainHeight(x, z);
-    if (y <= ground) return { x, z, t };
+    if (y <= ground) { if (path) path.push(x, y); return { x, z, t }; }
     const alt = ground < -1e8 ? y : y - ground;
     const w = windAt(s, alt, s.t + t);
     const rx = vx - w.x, rz = vz - w.z, v = Math.hypot(rx, vy, rz);

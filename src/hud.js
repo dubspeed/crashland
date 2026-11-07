@@ -1,5 +1,6 @@
 import * as S from './sim.js';
 import { createCrew } from './crew.js';
+import { fmtAlt, fmtTime } from './orbitmap.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n, d = 0) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -214,6 +215,15 @@ export function createHud() {
     if (s.pred && s.status === 'flying' && padDist >= 10) {
       const miss = Math.hypot(s.pred.x, s.pred.z);
       vp.innerHTML += ` <span class="aim">· Kreuz ${miss < 4 ? 'auf dem Pad' : `${fmt(miss, 0)} m daneben`}</span>`;
+    }
+
+    // orbit computer line (orbit levels): apoapsis / periapsis while still high and fast
+    const vo = $('v-orbit');
+    const oi = p.orbit && s.status === 'flying' && (alt > 600 || Math.hypot(s.vx, s.vz) > 40) ? S.orbitInfo(s) : null;
+    vo.hidden = !oi;
+    if (oi) {
+      const txt = oi.escape ? 'Fluchtbahn' : `Ap <b>${fmtAlt(oi.ap)}</b> · Pe <b>${oi.pe < 0 ? 'Boden' : fmtAlt(oi.pe)}</b>${oi.pe > 0 && isFinite(oi.tAp) ? ` · Ap in ${fmtTime(oi.tAp)}` : ''}`;
+      if (vo.dataset.t !== txt) { vo.dataset.t = txt; vo.innerHTML = txt; }
     }
 
     // touchdown gauge
