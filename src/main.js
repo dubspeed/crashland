@@ -315,37 +315,47 @@ function finish() {
 function showResult() {
   const ok = s.status === 'landed';
   const { stars, score } = rate(s);
-  const setTxt = [s.settings.fuel !== 1 ? `Treibstoff ${S.FUEL_LEVELS[s.settings.fuel].name}` : '', s.settings.hints ? '' : 'ohne Hinweise', s.settings.autoFine ? 'Feinregelung an' : ''].filter(Boolean);
-  $('r-kicker').textContent = `${planet.name} · ${planet.g.toLocaleString('de-DE')} m/s²${s.wind.speed && planet.rho > 0 ? ` · Wind ${s.wind.name} ×${s.wind.bonus.toLocaleString('de-DE')}` : ''}${setTxt.length ? ` · ${setTxt.join(' · ')} ×${settingsBonus(s.settings).toLocaleString('de-DE', { maximumFractionDigits: 2 })}` : ''}`;
-  const g = s.touch.grade;
-  const crash = s.touch.crash;
+  const f1 = (n) => n.toLocaleString('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
+  // kicker: where, and the difficulty bonus as one figure
+  const bonus = (s.wind.speed && planet.rho > 0 ? s.wind.bonus : 1) * settingsBonus(s.settings);
+  $('r-kicker').textContent = `${planet.name}${s.wind.speed && planet.rho > 0 ? ` · Wind ${s.wind.name}` : ''}${Math.abs(bonus - 1) > 0.001 ? ` · Bonus ×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}` : ''}`;
+  const g = s.touch.grade, crash = s.touch.crash;
   $('r-title').textContent = ok ? ['Butterweich gelandet', 'Gelandet', 'Harte Landung'][g]
     : !crash.crew ? 'Totalverlust' : crash.kind === 'wreck' ? 'Bruchlandung' : 'Explosion';
   $('r-title').style.color = ok ? S.GRADES[g].color : crash.kind === 'wreck' && crash.crew ? 'var(--amber)' : 'var(--bad)';
-  $('r-reason').textContent = ok
-    ? `${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}  ${score} Punkte${g === 2 ? ' · Fahrwerk beschädigt' : g === 1 ? ' · etwas unsanft' : ''}`
-    : `Aufschlag: ${s.reason}. ${crash.kind === 'wreck' ? (crash.crew ? 'Der Lander ist Schrott, aber kein Feuer: die Crew ist unverletzt.' : 'Kein Feuer, aber der Aufprall war zu hart für die Kapsel.')
-      : crash.crew ? `${Math.round(crash.fuelBurned)} kg Treibstoff sind explodiert. Die Crew konnte sich aus der Kapsel retten.`
-      : `${Math.round(crash.fuelBurned)} kg Treibstoff sind explodiert.`}`;
-  const f1 = (n) => n.toLocaleString('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
-  const rows = [
-    ['Aufsetzen', `${f1(s.touch.vy)} m/s · ${S.GRADES[s.touch.grades.vy].name}`],
-    ['Drift', `${f1(s.touch.vx)} m/s · ${S.GRADES[s.touch.grades.vx].name}`],
-    ['Neigung', `${f1(s.touch.tilt)}° · ${S.GRADES[s.touch.grades.tilt].name}`],
-    ['Treibstoff übrig', `${Math.round(S.fuel(s))} kg (${Math.round((S.fuel(s) / s.fuel0) * 100)} %)`],
-    ['Max. G-Last', `${f1(s.maxG)} g`],
-    ['Fallschirm', { burned: 'verglüht', stowed: 'nicht benutzt', open: s.planet.rho > 0 ? 'offen gelandet' : 'nutzlos (keine Luft)', cut: 'abgeworfen', torn: 'gerissen' }[s.chute]],
-    ['Crew', !ok ? (s.touch.crash.crew ? 'überlebt' : 'Kein Kontakt mehr') : s.crew.some((c) => c.fainted) ? s.crew.filter((c) => c.fainted).map((c) => `${c.name} ${c.fainted}× ohnmächtig`).join(', ') : 'alle bei Bewusstsein'],
-    ['Abstand zum Pad', `${f1(precision(s).d)} m · ${precision(s).label}`],
-    ['Hitzeschäden', Object.keys(s.lost).length ? s.spec.comps.filter((c) => s.lost[c.id]).map((c) => c.name).join(', ') + ' verglüht' : 'keine'],
-    ['Batterie', `${Math.round(s.battery)} %`],
-    ['Flugzeit', `${f1(s.t)} s`],
-  ];
-  $('r-stats').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
+  // stars and points, with the best so far
+  const prev = ok ? best(bestKey(planet.id)) : null;
+  const record = ok && (!prev || score > prev.score);
+  $('r-score').hidden = !ok;
   if (ok) {
-    const prev = best(bestKey(planet.id));
-    if (!prev || score > prev.score) saveBest(bestKey(planet.id), { stars, score });
+    $('r-score').innerHTML = `<span class="r-stars">${'<i class="on">★</i>'.repeat(stars)}${'<i>★</i>'.repeat(3 - stars)}</span>`
+      + `<span class="r-pts"><b>${score.toLocaleString('de-DE')}</b> Punkte</span>`
+      + (record ? (prev ? '<em class="r-best new">Neuer Bestwert</em>' : '') : `<em class="r-best">Bestwert ${prev.score.toLocaleString('de-DE')}</em>`);
+    if (record) saveBest(bestKey(planet.id), { stars, score });
   }
+  $('r-reason').hidden = ok;
+  if (!ok) $('r-reason').textContent = `Aufschlag: ${s.reason}.`;
+  // six tiles: the touchdown window (coloured by grade) and how the flight went
+  const tone = (k) => ['ok', 'warn', 'amber', 'bad'][k];
+  const tile = (label, val, sub, cls = '') => `<div class="r-tile"><span>${label}</span><b class="${cls}">${val}</b><small class="${cls}">${sub}</small></div>`;
+  const pr = precision(s), fuelPct = Math.round((S.fuel(s) / s.fuel0) * 100);
+  const gr = s.touch.grades, gName = (k) => S.GRADES[k].name.split(' ')[0];
+  $('r-tiles').innerHTML =
+    tile('Aufsetzen', `${f1(s.touch.vy)}<u>m/s</u>`, gName(gr.vy), tone(gr.vy)) +
+    tile('Drift', `${f1(s.touch.vx)}<u>m/s</u>`, gName(gr.vx), tone(gr.vx)) +
+    tile('Neigung', `${Math.round(s.touch.tilt)}<u>°</u>`, gName(gr.tilt), tone(gr.tilt)) +
+    tile('Ziel', `${pr.d < 10 ? f1(pr.d) : Math.round(pr.d).toLocaleString('de-DE')}<u>m</u>`, pr.label, pr.d <= PAD_RADIUS ? 'ok' : pr.d <= 70 ? 'warn' : 'bad') +
+    tile('Treibstoff', `${fuelPct}<u>%</u>`, `${Math.round(S.fuel(s))} kg übrig`, fuelPct < 10 ? 'bad' : fuelPct < 25 ? 'warn' : '') +
+    tile('Max. G', `${f1(s.maxG)}<u>g</u>`, s.maxG > S.G_LIMIT ? 'zu hoch' : 'Crew ok', s.maxG > S.G_LIMIT ? 'bad' : '');
+  // notes only for what went wrong (or the crash's outcome)
+  const notes = [];
+  if (!ok) notes.push(crash.crew ? ['Crew gerettet', 'ok'] : ['Crew verloren', 'bad']);
+  if (!ok && crash.kind === 'explosion') notes.push([`${Math.round(crash.fuelBurned)} kg Treibstoff explodiert`, 'bad']);
+  for (const c of s.crew) if (c.fainted) notes.push([`${c.name} ${c.fainted}× ohnmächtig`, 'warn']);
+  for (const c of s.spec.comps) if (s.lost[c.id]) notes.push([`${c.name} verglüht`, 'bad']);
+  if (s.chute === 'torn' || s.chute === 'burned') notes.push([`Fallschirm ${s.chute === 'torn' ? 'gerissen' : 'verglüht'}`, 'warn']);
+  $('r-notes').innerHTML = notes.map(([t, c]) => `<em class="${c}">${t}</em>`).join('');
+  $('r-notes').hidden = !notes.length;
   // don't pop up: offer a button so the scene can be looked at first
   $('result-open').innerHTML = `<b style="color:${$('r-title').style.color}">${$('r-title').textContent}</b>${ok ? ` ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}` : ''} · Ergebnis ansehen`;
   $('result-open').hidden = false;

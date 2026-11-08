@@ -137,7 +137,6 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 .planet p { margin: 0; color: var(--mute); font-size: 12px; }
 .planet .best { color: var(--ok); font-size: 11px; }
 .keys { color: var(--mute); font-size: 12px; margin-top: 18px; line-height: 2; }
-#r-stats { margin: 0 0 18px; }
 .sheet .row button { flex: 1; padding: 12px; border-radius: 8px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,0.06); font-weight: 600; }
 .sheet .row button.primary { background: var(--amber); color: #1a1006; border-color: var(--amber); }
 .sheet .row button kbd { border-color: currentColor; color: inherit; margin-left: 4px; }
@@ -335,10 +334,8 @@ h1 { margin: 4px 0 10px; font: 700 clamp(36px, 7vw, 64px)/1 var(--display); lett
 
 /* result window: fixed width that fits the screen, values wrap */
 .sheet.small { width: min(460px, calc(100vw - 32px)); box-sizing: border-box; max-height: calc(100vh - 32px); overflow-y: auto; }
-#r-stats { grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; }
-#r-stats dd { white-space: normal; overflow-wrap: anywhere; }
 #r-reason { overflow-wrap: anywhere; }
-.r-close { display: block; margin: 10px auto 0; background: none; border: 0; color: var(--mute); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.r-close { display: inline-block; margin: 0; background: none; border: 0; color: var(--mute); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 .result-open { position: fixed; left: 50%; transform: translateX(-50%); top: calc(64px + env(safe-area-inset-top, 0px)); z-index: 5; max-width: calc(100vw - 32px);
   padding: 12px 18px; border-radius: 999px; border: 1px solid var(--amber); background: var(--glass); backdrop-filter: blur(6px); font: 600 14px var(--mono); color: var(--ink); box-shadow: 0 4px 18px rgba(0,0,0,0.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .result-open b { font-family: var(--display); letter-spacing: 0.04em; }
@@ -496,3 +493,28 @@ body.building #top { display: none; }
 @media (max-height: 500px) and (orientation: landscape) {
   .bd-planets { display: none; }
 }
+
+/* result: title, stars and points, six tiles, notes only when something went wrong */
+.result-sheet { text-align: center; }
+.result-sheet .row { justify-content: center; }
+.r-score { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 6px 14px; margin: 2px 0 16px; }
+.r-stars { font-size: 30px; letter-spacing: 4px; line-height: 1; }
+.r-stars i { font-style: normal; color: rgba(255,255,255,0.14); }
+.r-stars i.on { color: var(--warn); text-shadow: 0 0 12px rgba(255,208,77,0.45); }
+.r-pts { color: var(--mute); font-size: 12px; }
+.r-pts b { color: var(--ink); font: 700 22px var(--display); font-variant-numeric: tabular-nums; }
+.r-best { flex-basis: 100%; font: 600 10px var(--mono); font-style: normal; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); }
+.r-best.new { color: var(--ok); }
+.r-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 12px; }
+.r-tile { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 4px 7px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-edge); min-width: 0; }
+.r-tile span { font: 600 9.5px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--mute); }
+.r-tile b { font: 700 21px var(--display); font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
+.r-tile b u { text-decoration: none; font-size: 11px; font-weight: 600; margin-left: 2px; color: var(--mute); }
+.r-tile small { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.r-tile .ok { color: var(--ok); } .r-tile .warn { color: var(--warn); } .r-tile .amber { color: var(--amber); } .r-tile .bad { color: var(--bad); }
+.r-tile b.ok, .r-tile b.warn, .r-tile b.amber, .r-tile b.bad { color: var(--ink); }
+.r-notes { display: flex; flex-wrap: wrap; gap: 5px; justify-content: center; margin: 0 0 14px; }
+.r-notes em { font: 600 11px var(--mono); font-style: normal; padding: 3px 8px; border-radius: 999px; background: rgba(255,255,255,0.06); }
+.r-notes .ok { color: var(--ok); } .r-notes .warn { color: var(--warn); } .r-notes .bad { color: var(--bad); }
+.r-links { display: flex; justify-content: center; gap: 18px; margin-top: 12px; }
+#r-reason { margin-bottom: 14px; }

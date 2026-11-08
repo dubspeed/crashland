@@ -211,17 +211,18 @@
   </div>
 
   <div id="result" class="overlay" hidden>
-    <div class="sheet small">
+    <div class="sheet small result-sheet">
       <p class="kicker" id="r-kicker"></p>
       <h1 id="r-title"></h1>
+      <div id="r-score" class="r-score"></div>
       <p class="lead" id="r-reason"></p>
-      <dl id="r-stats"></dl>
+      <div id="r-tiles" class="r-tiles"></div>
+      <div id="r-notes" class="r-notes"></div>
       <div class="row">
         <button id="r-again" class="primary">Nochmal <kbd>R</kbd></button>
         <button id="r-menu">Planet wählen <kbd>M</kbd></button>
       </div>
-      <button id="r-close" class="r-close">Szene ansehen</button>
-      <button id="r-export" class="r-close">Flug exportieren</button>
+      <div class="r-links"><button id="r-close" class="r-close">Szene ansehen</button><button id="r-export" class="r-close">Flug exportieren</button></div>
     </div>
   </div>
   <button id="result-open" class="result-open" hidden></button>
