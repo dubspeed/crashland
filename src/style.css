@@ -570,9 +570,25 @@ body.building #top { display: none; }
   .pw-bar { height: 5px; }
   .pw-top b { font-size: 11px; min-width: 30px; }
   .pw-flow { gap: 1px 8px; }
-  #radar { top: calc(150px + env(safe-area-inset-top, 0px)); left: max(20px, env(safe-area-inset-left, 0px) + 10px); }
+  #radar { top: calc(124px + env(safe-area-inset-top, 0px)); left: max(20px, env(safe-area-inset-left, 0px) + 10px); }
 }
 @media (max-height: 520px) {
   #flight .col-b { top: calc(10px + env(safe-area-inset-top, 0px)); }
   #radar { top: calc(14px + env(safe-area-inset-top, 0px)); left: max(184px, env(safe-area-inset-left, 0px) + 174px); }
+}
+
+/* charging / draining on the battery bar itself */
+.pw-dir { display: none; font-style: normal; font-size: 10px; width: 10px; text-align: center; }
+.pw-dir.chg { color: var(--ok); } .pw-dir.drain { color: var(--warn); } .pw-dir.bad { color: var(--bad); }
+.pw-bar i { position: relative; }
+.pw-bar.chg i, .pw-bar.drain i { background-image: repeating-linear-gradient(-60deg, rgba(255,255,255,0.35) 0 4px, transparent 4px 9px) !important; background-size: 18px 100%; }
+.pw-bar.chg i { animation: pw-run 0.9s linear infinite; }
+.pw-bar.drain i { animation: pw-run 1.4s linear infinite reverse; }
+@keyframes pw-run { to { background-position: 18px 0; } }
+@media (prefers-reduced-motion: reduce) { .pw-bar i { animation: none !important; } }
+@media (max-width: 520px), (max-height: 520px) {
+  .pw-flow { display: none; }
+  .pw-dir { display: block; }
+  .power { padding-top: 5px; }
+  .pw-top b { min-width: 26px; }
 }

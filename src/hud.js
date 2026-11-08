@@ -346,6 +346,10 @@ export function createHud() {
       $('pw-out').textContent = `−${pm(pw.use)} %/min`;
       // net per second, and how long until empty (or full)
       const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
+      // phone: the bar alone says it, charging (stripes run right, ▲) or draining (stripes run left, ▼)
+      const dir = net > 0.01 && bat < 99.5 ? 'chg' : net < -0.01 ? (bat / -net < 60 ? 'drain bad' : 'drain') : '';
+      const bar = $('pw-fill').parentElement;
+      if (bar.dataset.d !== dir) { bar.dataset.d = dir; bar.className = `pw-bar ${dir}`; const d = $('pw-dir'); d.textContent = dir.startsWith('chg') ? '▲' : dir ? '▼' : ''; d.className = `pw-dir ${dir}`; }
       const el = $('pw-net');
       if (net < -0.01) { el.textContent = `▼ ${pm(-net)} %/min · leer ${mmss(bat / -net)}`; el.className = `pw-net ${bat / -net < 60 ? 'bad' : 'warn'}`; }
       else if (net > 0.01 && bat < 99.5) { el.textContent = `▲ ${pm(net)} %/min · voll ${mmss((100 - bat) / net)}`; el.className = 'pw-net ok'; }
