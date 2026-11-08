@@ -304,12 +304,21 @@ function start(p) {
 const PAD_RADIUS = 12;
 function precision(st) {
   const d = Math.hypot(st.x, st.z);
-  return { d, label: d <= 3 ? 'Volltreffer' : d <= PAD_RADIUS ? 'auf dem Pad' : d <= 70 ? 'neben dem Pad' : 'weit daneben' };
+  const [label, tone] = d <= 3 ? ['Volltreffer', 'ok'] : d <= PAD_RADIUS ? ['auf dem Pad', 'ok'] : d <= 40 ? ['knapp daneben', 'warn']
+    : d <= 200 ? ['nah dran', 'warn'] : d <= 1000 ? ['daneben', 'amber'] : ['weit daneben', 'bad'];
+  return { d, label, tone };
 }
-function precisionBonus(st) { const { d } = precision(st); return d <= 3 ? 300 : d <= PAD_RADIUS ? 150 : 0; }
+/** 300 for a bullseye, 150 on the pad, then fading with the distance (~70 at 100 m, ~35 at 200 m) */
+function precisionBonus(st) { const { d } = precision(st); return d <= 3 ? 300 : d <= PAD_RADIUS ? 150 : 120 * Math.exp(-(d - PAD_RADIUS) / 160); }
 
 function rate(st) {
-  if (st.status !== 'landed') return { stars: 0, score: 0, parts: [], mult: 1 };
+  const mult = (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings);
+  if (st.status !== 'landed') {
+    // crashed, but the crew got out: no stars, but the crew, the aim and the planet still count
+    if (!st.touch?.crash?.crew) return { stars: 0, score: 0, parts: [], mult: 1 };
+    const parts = [['Crew', st.crew.length * 70], ['Ziel', precisionBonus(st)], ['Planet', st.planet.g * 20]];
+    return { stars: 0, score: Math.round(parts.reduce((a, p) => a + p[1], 0) * mult), parts: parts.filter((p) => Math.round(p[1]) !== 0), mult };
+  }
   const fuelPct = S.fuel(st) / st.fuel0;
   let stars = 3 - st.touch.grade;
   const fainted = st.crew.some((c) => c.fainted > 0);
@@ -326,7 +335,6 @@ function rate(st) {
     ['Schäden', -lost * 120],
   ];
   const base = parts.reduce((a, p) => a + p[1], 0);
-  const mult = (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings);
   const score = Math.max(0, Math.round(base * mult));
   return { stars, score, parts: parts.filter((p) => Math.round(p[1]) !== 0), mult };
 }
@@ -352,13 +360,13 @@ function showResult() {
     : !crash.crew ? 'Totalverlust' : crash.kind === 'wreck' ? 'Bruchlandung' : 'Explosion';
   $('r-title').style.color = ok ? S.GRADES[g].color : crash.kind === 'wreck' && crash.crew ? 'var(--amber)' : 'var(--bad)';
   // stars and points, with the best so far
-  const prev = ok ? best(bestKey(planet.id)) : null;
-  const record = ok && (!prev || score > prev.score);
+  const prev = best(bestKey(planet.id));
+  const record = score > 0 && (!prev || score > prev.score);
   $('r-score').innerHTML = `<span class="r-stars">${'<i class="on">★</i>'.repeat(stars)}${'<i>★</i>'.repeat(3 - stars)}</span>`
     + `<span class="r-pts"><b id="r-pts">0</b>Punkte</span>`
-    + (ok ? (record ? (prev ? '<em class="r-best new">Neuer Bestwert</em>' : '') : `<em class="r-best">Bestwert ${prev.score.toLocaleString('de-DE')}</em>`) : '')
+    + (record ? (prev ? '<em class="r-best new">Neuer Bestwert</em>' : '') : prev ? `<em class="r-best">Bestwert ${prev.score.toLocaleString('de-DE')}</em>` : '')
     // where the points come from, in one row
-    + (ok ? `<span class="r-parts">${parts.map(([k, v]) => `<em class="${v < 0 ? 'neg' : ''}">${v < 0 ? '−' : '+'}${Math.abs(Math.round(v)).toLocaleString('de-DE')} <small>${k}</small></em>`).join('')}${
+    + (parts.length ? `<span class="r-parts">${parts.map(([k, v]) => `<em class="${v < 0 ? 'neg' : ''}">${v < 0 ? '−' : '+'}${Math.abs(Math.round(v)).toLocaleString('de-DE')} <small>${k}</small></em>`).join('')}${
       Math.abs(mult - 1) > 0.001 ? `<em class="mult">×${mult.toLocaleString('de-DE', { maximumFractionDigits: 2 })} <small>Bonus</small></em>` : ''}</span>` : '');
   if (record) saveBest(bestKey(planet.id), { stars, score });
   // count the points up
@@ -376,7 +384,7 @@ function showResult() {
     tile('Aufsetzen', `${f1(s.touch.vy)}<u>m/s</u>`, gName(gr.vy), tone(gr.vy)) +
     tile('Drift', `${f1(s.touch.vx)}<u>m/s</u>`, gName(gr.vx), tone(gr.vx)) +
     tile('Neigung', `${Math.round(s.touch.tilt)}<u>°</u>`, gName(gr.tilt), tone(gr.tilt)) +
-    tile('Ziel', `${pr.d < 10 ? f1(pr.d) : Math.round(pr.d).toLocaleString('de-DE')}<u>m</u>`, pr.label, pr.d <= PAD_RADIUS ? 'ok' : pr.d <= 70 ? 'warn' : 'bad') +
+    tile('Ziel', `${pr.d < 10 ? f1(pr.d) : Math.round(pr.d).toLocaleString('de-DE')}<u>m</u>`, pr.label, pr.tone) +
     tile('Treibstoff', `${fuelPct}<u>%</u>`, `${Math.round(S.fuel(s))} kg übrig`, fuelPct < 10 ? 'bad' : fuelPct < 25 ? 'warn' : '') +
     tile('Max. G', `${f1(s.maxG)}<u>g</u>`, s.maxG > S.G_LIMIT ? 'zu hoch' : 'Crew ok', s.maxG > S.G_LIMIT ? 'bad' : '');
   // notes only for what went wrong (or the crash's outcome)
