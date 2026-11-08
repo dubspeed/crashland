@@ -94,6 +94,7 @@ dd { white-space: nowrap; }
 .tog:disabled { opacity: 0.4; cursor: default; }
 .tog.chute { border-color: rgba(255,181,71,0.5); }
 .tog.chute.ready { border-color: var(--amber); color: var(--amber); box-shadow: 0 0 10px rgba(255,181,71,0.35); }
+.tog.shield.ready { border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 10px rgba(143,227,255,0.35); }
 
 /* analog rotate pad: press left/right of centre, further out = stronger */
 .rcs { position: relative; width: var(--rcs-w, 220px); height: var(--rcs-h, 76px); border-radius: 14px; background: linear-gradient(90deg, rgba(143,227,255,0.16), rgba(9,13,22,0.7) 35% 65%, rgba(143,227,255,0.16)), var(--glass); border: 1px solid var(--glass-edge); cursor: ew-resize; }

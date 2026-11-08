@@ -63,3 +63,39 @@ test('a flight with a custom build replays identically', () => {
   assert.deepEqual(record.build, { ...S.DEFAULT_BUILD, ...build });
   assert.deepEqual(summary(replay(JSON.parse(JSON.stringify(record)))), record.result);
 });
+
+test('the decoupler drops the heat shield: lighter, no damage, only once, recorded', () => {
+  const P = S.ORBIT_PLANETS[2];
+  const s = S.newRound(P, 0, 1, {}, { shield: 'shield' });
+  const m0 = S.massProps(s).m;
+  assert.equal(S.act(s, 'shield'), true);
+  assert.equal(S.massProps(s).m, m0 - S.SHIELD.mass);
+  assert.ok(!S.hasPart(s, 'shield') && s.dropped.shield && !s.lost.shield);
+  assert.equal(S.act(s, 'shield'), false);
+  assert.deepEqual(s.events.map((e) => e.type), ['drop']);
+  const n = S.newRound(P, 0, 1, {}, {}); assert.equal(S.act(n, 'shield'), false); // nothing to drop
+  const { record } = recordPilot(P, 0, 4, makePilot(S, P, { dropShield: 'hint' }), 600, {}, { shield: 'shield' });
+  assert.ok(record.ev.some((e) => e[1] === 'a' && e[2] === 'shield'));
+  assert.deepEqual(summary(replay(JSON.parse(JSON.stringify(record)))), record.result);
+});
+
+test('dropping the shield when the HUD says so is safe and saves fuel', () => {
+  for (const P of [S.PLANETS[0], S.PLANETS[1], S.PLANETS[2], ...S.ORBIT_PLANETS]) {
+    const keep = recordPilot(P, 0, 5, makePilot(S, P, {}), 600, {}, { shield: 'shield' }).s;
+    const drop = recordPilot(P, 0, 5, makePilot(S, P, { dropShield: 'hint' }), 600, {}, { shield: 'shield' }).s;
+    assert.ok(drop.dropped.shield, `${P.id}: hint never came`);
+    assert.equal(drop.status, 'landed', `${P.id}: ${drop.reason}`);
+    assert.deepEqual(Object.keys(drop.lost), [], `${P.id}: lost ${Object.keys(drop.lost)}`);
+    assert.ok(S.fuel(drop) > S.fuel(keep), `${P.id}: fuel ${S.fuel(drop).toFixed(0)} vs ${S.fuel(keep).toFixed(0)}`);
+  }
+});
+
+test('the hint waits for the re-entry: dropped at the start, the lander gets much hotter', () => {
+  const P = S.ORBIT_PLANETS[3], peak = (opt) => {
+    const base = makePilot(S, P, opt); let mx = 0;
+    recordPilot(P, 0, 5, (s, act) => { mx = Math.max(mx, s.temp.engine, s.temp.tankL, s.temp.tankR); return base(s, act); }, 600, {}, { shield: 'shield' });
+    return mx;
+  };
+  const early = peak({ dropShield: 1 }), hint = peak({ dropShield: 'hint' });
+  assert.ok(early > hint * 1.3, `early ${early.toFixed(0)} °C vs hint ${hint.toFixed(0)} °C`);
+});

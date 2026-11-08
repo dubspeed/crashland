@@ -167,6 +167,7 @@ export const STEP = 1 / 120;
 export function act(s, name) {
   if (name === 'chute') return toggleChute(s);
   if (name === 'panels') return togglePanels(s);
+  if (name === 'shield') return jettison(s, 'shield');
   if (name === 'sas') { s.sas = { hold: 'retro', retro: 'retro2', retro2: 'up', up: false }[s.sas] ?? 'hold'; s.holdA = s.a; s.holdB = s.b; }
 }
 /** one fixed simulation step, including the touchdown prediction the flight computer uses (refreshed every
@@ -298,7 +299,44 @@ export function makeSpec(build = {}) {
   };
 }
 /** a part is there: built in and not destroyed */
-export const hasPart = (s, id) => s.spec.ids.has(id) && !s.lost[id];
+export const hasPart = (s, id) => s.spec.ids.has(id) && !s.lost[id] && !s.dropped[id];
+/** decoupler: drop a part on purpose (the heat shield). It leaves with its mass; unlike a part that burned
+ *  off this is no damage. Returns true if something was dropped. */
+export function jettison(s, id) {
+  if (!hasPart(s, id) || s.status !== 'flying') return false;
+  s.dropped[id] = true;
+  s.events.push({ type: 'drop', id, t: s.t });
+  return true;
+}
+/** how much of the heat flux a part takes: orbit levels by how well the engine end leads (shieldF), normal
+ *  levels by the tilt (sa, sb); folded panels and a heat shield facing the airflow (facing) protect */
+function exposure(s, c, shieldF, facing, sa, sb) {
+  let exp = s.planet.orbit
+    ? c.heat[0] * (c.id === 'engine' ? 1 : (1 - (c.id === 'legs' ? 0.5 : 0.85) * shieldF) * (1 + 1.5 * (1 - shieldF)))
+    : Math.max(0, c.heat[0] * (1 + Math.sign(c.pos[0]) * sa * 2.5 - Math.sign(c.pos[2]) * sb * 2.5));
+  if (c.model === 'solar') exp *= 1 - 0.88 * s.panelFold; // folded panels sit in the lee of the frame
+  if (facing > 0 && c.id !== 'shield') exp *= 1 - (c.id === 'legs' ? 0.45 : 0.75) * facing;
+  return exp;
+}
+/** heat shield hint: re-entry is over (or there is none to come), the shield is only dead weight now */
+export function shieldDropHint(s) {
+  if (!hasPart(s, 'shield') || s.status !== 'flying' || s.t < 2) return null;
+  const p = s.planet;
+  if (p.rho === 0) return 'vacuum';
+  // worst case from here on: the speed (current or terminal) all the way down into the densest air. If no part would get
+  // past 70 % of its limit without the shield (in the current attitude), the shield has done its job.
+  // still falling faster? the speed can grow up to the terminal speed of the air around the lander now
+  const vt = Math.sqrt((2 * massProps(s).m * p.g) / (Math.max(1e-6, density(s)) * BODY_CDA));
+  const v0 = Math.hypot(s.vx - s.windX, s.vy, s.vz - s.windZ), fall = Math.sqrt(v0 * v0 + 2 * p.g * Math.max(0, altitude(s)));
+  const v = Math.max(v0, Math.min(vt, fall)); // (and never more than free fall to the ground gives)
+  const fMax = Math.sqrt(p.rho) * (v / 100) ** 3 * HEAT_K * (p.heatK ?? 1);
+  const sa = Math.sin(s.a), sb = Math.sin(s.b);
+  for (const c of s.spec.comps) {
+    if (s.lost[c.id] || s.dropped[c.id] || !c.heat || c.id === 'shield') continue;
+    if (T_AMB + (fMax * exposure(s, c, s.heatShield ?? 0, 0, sa, sb)) / HEAT_COOL > T_AMB + (c.heat[1] - T_AMB) * 0.7) return null;
+  }
+  return s.peakFlux > 8 ? 'over' : 'safe';
+}
 
 // ---------- terrain ----------
 const PAD_R = 70;
@@ -356,7 +394,7 @@ export function createState(planet, opts = {}) {
     limit: 1, throttle: 0, sas: 'hold', holdA: t0, holdB: b0, sasI: 0, sasIB: 0,
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
     crew: CREW.map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
-    torqueCom: 0, torqueComB: 0, sasTorque: 0, temp: Object.fromEntries(spec.comps.map((c) => [c.id, T_AMB])), lost: {}, events: [],
+    torqueCom: 0, torqueComB: 0, sasTorque: 0, temp: Object.fromEntries(spec.comps.map((c) => [c.id, T_AMB])), lost: {}, dropped: {}, peakFlux: 0, events: [],
     panels: 'out', panelFold: 0,
     chute: 'stowed', chuteT: 0, chuteInflate: 0, chuteOpen: 0, q: 0, maxQ: 0, drag: 0,
     status: 'flying', reason: '', touch: null, log: [],
@@ -365,7 +403,7 @@ export function createState(planet, opts = {}) {
 
 export function massProps(s) {
   let m = 0, mx = 0, my = 0, mz = 0;
-  const parts = (s.spec?.comps ?? COMPONENTS).filter((c) => !s.lost?.[c.id]).map((c) => {
+  const parts = (s.spec?.comps ?? COMPONENTS).filter((c) => !s.lost?.[c.id] && !s.dropped?.[c.id]).map((c) => {
     const mass = c.mass + (c.fuel ? s[c.fuel] : 0);
     const [px, py, pz = 0] = c.com || c.pos;
     m += mass; mx += mass * px; my += mass * py; mz += mass * pz;
@@ -800,6 +838,7 @@ export function step(s, input, dt) {
   // --- aerodynamic heating: hot parts glow, overheated parts blow off ---
   const flux = Math.sqrt(density(s)) * (v / 100) ** 3 * HEAT_K * (p.heatK ?? 1);
   s.heatFlux = flux;
+  s.peakFlux = Math.max(s.peakFlux, flux);
   const sa = Math.sin(s.a), sb = Math.sin(s.b); // tilt exposes one side more
   // orbit levels: engine first into the airflow works as a heat shield for the rest of the lander
   // (1 = engine leading, 0 = sideways or worse); sideways flight exposes everything more
@@ -816,12 +855,8 @@ export function step(s, input, dt) {
     facing = Math.max(0, -((s.vx - wind.x) * ux.x + s.vy * ux.y + (s.vz - wind.z) * ux.z) / vr);
   }
   for (const c of s.spec.comps) {
-    if (s.lost[c.id] || !c.heat) continue;
-    let exp = p.orbit
-      ? c.heat[0] * (c.id === 'engine' ? 1 : (1 - (c.id === 'legs' ? 0.5 : 0.85) * shield) * (1 + 1.5 * (1 - shield)))
-      : Math.max(0, c.heat[0] * (1 + Math.sign(c.pos[0]) * sa * 2.5 - Math.sign(c.pos[2]) * sb * 2.5));
-    if (c.model === 'solar') exp *= 1 - 0.88 * s.panelFold; // folded panels sit in the lee of the frame
-    if (facing > 0 && c.id !== 'shield') exp *= 1 - (c.id === 'legs' ? 0.45 : 0.75) * facing;
+    if (s.lost[c.id] || s.dropped[c.id] || !c.heat) continue;
+    const exp = exposure(s, c, shield, facing, sa, sb);
     // heat[2] = heat capacity: big, thin parts like the solar wings warm up over a few seconds
     s.temp[c.id] += ((flux * exp - HEAT_COOL * (s.temp[c.id] - T_AMB)) / (c.heat[2] ?? 1)) * dt;
     if (s.temp[c.id] > c.heat[1]) destroy(s, c.id);

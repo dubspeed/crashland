@@ -370,6 +370,7 @@ addEventListener('keydown', (e) => {
   if (digit) s.limit = digit[2] === '0' ? 1 : +digit[2] / 10;
   if (e.code === 'KeyP') doAct('chute');
   if (e.code === 'KeyE') doAct('panels');
+  if (e.code === 'KeyJ') doAct('shield');
   if (e.code === 'KeyC') toggleCom();
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
@@ -412,6 +413,7 @@ $('c-sas').addEventListener('click', cycleSas);
 $('c-chute').addEventListener('click', () => doAct('chute'));
 $('c-view').addEventListener('click', toggleView);
 $('c-panels').addEventListener('click', () => doAct('panels'));
+$('c-shield').addEventListener('click', () => doAct('shield'));
 $('c-com').addEventListener('click', toggleCom);
 $('c-com').classList.add('on');
 // ---------- debug overlay: F3, ?debug, or three taps on the title (phone) ----------
@@ -543,6 +545,7 @@ renderer.setAnimationLoop(() => {
         const pos = ship.blowOff(ev.id, s);
         if (pos) { debris.burst(pos); cam.shake = Math.max(cam.shake, 0.35); }
       }
+      if (ev.type === 'drop') { ship.drop(ev.id, s); cam.shake = Math.max(cam.shake, 0.12); } // pyro bolts: a short jolt
     }
     if (s.status !== 'flying') finish();
   } else if (mode === 'end' && endTimer > 0) {

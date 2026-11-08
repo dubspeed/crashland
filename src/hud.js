@@ -116,7 +116,7 @@ export function createHud() {
   }
   function hottest(s) {
     let best = { f: 0, name: '' };
-    for (const c of s.spec.comps) if (c.heat && !s.lost[c.id]) { const f = heatFrac(s, c.id); if (f > best.f) best = { f, name: c.name, solar: c.model === 'solar' }; }
+    for (const c of s.spec.comps) if (c.heat && !s.lost[c.id] && !s.dropped[c.id]) { const f = heatFrac(s, c.id); if (f > best.f) best = { f, name: c.name, solar: c.model === 'solar' }; }
     return best;
   }
 
@@ -124,6 +124,7 @@ export function createHud() {
   function facingText(s) {
     if (!s.spec.ids.has('shield')) return '';
     if (s.lost.shield) return 'verglüht';
+    if (s.dropped.shield) return 'abgeworfen';
     const u = S.upVector(s), v = Math.hypot(s.vx, s.vy, s.vz) || 1;
     const f = -(s.vx * u.x + s.vy * u.y + s.vz * u.z) / v;
     return f > 0.85 ? 'vorn' : f > 0.4 ? 'schräg' : 'seitlich';
@@ -360,6 +361,13 @@ export function createHud() {
     cb.disabled = noChute || s.chute === 'cut' || s.chute === 'torn' || s.chute === 'burned' || (s.chute === 'open' && !air);
     cb.classList.toggle('on', s.chute === 'open' && air);
     cb.classList.toggle('ready', s.chute === 'stowed' && air && s.status === 'flying' && S.chuteSafe(s) && s.t > 0.2);
+    // decoupler: heat shield off (only with a shield built in); glows when the hint says it is time
+    const sb = $('c-shield');
+    sb.hidden = !s.spec.ids.has('shield');
+    const dropHint = S.shieldDropHint(s);
+    setLabel(sb, s.lost.shield ? 'Schild verglüht' : s.dropped.shield ? 'Schild weg' : 'Schild ab', 'J');
+    sb.disabled = !S.hasPart(s, 'shield') || s.status !== 'flying';
+    sb.classList.toggle('ready', !!dropHint && s.settings?.hints !== false);
     // heat: hot or destroyed components override their row
     const rowParts = { capsule: ['capsule'], engine: ['engine'], tankL: ['tankL'], tankR: ['tankR'], battery: ['battery'], solar: ['solarL', 'solarR'], computer: ['computer'], chute: ['chute'], legs: ['legs'], shield: ['shield'] };
     rows.shield.li.hidden = !s.spec.ids.has('shield');
@@ -367,8 +375,9 @@ export function createHud() {
     for (const [row, ids0] of Object.entries(rowParts)) {
       const ids = ids0.filter((id) => s.spec.ids.has(id));
       if (!ids.length) { setRow(row, 'nicht verbaut', 0); rows[row].val.style.color = 'var(--mute)'; continue; }
+      if (ids.every((id) => s.dropped[id])) { setRow(row, 'abgeworfen', 0); rows[row].val.style.color = 'var(--mute)'; continue; }
       const lost = ids.filter((id) => s.lost[id]);
-      const hot = ids.filter((id) => !s.lost[id]).map((id) => ({ id, f: heatFrac(s, id) })).sort((a, b) => b.f - a.f)[0];
+      const hot = ids.filter((id) => !s.lost[id] && !s.dropped[id]).map((id) => ({ id, f: heatFrac(s, id) })).sort((a, b) => b.f - a.f)[0];
       if (lost.length) setRow(row, lost.length === ids.length ? 'verglüht' : `${lost.length}/${ids.length} verglüht`, 0, 'var(--bad)');
       else if (hot && hot.f > 0.3) {
         rows[row].val.textContent = `${fmt(s.temp[hot.id])} °C`;
@@ -443,6 +452,10 @@ export function createHud() {
     }
     else if (hints && s.chute === 'open' && p.rho > 0.5 && s.throttle === 0 && s.limit < (p.limit0 ?? 0.5) * 0.8 && alt > 150) { msg = `SCHUBGRENZE FÜR DIE LANDUNG HOCHSETZEN (${Math.round((p.limit0 ?? 0.5) * 100)} %)`; color = 'var(--cyan)'; pulse = false; }
     else if (hints && s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
+    else if (hints && S.shieldDropHint(s)) {
+      const why = { over: 'HITZE VORBEI', safe: 'KEINE HITZEGEFAHR', vacuum: 'KEINE LUFT' }[S.shieldDropHint(s)];
+      msg = `${why} – HITZESCHILD ABWERFEN (−${fmt(S.SHIELD.mass)} kg)`; color = 'var(--cyan)'; pulse = false;
+    }
     else if (s.battery < 20) { msg = 'BATTERIE SCHWACH'; color = 'var(--warn)'; pulse = false; }
     else if (hints && s.panels === 'in' && (S.hasPart(s, 'solarL') || S.hasPart(s, 'solarR')) && s.heatFlux < 4 && s.battery < 45 && s.t > 6) { msg = 'PANEELE AUSKLAPPEN – BATTERIE LÄDT NICHT'; color = 'var(--cyan)'; pulse = false; }
     else if (hints && s.chute === 'stowed' && p.rho > 0 && alt > 120 && alt < S.CHUTE_MAX_ALT(p) && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= burnAlt)) {

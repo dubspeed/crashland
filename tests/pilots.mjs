@@ -4,7 +4,8 @@
 //
 // makePilot(S, planet, options) returns (s, act) => input, called once per simulation step.
 // options: mode ('retro2' | 'hold', normal levels), offset (s relative to the brake cue, vacuum orbits),
-// dD (m relative to the deorbit point, thick-air orbits), chute (false = never), aimX/aimZ (target).
+// dD (m relative to the deorbit point, thick-air orbits), chute (false = never), aimX/aimZ (target),
+// dropShield ('hint' | time in s: jettison the heat shield).
 export function makePilot(S, P, opt = {}) {
   const mem = { init: false, phase: 'wait', burning: false };
   const chute = opt.chute !== false;
@@ -95,5 +96,11 @@ export function makePilot(S, P, opt = {}) {
     return { thrust, rcs, rcsZ };
   }
 
-  return P.orbit ? orbit : normal;
+  // heat shield decoupler: 'hint' = drop it when the HUD says so, a number = drop it at that time
+  const fly = P.orbit ? orbit : normal;
+  if (opt.dropShield === undefined) return fly;
+  return (s, act) => {
+    if (S.hasPart(s, 'shield') && (opt.dropShield === 'hint' ? S.shieldDropHint(s) : s.t >= opt.dropShield)) act('shield');
+    return fly(s, act);
+  };
 }

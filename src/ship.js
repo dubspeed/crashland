@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COMPONENTS, SHIELD, makeSpec, massProps, PIVOT_Y } from './sim.js';
+import { COMPONENTS, SHIELD, makeSpec, massProps, PIVOT_Y, density as S_density } from './sim.js';
 
 /** heat shield: a dark ablative cone ring around the nozzle (no Blender model needed) */
 function shieldModel() {
@@ -248,6 +248,14 @@ export function createShip(models) {
     // parts that blew off: tumble away, decelerated hard by the air (they fall behind = fly up on screen)
     for (const l of loose) {
       l.t += dt;
+      if (l.g !== undefined) {
+        // dropped part: gravity like the lander, plus extra braking in air
+        l.v.y -= l.g * dt; l.v.multiplyScalar(1 - Math.min(0.5, l.air * dt));
+        l.obj.position.addScaledVector(l.v, dt);
+        l.obj.rotation.x += l.w.x * dt; l.obj.rotation.z += l.w.z * dt;
+        if (l.t > l.life) l.obj.visible = false;
+        continue;
+      }
       l.v.y += (-12 - l.v.y) * Math.min(1, dt * 1.2);
       l.v.x *= 1 - dt * 0.5;
       l.obj.position.addScaledVector(l.v, dt);
@@ -266,10 +274,21 @@ export function createShip(models) {
     return part.getWorldPosition(new THREE.Vector3());
   }
 
+  /** decoupler: the part separates cleanly, pushed off along the lander's axis; it falls away with the
+   *  lander's own speed (in air it is braked harder than the lander and drops behind) */
+  function drop(id, s) {
+    const part = parts[id];
+    if (part.parent !== group) return;
+    group.parent.attach(part);
+    const u = new THREE.Vector3(0, 1, 0).applyQuaternion(group.quaternion);
+    loose.push({ obj: part, t: 0, v: new THREE.Vector3(s.vx, s.vy, s.vz).addScaledVector(u, -4), w: new THREE.Vector3((Math.random() - 0.5) * 0.8, 0, (Math.random() - 0.5) * 0.8),
+      g: s.planet.g, air: Math.min(1.5, Math.sqrt(S_density(s)) * 0.6), life: 14 });
+  }
+
   function setCanopyAlpha(a) {
     canopyAlpha = a;
     for (const m of canopyMats) m.depthWrite = a > 0.9;
   }
 
-  return { group, parts, flame, helpers, reset, update, damageLegs, chuteRig, blowOff, setCanopyAlpha };
+  return { group, parts, flame, helpers, reset, update, damageLegs, chuteRig, blowOff, drop, setCanopyAlpha };
 }

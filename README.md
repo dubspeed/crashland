@@ -129,6 +129,8 @@ Attitude control needs the flight computer and power; without them it is always 
 | Energie | Solarpaneele · Große Batterie (no panels, 2.2× capacity) · Beides (+250 kg) |
 | Fallschirm | Keiner (−120 kg) · Standard 110 m² / 70 kN · Groß 170 m² / 95 kN (+80 kg) |
 | Hitzeschild | Keiner · Hitzeschild (+240 kg): an ablative ring around the nozzle that shields everything above it while the engine end leads into the airflow (on a normal Terra entry the engine stays at ~150 °C instead of ~500 °C) |
+
+**Decoupler.** A built-in heat shield can be dropped in flight: button "Schild ab" or **J** (`S.act(s, 'shield')` → `jettison`, recorded in replays). The part leaves with its 240 kg (`s.dropped`, no damage, unlike `s.lost`), pushed off along the axis and falling away in 3D (`ship.drop`). `shieldDropHint(s)` says when it is safe: no air, or no part would pass 70 % of its heat limit without the shield even if the lander kept falling (its current speed, at most the terminal speed of the air around it or free fall to the ground) down into the densest air in its current attitude. The HUD then shows "HITZE VORBEI – HITZESCHILD ABWERFEN (−240 kg)" (hints on) and the button glows. Following the hint, every level lands with more fuel and no damage; dropped at the start of Brontes Orbit, the engine peaks at ~1500 °C (limit 1800) instead of ~400 °C.
 | Landebeine | Leicht (−120 kg, less tolerance) · Standard · Breit (+120 kg, more drift and tilt allowed, rougher ground) |
 
 The builder is a fullscreen 3D editor (`src/builder.js`):
