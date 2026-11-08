@@ -178,3 +178,14 @@ npm run assets     # rebuild the models with Blender → src/assets/*.glb
 ```
 
 (Blender's glTF exporter needs numpy; on Debian/Ubuntu: `apt install blender python3-numpy`.)
+
+## Base building (prototype)
+
+Third start mode "Basis" (approach levels only for now). Every planet has one base, saved in `localStorage` (`crashland.base.<planet>`, reset in the menu). Missions come in a fixed order (`MISSIONS`): Funkbake → Solarfarm → Treibstoffdepot → Forschungsstation → Rover → Raffinerie → Rückkehrrakete → Crew-Habitat.
+
+- **Cargo instead of crew** (`CARGO` in `sim.js`): the payload replaces the capsule (no crew, an uncrewed core flies), sits on the frame and raises the centre of mass with its height (the return rocket is 5.5 m tall); the chute pack sits on top of it. Each cargo has a g limit (longer than 0.3 s above it: damaged) and a touchdown limit (`s.cargoDamaged`, `s.cargo` = intact / damaged / lost). The flight computer plans with the cargo's limit (`gLimitOf`). The last mission flies the crew in the Habitat capsule.
+- **The base grows:** a cargo landed within 60 m of its target becomes a module where it landed. The next target (`baseSlot(k)`: beacon in the centre, then a ring at 16 m and one at 30 m) lies next to the modules; the flight's origin is always the current target, the modules stand around it (`showBase`, models in `src/cargo.js`) and are obstacles: touching down closer than their radius plus the feet is a crash ("auf Funkbake gelandet"). The radar shows them as grey squares.
+- **Bonuses** (`baseBonus`, intact modules only): depot +15 % fuel, refinery +25 % fuel, solar farm +50 % solar power, research station +20 % and rover +10 % points.
+- **Score:** a delivered cargo adds 500 points (damaged 150); a lost cargo scores nothing. Base flights don't touch the best scores of the free levels.
+- **HUD:** the mission line above the altitude, a cargo card (g-load against the limit, intact / damaged) instead of the crew faces, "FRACHT BESCHÄDIGT" and "G-LAST: FRACHT IN GEFAHR" alerts.
+- Replays carry cargo (`build.payload`) and base (`settings.base`: bonuses and obstacles), so they stay exact.

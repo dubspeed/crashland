@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { COMPONENTS, SHIELD, makeSpec, massProps, PIVOT_Y, density as S_density } from './sim.js';
+import { cargoModel } from './cargo.js';
+// placeholder for the cargo on base flights (its model depends on the cargo type)
+const PAYLOAD = { id: 'payload', name: 'Fracht', model: 'payload:beacon', pos: [0, 4.75, 0] };
 
 /** heat shield: a dark ablative cone ring around the nozzle (no Blender model needed) */
 function shieldModel(exitR = 0.78, color = 0x3a2b22) {
@@ -31,7 +34,7 @@ export function createShip(models) {
     const key = `${id}:${name}`;
     if (variants[key]) return variants[key];
     const [, sr, sc] = name.split(':');
-    const o = name.startsWith('shield') ? shieldModel(+sr || 0.78, sc ? +sc : undefined) : models[name].clone(true);
+    const o = name.startsWith('shield') ? shieldModel(+sr || 0.78, sc ? +sc : undefined) : name.startsWith('payload') ? cargoModel(sr) : models[name].clone(true);
     o.traverse((m) => {
       if (!m.isMesh) return;
       m.material = m.material.clone();
@@ -39,7 +42,7 @@ export function createShip(models) {
     });
     return (variants[key] = o);
   }
-  for (const c of [...COMPONENTS, SHIELD]) {
+  for (const c of [...COMPONENTS, SHIELD, PAYLOAD]) {
     const o = new THREE.Group();
     o.add(modelFor(c.id, c.model));
     o.position.set(...c.pos);
@@ -114,13 +117,13 @@ export function createShip(models) {
    *  options change the size of engine, tanks, battery, legs and canopy */
   function reset(spec = makeSpec()) {
     const b = spec.build, nodes = spec.nodes;
-    for (const c0 of [...COMPONENTS, SHIELD]) {
+    for (const c0 of [...COMPONENTS, SHIELD, PAYLOAD]) {
       const o = parts[c0.id];
       const c = spec.comps.find((k) => k.id === c0.id);
       if (!c) { o.parent?.remove(o); continue; }
       if (o.parent !== group) group.add(o);
       // the variant's model, placed on its attachment point
-      const m = modelFor(c.id, c.id === 'shield' ? `shield:${nodes.shieldR}${nodes.shieldColor ? `:${nodes.shieldColor}` : ''}` : c.model);
+      const m = modelFor(c.id, c.id === 'payload' ? `payload:${spec.payload.id}` : c.id === 'shield' ? `shield:${nodes.shieldR}${nodes.shieldColor ? `:${nodes.shieldColor}` : ''}` : c.model);
       if (o.children[0] !== m) { o.clear(); o.add(m); }
       o.userData.component = c;
       o.position.set(...c.pos);

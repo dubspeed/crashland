@@ -8,6 +8,7 @@ import { createHud, setLabel } from './hud.js';
 import { createOrbitMap } from './orbitmap.js';
 import { createReentry } from './reentry.js';
 import { createBuilder } from './builder.js';
+import { cargoModel } from './cargo.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -182,14 +183,34 @@ function best(id) { try { return JSON.parse(localStorage.getItem(`crashland.best
 function saveBest(id, v) { try { localStorage.setItem(`crashland.best.${id}`, JSON.stringify(v)); } catch { /* storage unavailable */ } }
 
 // start: from the approach (normal levels) or from orbit; remembered
-let fromOrbit = false;
-try { fromOrbit = localStorage.getItem('crashland.orbit') === '1'; } catch { /* default */ }
+let startMode = '0'; // '0' approach, '1' from orbit, 'base' base building
+try { startMode = localStorage.getItem('crashland.orbit') ?? '0'; } catch { /* default */ }
 $('start-select').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
-  fromOrbit = b.dataset.orbit === '1';
-  try { localStorage.setItem('crashland.orbit', fromOrbit ? '1' : '0'); } catch { /* storage unavailable */ }
+  startMode = b.dataset.orbit;
+  try { localStorage.setItem('crashland.orbit', startMode); } catch { /* storage unavailable */ }
   buildMenu();
 });
+
+// ---------- base building (prototype): one base per planet, missions in a fixed order ----------
+const baseKey = (id) => `crashland.base.${id}`;
+function loadBase(id) { try { return JSON.parse(localStorage.getItem(baseKey(id))) ?? { modules: [], step: 0 }; } catch { return { modules: [], step: 0 }; } }
+function saveBase(id, b) { try { localStorage.setItem(baseKey(id), JSON.stringify(b)); } catch { /* storage unavailable */ } }
+let mission = null; // the base mission being flown: { planetId, step, type, target: [x, z] }
+const baseGroup = new THREE.Group(); scene.add(baseGroup);
+/** the modules of a base around the current target (the target is the origin of the flight) */
+function showBase(base, target) {
+  baseGroup.clear();
+  if (!base) return;
+  for (const m of base.modules) {
+    const o = cargoModel(m.type, true);
+    const x = m.x - target[0], z = m.z - target[1];
+    o.position.set(x, S.terrainHeight(x, z) + o.userData.h / 2, z);
+    o.rotation.y = m.rot ?? 0;
+    if (m.damaged) o.traverse((k) => { if (k.isMesh) { k.material = k.material.clone(); k.material.color.multiplyScalar(0.55); } });
+    baseGroup.add(o);
+  }
+}
 // difficulty: one summary button, the options fold out below it
 $('diff-btn').addEventListener('click', () => { const d = $('diff'); d.hidden = !d.hidden; $('diff-btn').setAttribute('aria-expanded', String(!d.hidden)); });
 
@@ -200,17 +221,35 @@ function buildMenu() {
   buildSettings();
   updateBuildBtn();
   for (const b of $('start-select').querySelectorAll('button')) {
-    const on = (b.dataset.orbit === '1') === fromOrbit;
+    const on = b.dataset.orbit === startMode;
     b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
   }
   const bonus = (windLevel ? S.WIND_LEVELS[windLevel].bonus : 1) * settingsBonus(settings);
   const diff = [windLevel ? `Wind ${S.WIND_LEVELS[windLevel].name.toLowerCase()}` : '', settings.fuel !== 1 ? `Treibstoff ${S.FUEL_LEVELS[settings.fuel].name.toLowerCase()}` : '',
     settings.hints ? '' : 'ohne Hinweise', settings.autoFine ? 'Computer an' : ''].filter(Boolean);
   $('diff-btn').innerHTML = `Schwierigkeit${Math.abs(bonus - 1) > 0.001 ? ` <em>×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}</em>` : ''}<small>${diff.length ? diff.join(' · ') : 'Standard'}</small>`;
-  for (const p of fromOrbit ? S.ORBIT_PLANETS : S.PLANETS) {
+  $('base-info').hidden = startMode !== 'base';
+  if (startMode === 'base') $('base-info').innerHTML = 'Jede Landung bringt ein Modul zur Basis. Das nächste Ziel liegt neben den Modulen, wer daraufsetzt, crasht. Intakte Module helfen den nächsten Flügen. <button id="base-reset" class="link">Basen zurücksetzen</button>';
+  $('base-reset')?.addEventListener('click', () => { if (confirm('Alle Basen zurücksetzen?')) { for (const p of S.PLANETS) saveBase(p.id, { modules: [], step: 0 }); buildMenu(); } });
+  for (const p of startMode === '1' ? S.ORBIT_PLANETS : S.PLANETS) {
     const b = document.createElement('button');
     b.className = 'planet';
     const rec = best(bestKey(p.id));
+    if (startMode === 'base') {
+      // base card: progress, next mission, what the base gives
+      const base = loadBase(p.id), next = S.MISSIONS[base.step];
+      const bon = S.baseBonus(base.modules), chips = [bon.fuel > 1 ? `Treibstoff +${Math.round((bon.fuel - 1) * 100)} %` : '', bon.solar > 1 ? `Solar +${Math.round((bon.solar - 1) * 100)} %` : '', bon.score > 1 ? `Punkte +${Math.round((bon.score - 1) * 100)} %` : ''].filter(Boolean);
+      const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
+      b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
+        <span class="pname"><b>${p.name}</b><span class="g">${base.modules.length}/${S.MISSIONS.length}</span></span>
+        <span class="dots">${S.MISSIONS.map((m, i) => `<i class="${i < base.step ? (base.modules.find((x) => x.type === m)?.damaged ? 'dmg' : 'done') : i === base.step ? 'next' : ''}"></i>`).join('')}</span>
+        <p>${next ? `Mission ${base.step + 1}: <b class="mname">${S.CARGO[next].name}</b>${S.CARGO[next].crew ? '' : `<br><small>max ${S.CARGO[next].g} g · ${S.CARGO[next].touch} m/s · ${S.CARGO[next].mass} kg</small>`}` : 'Basis fertig!'}</p>
+        <span class="best">${chips.join(' · ')}</span>`;
+      if (next) b.addEventListener('click', () => start(p, { step: base.step }));
+      else b.disabled = true;
+      wrap.append(b);
+      continue;
+    }
     const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
     b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
       <span class="pname"><b>${p.name.replace(' Orbit', '')}</b><span class="g">${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span></span>
@@ -243,6 +282,7 @@ function showMenu() {
   $('menu').hidden = false; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = true;
   buildMenu();
   debris.clear();
+  showBase(null); mission = null;
   parkShip();
 }
 /** ship parked on the pad as a backdrop (menu and builder) */
@@ -277,7 +317,12 @@ function flightRecord() {
   return { ...rec, steps: s.stepN ?? 0, result: { status: s.status, t: +s.t.toFixed(3), x: +s.x.toFixed(3), z: +s.z.toFixed(3), vy: +s.vy.toFixed(3), fuel: +S.fuel(s).toFixed(3) } };
 }
 
-function start(p) {
+function start(p, ms) {
+  // base mission: from the menu (ms) or "next mission" from the result (mission set, same planet)
+  if (ms || (mission && mission.planetId === p.id && startMode === 'base')) {
+    const base = loadBase(p.id);
+    mission = base.step < S.MISSIONS.length ? { planetId: p.id, step: base.step, type: S.MISSIONS[base.step], target: S.baseSlot(base.step) } : null;
+  } else mission = null;
   if (p !== planet || !world.ready) {
     planet = p;
     const sr = S.surfaceR(p); // every planet is drawn as a sphere now; only orbit levels fly on a curved planet
@@ -289,9 +334,18 @@ function start(p) {
   // a round is fully determined by its seed and the recorded inputs (replays, see tests/replay.mjs)
   const seed = (forceSeed ?? Math.floor(Math.random() * 2 ** 31)) >>> 0;
   forceSeed = null;
-  s = S.newRound(planet, windLevel, seed, settings, build);
+  let flightBuild = build, flightSettings = settings;
+  if (mission) {
+    // cargo flight: the payload replaces the capsule; the crew mission flies the habitat capsule
+    const base = loadBase(p.id), bon = S.baseBonus(base.modules), c = S.CARGO[mission.type];
+    flightBuild = c.crew ? { ...build, capsule: 'hab' } : { ...build, payload: mission.type };
+    const obstacles = base.modules.map((m) => ({ x: +(m.x - mission.target[0]).toFixed(2), z: +(m.z - mission.target[1]).toFixed(2), r: S.CARGO[m.type].r, name: S.CARGO[m.type].name }));
+    flightSettings = { ...settings, base: { fuel: bon.fuel, solar: bon.solar, score: bon.score, obstacles } };
+    showBase(base, mission.target);
+  } else showBase(null);
+  s = S.newRound(planet, windLevel, seed, flightSettings, flightBuild);
   ship.reset(s.spec);
-  rec = { v: 1, planet: planet.id, wind: windLevel, seed, settings: { ...settings }, build: { ...build }, ev: [] };
+  rec = { v: 1, planet: planet.id, wind: windLevel, seed, settings: { ...flightSettings }, build: { ...flightBuild }, ev: [] };
   lastRec = { thrust: false, rcs: 0, rcsZ: 0, limit: s.limit };
   hud.reset();
   cam.tgtD = 0; cam.intro = 0; cam.tgt = null; cam.pitch = 0;
@@ -302,6 +356,7 @@ function start(p) {
 }
 
 const PAD_RADIUS = 12;
+const BASE_REACH = 60; // m from the target: closer, the base can use the cargo
 function precision(st) {
   const d = Math.hypot(st.x, st.z);
   const [label, tone] = d <= 3 ? ['Volltreffer', 'ok'] : d <= PAD_RADIUS ? ['auf dem Pad', 'ok'] : d <= 40 ? ['knapp daneben', 'warn']
@@ -312,7 +367,8 @@ function precision(st) {
 function precisionBonus(st) { const { d } = precision(st); return d <= 3 ? 300 : d <= PAD_RADIUS ? 150 : 120 * Math.exp(-(d - PAD_RADIUS) / 160); }
 
 function rate(st) {
-  const mult = (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings);
+  const mult = (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings) * (st.settings?.base?.score ?? 1);
+  if (st.status !== 'landed' && st.spec.payload) return { stars: 0, score: 0, parts: [], mult: 1 }; // cargo lost
   if (st.status !== 'landed') {
     // crashed, but the crew got out: no stars, but the crew, the aim and the planet still count
     if (!st.touch?.crash?.crew) return { stars: 0, score: 0, parts: [], mult: 1 };
@@ -333,6 +389,7 @@ function rate(st) {
     ['Crew', st.crew.filter((c) => !c.fainted).length * 70],
     ['Planet', st.planet.g * 20],
     ['Schäden', -lost * 120],
+    ['Fracht', st.spec.payload ? (st.cargo === 'intact' ? 500 : 150) : 0],
   ];
   const base = parts.reduce((a, p) => a + p[1], 0);
   const score = Math.max(0, Math.round(base * mult));
@@ -342,6 +399,16 @@ function rate(st) {
 function finish() {
   mode = 'end';
   const ok = s.status === 'landed';
+  // base: a landed cargo close enough to the target becomes a module (damaged ones give no bonus)
+  if (mission) {
+    mission.result = !ok ? 'lost' : Math.hypot(s.x, s.z) > BASE_REACH ? 'far' : s.cargo === 'damaged' ? 'damaged' : 'intact';
+    if (mission.result === 'intact' || mission.result === 'damaged') {
+      const base = loadBase(mission.planetId);
+      base.modules.push({ type: mission.type, x: +(s.x + mission.target[0]).toFixed(2), z: +(s.z + mission.target[1]).toFixed(2), rot: +(((rec?.seed ?? 0) % 628) / 100).toFixed(2), damaged: mission.result === 'damaged' });
+      base.step = mission.step + 1;
+      saveBase(mission.planetId, base);
+    }
+  }
   if (!ok) { debris.explode(ship, s); cam.shake = s.touch.crash.kind === 'wreck' ? 0.4 : 0.5 + s.touch.energy; }
   else if (s.touch.grade >= 1) { debris.puff(ship, s, s.touch.grade); cam.shake = 0.15 * s.touch.grade; }
   if (ok && s.touch.grade === 2) ship.damageLegs();
@@ -356,12 +423,15 @@ function showResult() {
   const bonus = (s.wind.speed && planet.rho > 0 ? s.wind.bonus : 1) * settingsBonus(s.settings);
   $('r-kicker').textContent = `${planet.name}${s.wind.speed && planet.rho > 0 ? ` · Wind ${s.wind.name}` : ''}${Math.abs(bonus - 1) > 0.001 ? ` · Bonus ×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}` : ''}`;
   const g = s.touch.grade, crash = s.touch.crash;
-  $('r-title').textContent = ok ? ['Butterweich gelandet', 'Gelandet', 'Harte Landung'][g]
-    : !crash.crew ? 'Totalverlust' : crash.kind === 'wreck' ? 'Bruchlandung' : 'Explosion';
+  $('r-title').textContent = mission && !S.CARGO[mission.type].crew
+    ? { intact: 'Fracht abgesetzt', damaged: 'Fracht beschädigt', far: 'Zu weit weg', lost: 'Fracht verloren' }[mission.result]
+    : ok ? ['Butterweich gelandet', 'Gelandet', 'Harte Landung'][g]
+      : !crash.crew ? 'Totalverlust' : crash.kind === 'wreck' ? 'Bruchlandung' : 'Explosion';
   $('r-title').style.color = ok ? S.GRADES[g].color : crash.kind === 'wreck' && crash.crew ? 'var(--amber)' : 'var(--bad)';
   // stars and points, with the best so far
-  const prev = best(bestKey(planet.id));
-  const record = score > 0 && (!prev || score > prev.score);
+  // (base flights carry cargo: their scores don't mix with the free levels)
+  const prev = mission ? null : best(bestKey(planet.id));
+  const record = !mission && score > 0 && (!prev || score > prev.score);
   $('r-score').innerHTML = `<span class="r-stars">${'<i class="on">★</i>'.repeat(stars)}${'<i>★</i>'.repeat(3 - stars)}</span>`
     + `<span class="r-pts"><b id="r-pts">0</b>Punkte</span>`
     + (record ? (prev ? '<em class="r-best new">Neuer Bestwert</em>' : '') : prev ? `<em class="r-best">Bestwert ${prev.score.toLocaleString('de-DE')}</em>` : '')
@@ -386,10 +456,18 @@ function showResult() {
     tile('Neigung', `${Math.round(s.touch.tilt)}<u>°</u>`, gName(gr.tilt), tone(gr.tilt)) +
     tile('Ziel', `${pr.d < 10 ? f1(pr.d) : Math.round(pr.d).toLocaleString('de-DE')}<u>m</u>`, pr.label, pr.tone) +
     tile('Treibstoff', `${fuelPct}<u>%</u>`, `${Math.round(S.fuel(s))} kg übrig`, fuelPct < 10 ? 'bad' : fuelPct < 25 ? 'warn' : '') +
-    tile('Max. G', `${f1(s.maxG)}<u>g</u>`, s.maxG > S.G_LIMIT ? 'zu hoch' : 'Crew ok', s.maxG > S.G_LIMIT ? 'bad' : '');
-  // notes only for what went wrong (or the crash's outcome)
+    tile('Max. G', `${f1(s.maxG)}<u>g</u>`, s.spec.payload ? `Fracht max ${s.spec.payload.g} g` : s.maxG > S.G_LIMIT ? 'zu hoch' : 'Crew ok', s.maxG > S.gLimitOf(s) ? 'bad' : '');
+  // notes only for what went wrong (or the crash's outcome); base missions: what happened to the cargo
   const notes = [];
-  if (!ok) notes.push(crash.crew ? ['Crew gerettet', 'ok'] : ['Crew verloren', 'bad']);
+  if (mission) {
+    const base = loadBase(mission.planetId), c = S.CARGO[mission.type];
+    if (mission.result === 'intact') notes.push([`${c.name} aufgebaut · ${c.bonus} · Basis ${base.modules.length}/${S.MISSIONS.length}`, 'ok']);
+    if (mission.result === 'damaged') notes.push([`${c.name} beschädigt (${s.cargoDamaged}) · kein Bonus · Basis ${base.modules.length}/${S.MISSIONS.length}`, 'warn']);
+    if (mission.result === 'far') notes.push([`mehr als ${BASE_REACH} m vom Ziel: die Basis kann ${c.name} nicht nutzen`, 'warn']);
+    if (mission.result === 'lost' && !c.crew) notes.push([`${c.name} verloren`, 'bad']);
+  }
+  $('r-again').innerHTML = mission && (mission.result === 'intact' || mission.result === 'damaged') && loadBase(mission.planetId).step < S.MISSIONS.length ? 'Nächste Mission <kbd>R</kbd>' : 'Nochmal <kbd>R</kbd>';
+  if (!ok && s.crew.length) notes.push(crash.crew ? ['Crew gerettet', 'ok'] : ['Crew verloren', 'bad']);
   if (!ok && crash.kind === 'explosion') notes.push([`${Math.round(crash.fuelBurned)} kg Treibstoff explodiert`, 'bad']);
   for (const c of s.crew) if (c.fainted) notes.push([`${c.name} ${c.fainted}× ohnmächtig`, 'warn']);
   for (const c of s.spec.comps) if (s.lost[c.id]) notes.push([`${c.name} verglüht`, 'bad']);

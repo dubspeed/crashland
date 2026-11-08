@@ -122,3 +122,29 @@ test('attachment points: the standard build sits exactly where the original part
   const tiltAlt = (b) => { const s = S.createState(S.PLANETS[0], { build: b, rnd: () => 0.5, windHeading: 0 }); s.x = 0; s.z = 0; s.y = 10; s.a = 0.2; s.b = 0; return S.altitude(s); };
   assert.ok(tiltAlt({ legs: 'wide' }) < tiltAlt({}));
 });
+
+test('base building: cargo replaces the capsule, is damaged by g-load or a hard touchdown, modules are obstacles', () => {
+  const P = S.PLANETS[0];
+  const s = S.newRound(P, 0, 2, {}, { payload: 'lab' });
+  assert.equal(s.crew.length, 0);
+  assert.ok(!s.spec.ids.has('capsule') && s.spec.ids.has('payload'));
+  assert.equal(S.gLimitOf(s), S.CARGO.lab.g);
+  // a cargo flight lands with the HUD pilot and the cargo intact
+  const { s: f } = recordPilot(P, 0, 5, makePilot(S, P, {}), 600, {}, { payload: 'depot' });
+  assert.equal(f.status, 'landed'); assert.equal(f.cargo, 'intact');
+  // landing right on a module is a crash
+  const near = recordPilot(P, 0, 5, makePilot(S, P, {}), 600, { base: { obstacles: [{ x: 0, z: 0, r: 8, name: 'Funkbake' }] } }, { payload: 'solar' }).s;
+  assert.equal(near.status, 'crashed'); assert.match(near.reason, /Funkbake/); assert.equal(near.cargo, 'lost');
+  // too much g for the fragile lab
+  const lab = S.newRound(P, 0, 2, {}, { payload: 'lab' });
+  for (let i = 0; i < 120; i++) { lab.gNow = 5; S.advance(lab, { thrust: true }); }
+  assert.ok(lab.cargoDamaged);
+  // bonuses of intact modules, slots apart from each other
+  const bon = S.baseBonus([{ type: 'depot' }, { type: 'refinery' }, { type: 'lab', damaged: true }]);
+  assert.ok(Math.abs(bon.fuel - 1.15 * 1.25) < 1e-9 && bon.score === 1);
+  const slots = S.MISSIONS.map((_, k) => S.baseSlot(k));
+  for (let i = 0; i < slots.length; i++) for (let j = i + 1; j < slots.length; j++) assert.ok(Math.hypot(slots[i][0] - slots[j][0], slots[i][1] - slots[j][1]) > 10);
+  // replays carry the cargo and the base
+  const { record } = recordPilot(P, 0, 6, makePilot(S, P, {}), 600, { base: { fuel: 1.15, obstacles: [{ x: 16, z: 3, r: 1.4, name: 'Treibstoffdepot' }] } }, { payload: 'rover' });
+  assert.deepEqual(summary(replay(JSON.parse(JSON.stringify(record)))), record.result);
+});

@@ -524,8 +524,8 @@ body.building #top { display: none; }
 .r-parts em.neg { color: var(--bad); } .r-parts em.mult { color: var(--cyan); }
 
 /* start menu: start mode, four planets, difficulty and lander as two tool buttons (difficulty folds out) */
-.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin: 0 0 12px; border: 1px solid var(--glass-edge); border-radius: 12px; overflow: hidden; background: var(--glass); }
-.seg button { display: grid; gap: 1px; padding: 9px 12px; border: 0; background: none; text-align: center; font: 700 14px var(--display); letter-spacing: 0.04em; color: var(--mute); }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 0 0 12px; border: 1px solid var(--glass-edge); border-radius: 12px; overflow: hidden; background: var(--glass); }
+.seg button { display: grid; gap: 1px; padding: 9px 8px; border: 0; background: none; text-align: center; font: 700 14px var(--display); letter-spacing: 0.04em; color: var(--mute); }
 .seg button small { font: 400 10px var(--mono); letter-spacing: 0; color: var(--mute); }
 .seg button.on { color: #1a1206; background: var(--amber); }
 .seg button.on small { color: rgba(26,18,6,0.7); }
@@ -609,3 +609,26 @@ body.building #top { display: none; }
 .bs { padding: 6px 1px 4px; }
 .bs svg { width: 24px; height: 24px; }
 @media (max-width: 560px) { .bs span { font-size: 8px; letter-spacing: 0; } .bs svg { width: 21px; height: 21px; } .bd-opts { grid-auto-columns: minmax(118px, 1fr); } }
+
+/* base building (prototype) */
+.base-info { margin: 10px 0 0; font-size: 11.5px; color: var(--mute); }
+.base-info .link { background: none; border: 0; padding: 0; color: var(--mute); text-decoration: underline; font-size: 11px; }
+.planet .dots { display: flex; gap: 3px; }
+.planet .dots i { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.12); }
+.planet .dots i.done { background: var(--ok); } .planet .dots i.dmg { background: var(--warn); } .planet .dots i.next { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.planet .mname { font: 700 13px var(--display); color: var(--ink); letter-spacing: 0.02em; }
+.planet:disabled { opacity: 0.6; }
+.mission { position: absolute; left: 50%; transform: translateX(-50%); top: calc(74px + env(safe-area-inset-top, 0px)); font: 600 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan); text-shadow: 0 1px 3px #000; white-space: nowrap; pointer-events: none; }
+@media (max-width: 520px) { .mission { top: calc(150px + env(safe-area-inset-top, 0px)); } }
+@media (max-height: 520px) { .mission { top: calc(72px + env(safe-area-inset-top, 0px)); } }
+.cargo { display: grid; gap: 4px; margin-top: 6px; min-width: 150px; }
+.cg-top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.cg-top b { font: 700 13px var(--display); }
+.cg-top .ok { color: var(--ok); } .cg-top .bad { color: var(--bad); }
+.cg-bar { position: relative; height: 7px; border-radius: 4px; background: rgba(255,255,255,0.08); }
+.cg-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.cg-bar b { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); }
+.cargo small { font-size: 10px; }
+@media (max-width: 520px), (max-height: 520px) {
+  #crew.cargo-mode { background: rgba(9,13,22,0.55) !important; border: 1px solid var(--glass-edge) !important; border-radius: 10px !important; padding: 6px 9px !important; }
+}

@@ -228,6 +228,7 @@ export function createCrew(container, sayEl) {
     said.add(key);
     // a line for someone not on board (two-seater): the pilot says it
     const c = crewNow.find((k) => k.id === who) ?? crewNow[0];
+    if (!c) return; // cargo flight: nobody on board
     sayEl.innerHTML = `<b>${c.name}:</b> ${text}`;
     sayEl.classList.remove('fresh'); void sayEl.offsetWidth; sayEl.classList.add('fresh');
     sayUntil = t + 3;

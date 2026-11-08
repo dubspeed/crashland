@@ -158,8 +158,10 @@ export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) 
   const rnd = seededRandom(seed);
   setupTerrain(planet);
   const set = { ...DEFAULT_SETTINGS, ...settings };
-  const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: FUEL_LEVELS[set.fuel]?.k ?? 1, build });
+  const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: (FUEL_LEVELS[set.fuel]?.k ?? 1) * (set.base?.fuel ?? 1), build });
   s.settings = set;
+  // base flights: the modules already there (obstacles) and what they give
+  if (set.base) { s.obstacles = set.base.obstacles ?? []; s.spec.solarK *= set.base.solar ?? 1; }
   return s;
 }
 export const STEP = 1 / 120;
@@ -288,6 +290,40 @@ export const DEFAULT_BUILD = { capsule: 'std', engine: 'std', tanks: 'std', sola
 export const SHIELD = { id: 'shield', name: 'Hitzeschild', model: 'shield', mass: 240, pos: [0, 0.95, 0], heat: [1.2, 3000, 6] };
 // the fourth seat of the habitat capsule
 export const CREW_EXTRA = { id: 'juno', name: 'Juno', role: 'Ärztin', limit: 3.0 };
+
+// ---------- base building: cargo instead of crew ----------
+// A cargo flight has no capsule: an uncrewed core flies the lander and the payload sits on the frame where the
+// capsule was (bottom at 3.65 m). h / r: size (the centre of mass goes up with h, r is its footprint at the
+// base), g: the most it takes (longer than 0.3 s and it is damaged), touch: the sink rate it survives.
+export const CARGO = {
+  beacon: { name: 'Funkbake', mass: 150, h: 2.2, r: 0.9, g: 12, touch: 12, bonus: 'Basis gegründet' },
+  solar: { name: 'Solarfarm', mass: 600, h: 1.0, r: 2.2, g: 6, touch: 8, bonus: '+50 % Solarleistung', solar: 1.5 },
+  depot: { name: 'Treibstoffdepot', mass: 1400, h: 1.9, r: 1.4, g: 8, touch: 9, bonus: '+15 % Treibstoff', fuel: 1.15 },
+  lab: { name: 'Forschungsstation', mass: 900, h: 1.6, r: 1.6, g: 3, touch: 3, bonus: '+20 % Punkte', score: 1.2 },
+  rover: { name: 'Rover', mass: 700, h: 1.5, r: 1.5, g: 5, touch: 5, bonus: '+10 % Punkte', score: 1.1 },
+  refinery: { name: 'Raffinerie', mass: 1800, h: 2.6, r: 1.6, g: 6, touch: 6, bonus: '+25 % Treibstoff', fuel: 1.25 },
+  rocket: { name: 'Rückkehrrakete', mass: 1600, h: 5.5, r: 0.8, g: 5, touch: 5, bonus: 'Crew-Mission frei' },
+  crew: { name: 'Crew-Habitat', crew: true, r: 2.6, bonus: 'Basis bemannt' },
+};
+export const MISSIONS = ['beacon', 'solar', 'depot', 'lab', 'rover', 'refinery', 'rocket', 'crew'];
+/** where mission k puts its module, in base coordinates (the beacon is the centre; the rest on rings) */
+export function baseSlot(k) {
+  if (k === 0) return [0, 0];
+  const ring = k <= 6 ? 16 : 30, a = ((k - 1) % 6) * (Math.PI / 3) + (k <= 6 ? 0.5 : 0.9);
+  return [Math.round(Math.cos(a) * ring * 10) / 10, Math.round(Math.sin(a) * ring * 10) / 10];
+}
+/** what the intact modules of a base give the following flights there */
+export function baseBonus(modules = []) {
+  const b = { fuel: 1, solar: 1, score: 1 };
+  for (const m of modules) {
+    if (m.damaged) continue;
+    const c = CARGO[m.type];
+    if (c?.fuel) b.fuel *= c.fuel;
+    if (c?.solar) b.solar *= c.solar;
+    if (c?.score) b.score *= c.score;
+  }
+  return b;
+}
 /** builds saved before solar and battery were separate slots ("power") */
 export function normalizeBuild(build = {}) {
   const b = { ...build };
@@ -338,10 +374,11 @@ export function layout(build = {}) {
   const V = (slot) => PART_VARIANTS[slot][b[slot]];
   const cap = V('capsule'), eng = V('engine'), tank = V('tanks'), sol = V('solar') ?? PART_VARIANTS.solar.std, bat = V('battery'), ch = V('chute'), lg = V('legs');
   const engY = r3(NODES.engineMount - eng.top), nozzleY = r3(engY + eng.nozzle);
-  const capTop = r3(NODES.capsuleY + cap.top);
+  const cargo = b.payload ? CARGO[b.payload] : null;
+  const capTop = cargo ? r3(3.65 + cargo.h + 0.05) : r3(NODES.capsuleY + cap.top);
   const tx = r3(NODES.frameSide + tank.r), chY = r3(capTop + ch.half);
   return {
-    pos: { engine: [0, engY, 0], tankL: [-tx, 2.9, 0], tankR: [tx, 2.9, 0], chute: [0, chY, 0], shield: [0, r3(nozzleY + 0.25), 0] },
+    pos: { payload: cargo ? [0, r3(3.65 + cargo.h / 2), 0] : [0, 0, 0], engine: [0, engY, 0], tankL: [-tx, 2.9, 0], tankR: [tx, 2.9, 0], chute: [0, chY, 0], shield: [0, r3(nozzleY + 0.25), 0] },
     com: eng.comDy ? { engine: [0, r3(engY + eng.comDy)] } : {},
     models: { capsule: cap.model, engine: eng.model, tankL: tank.model, tankR: tank.model, solarL: sol.model, solarR: sol.model, battery: bat.model, chute: ch.model, legs: lg.model },
     nodes: { flameY: r3(nozzleY + 0.02), flameK: eng.exitR / 0.78, shieldR: eng.exitR, shieldColor: PART_VARIANTS.shield[b.shield]?.color, chuteTop: r3(chY + ch.half), footX: lg.foot },
@@ -354,10 +391,12 @@ export function makeSpec(build = {}) {
   const b = normalizeBuild(build);
   const V = (slot) => PART_VARIANTS[slot][b[slot]];
   const cap = V('capsule'), eng = V('engine'), tank = V('tanks'), sol = V('solar'), bat = V('battery'), ch = V('chute'), sh = V('shield'), legs = V('legs').l;
+  const cargo = b.payload ? CARGO[b.payload] : null;
   const comps = [];
   for (const c0 of COMPONENTS) {
     if ((c0.id === 'solarL' || c0.id === 'solarR') && !sol) continue;
     if (c0.id === 'chute' && b.chute === 'none') continue;
+    if (c0.id === 'capsule' && cargo) continue; // cargo flight: no capsule, no crew
     const c = { ...c0 };
     if (c.id === 'capsule') { c.mass = cap.mass; if (cap.heat) c.heat = [...cap.heat]; }
     if (c.id === 'engine') c.mass = eng.mass;
@@ -369,15 +408,16 @@ export function makeSpec(build = {}) {
     comps.push(c);
   }
   if (sh) comps.push({ ...SHIELD, mass: sh.mass, heat: [...sh.heat], prot: sh.prot });
+  if (cargo) comps.push({ id: 'payload', name: cargo.name, model: 'payload', mass: cargo.mass, pos: [0, 0, 0], heat: [0.15, 700] });
   const lay = layout(b);
   for (const c of comps) {
     if (lay.pos[c.id]) c.pos = lay.pos[c.id];
     if (lay.com[c.id]) c.com = lay.com[c.id];
     c.model = lay.models[c.id] ?? c.model;
   }
-  const crew = [...CREW, CREW_EXTRA].slice(0, cap.crew).map((c) => c.id);
+  const crew = cargo ? [] : [...CREW, CREW_EXTRA].slice(0, cap.crew).map((c) => c.id);
   return {
-    build: b, comps, ids: new Set(comps.map((c) => c.id)), crew,
+    build: b, comps, ids: new Set(comps.map((c) => c.id)), crew, payload: cargo ? { id: b.payload, g: cargo.g, touch: cargo.touch } : null,
     fMax: eng.f, isp: eng.isp, tankK: tank.k, batK: bat.k, solarK: sol?.k ?? 0,
     chuteCda: ch.cda ?? CHUTE_CDA, chuteFmax: ch.fmax ?? CHUTE_FMAX,
     land: { vy: LAND.vy.map((v) => v * legs[1]), vx: LAND.vx.map((v) => v * legs[2]), tilt: LAND.tilt.map((v) => v * legs[3]) },
@@ -417,6 +457,8 @@ export function buildWarnings(build, planets, fuelK = 1) {
 
 /** a part is there: built in and not destroyed */
 export const hasPart = (s, id) => s.spec.ids.has(id) && !s.lost[id] && !s.dropped[id];
+/** the g-load the flight computer plans with: the most sensitive crew member, or the cargo */
+export const gLimitOf = (s) => (s.crew.length ? Math.min(...s.crew.map((c) => c.limit)) : s.spec.payload?.g ?? G_LIMIT);
 /** decoupler: drop a part on purpose (the heat shield). It leaves with its mass; unlike a part that burned
  *  off this is no damage. Returns true if something was dropped. */
 export function jettison(s, id) {
@@ -511,7 +553,7 @@ export function createState(planet, opts = {}) {
     limit: 1, throttle: 0, sas: 'hold', holdA: t0, holdB: b0, sasI: 0, sasIB: 0,
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
     crew: [...CREW, CREW_EXTRA].filter((c) => spec.crew.includes(c.id)).map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
-    torqueCom: 0, torqueComB: 0, sasTorque: 0, temp: Object.fromEntries(spec.comps.map((c) => [c.id, T_AMB])), lost: {}, dropped: {}, peakFlux: 0, events: [],
+    torqueCom: 0, torqueComB: 0, sasTorque: 0, temp: Object.fromEntries(spec.comps.map((c) => [c.id, T_AMB])), lost: {}, dropped: {}, peakFlux: 0, events: [], obstacles: [], cargoOver: 0, cargoDamaged: null,
     panels: 'out', panelFold: 0,
     chute: 'stowed', chuteT: 0, chuteInflate: 0, chuteOpen: 0, q: 0, maxQ: 0, drag: 0,
     status: 'flying', reason: '', touch: null, log: [],
@@ -541,7 +583,7 @@ export function predictImpact(s, path = null) {
   // for), otherwise the cross lies kilometres long and a burn "until the cross is on the pad" falls short
   const planChute = s.planet.orbit && s.planet.rho > 0.5 && s.chute === 'stowed' && hasPart(s, 'chute');
   const mustBrake = (m * s.planet.g) / BODY_CDA > CHUTE_QMAX * CHUTE_SAFE; // terminal pressure above the canopy limit
-  const gSafe = Math.min(...s.crew.map((c) => c.limit)) * 0.95 * G0;
+  const gSafe = gLimitOf(s) * 0.95 * G0;
   let lastQ = Infinity;
   let x = s.x, y = s.y, z = s.z, vx = s.vx, vy = s.vy, vz = s.vz, t = 0;
   const h = s.planet.orbit ? 0.2 : 0.1;
@@ -652,7 +694,7 @@ export function brakeForChute(s) {
  *  the most sensitive crew member's limit. Near 0 means the air alone already brakes that hard. */
 export function chuteBrakeLimit(s) {
   const { m } = massProps(s);
-  const gMax = Math.min(...s.crew.map((c) => c.limit)) * 0.95 * G0;
+  const gMax = gLimitOf(s) * 0.95 * G0;
   const fromAir = s.drag / m;
   return Math.max(0, Math.min(1, ((gMax - fromAir) * m) / s.spec.fMax));
 }
@@ -804,7 +846,7 @@ export function step(s, input, dt) {
   s.t += dt;
   s.powered = s.battery > 0 && !s.lost.battery;
   s.computerOK = s.powered && !s.lost.computer;
-  s.blackout = s.crew[0].out;
+  s.blackout = s.crew[0]?.out ?? false;
 
   // --- engine ---
   let thr = input.thrust && !s.blackout ? s.limit : 0;
@@ -942,7 +984,12 @@ export function step(s, input, dt) {
     else if (c.out && c.stress < WAKE) c.out = false;
   }
   if (s.gNow > G_LIMIT) s.gOverTime += dt;
-  s.gStress = s.crew[0].stress;
+  s.gStress = s.crew[0]?.stress ?? 0;
+  // cargo: too much g for longer than 0.3 s damages it
+  if (s.spec.payload && !s.cargoDamaged) {
+    s.cargoOver = s.gNow > s.spec.payload.g ? s.cargoOver + dt : 0;
+    if (s.cargoOver > 0.3) { s.cargoDamaged = 'G-Last'; s.events.push({ type: 'cargo', t: s.t }); }
+  }
 
   // --- power ---
   const use = 0.55 + (s.sas ? 0.25 : 0) + 2.2 * rcsUse + 1.2 * thr;
@@ -998,12 +1045,19 @@ export function step(s, input, dt) {
     if (g.tilt === 3) why.push(`zu schräg (${tilt.toFixed(0)}°, max ${Math.round(L.tilt[2])}°)`);
     if (Math.max(...hs) - Math.min(...hs) > s.spec.uneven) why.push('Gelände zu uneben');
     if (s.lost.legs) why.push('Landebeine verglüht');
+    // base: landed on (or against) a module that is already there
+    const hit = s.obstacles.find((o) => Math.hypot(s.x - o.x, s.z - o.z) < o.r + s.spec.footX * 0.85);
+    if (hit) why.push(`auf ${hit.name} gelandet`);
     const overall = why.length ? 3 : Math.max(g.vy, g.vx, g.tilt);
     // crash energy 0..1: how violent the impact was (drives debris and explosion size)
     const energy = Math.min(1, Math.max(0, (sink - L.vy[2]) / 18 + (drift - L.vx[2]) / 25 + 0.1));
     s.touch = { vy: sink, vx: drift, tilt, grades: g, grade: overall, energy };
     if (overall === 3) s.touch.crash = classifyCrash(s, sink, drift);
     s.status = overall === 3 ? 'crashed' : 'landed';
+    if (s.spec.payload) {
+      if (s.status === 'landed' && !s.cargoDamaged && sink > s.spec.payload.touch) s.cargoDamaged = 'Aufsetzen';
+      s.cargo = s.status !== 'landed' ? 'lost' : s.cargoDamaged ? 'damaged' : 'intact';
+    }
     s.reason = why.join(', ');
     s.y -= alt; // snap to ground
   }

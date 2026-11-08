@@ -104,7 +104,7 @@ export function createHud() {
 
   let crewTick = 0;
   const crew = createCrew($('crew-faces'), $('crew-say'));
-  let tornAt;
+  let tornAt, cargoAt;
 
   const heatFrac = (s, id) => { const c = s.spec.comps.find((k) => k.id === id); return c ? (s.temp[id] - S.T_AMB) / (c.heat[1] - S.T_AMB) : 0; };
   const lostAt = {};
@@ -174,6 +174,11 @@ export function createHud() {
       c.strokeStyle = '#8fe3ff'; c.fillStyle = '#8fe3ff'; c.lineWidth = 3; c.lineCap = 'round';
       c.beginPath(); c.moveTo(sx, sy2); c.lineTo(ex, ey); c.stroke();
       c.beginPath(); c.moveTo(ex + wx * 5, ey + wy * 5); c.lineTo(ex - wy * 4, ey + wx * 4); c.lineTo(ex + wy * 4, ey - wx * 4); c.closePath(); c.fill();
+    }
+    // base modules (grey squares): don't land on them
+    for (const o of s.obstacles ?? []) {
+      const [ox, oy] = place(o.x - s.x, o.z - s.z);
+      c.fillStyle = 'rgba(220,226,240,0.85)'; c.fillRect(ox - 2.5, oy - 2.5, 5, 5);
     }
     // predicted touchdown point (orange cross)
     if (s.pred && s.status === 'flying') {
@@ -294,12 +299,30 @@ export function createHud() {
 
     // crew: faces, g-load, tunnel vision from the pilot's strain
     const g = $('v-g'); g.textContent = `${fmt(s.status === 'flying' ? s.gNow : 0, 2)} g`;
-    const minLimit = Math.min(...s.crew.map((c) => c.limit));
+    const minLimit = S.gLimitOf(s);
     cls(g, s.gNow > S.G_LIMIT ? 'bad' : s.gNow > minLimit ? 'warn' : '');
     // faces at ~30 fps are plenty
     if (!(crewTick = (crewTick + 1) % 2) || s.status !== 'flying') crew.update(s, alt, gr.vy === 3, performance.now() / 1000);
     const pilot = s.crew[0];
-    $('tunnel').style.opacity = s.status === 'flying' ? Math.min(0.97, pilot.out ? 0.97 : pilot.stress ** 1.3 * 0.9) : 0;
+    $('tunnel').style.opacity = s.status === 'flying' && pilot ? Math.min(0.97, pilot.out ? 0.97 : pilot.stress ** 1.3 * 0.9) : 0;
+    // cargo flights: a cargo card instead of the faces (g-load against what it takes, intact / damaged)
+    const pl = s.spec.payload;
+    $('cargo').hidden = !pl; $('crew-faces').hidden = !!pl; $('crew-h').textContent = pl ? 'Fracht · G-Last' : 'Crew · G-Last'; $('crew').classList.toggle('cargo-mode', !!pl);
+    if (pl) {
+      const c = S.CARGO[pl.id];
+      $('cg-name').textContent = c.name;
+      const st = s.status === 'crashed' ? ['verloren', 'bad'] : s.cargoDamaged ? [`beschädigt (${s.cargoDamaged})`, 'bad'] : ['intakt', 'ok'];
+      $('cg-state').textContent = st[0]; $('cg-state').className = st[1];
+      const gk = Math.min(1, (s.status === 'flying' ? s.gNow : 0) / (pl.g * 1.25));
+      $('cg-g').style.width = `${gk * 100}%`;
+      $('cg-g').style.background = s.gNow > pl.g ? 'var(--bad)' : s.gNow > pl.g * 0.8 ? 'var(--warn)' : 'var(--cyan)';
+      $('cg-lim').style.left = `${(1 / 1.25) * 100}%`;
+      $('cg-info').textContent = `max ${pl.g} g · Aufsetzen ≤ ${pl.touch} m/s`;
+    }
+    // base mission: what to deliver, above the altitude readout
+    const mi = $('mission'), mt = s.settings?.base ? (pl ? `${S.CARGO[pl.id].name} zur Basis` : 'Crew zur Basis') : '';
+    mi.hidden = !mt || s.status !== 'flying';
+    if (mt && mi.textContent !== mt) mi.textContent = mt;
 
     // fuel: amount and how long it lasts at full thrust
     const fuelNow = S.fuel(s), fuelFrac = fuelNow / s.fuel0;
@@ -358,7 +381,7 @@ export function createHud() {
 
     // components
     const awake = s.crew.filter((c) => !c.out).length;
-    setRow('capsule', `${awake}/${s.crew.length} wach`, awake / s.crew.length, awake < s.crew.length ? 'var(--bad)' : 'var(--ok)');
+    if (s.crew.length) setRow('capsule', `${awake}/${s.crew.length} wach`, awake / s.crew.length, awake < s.crew.length ? 'var(--bad)' : 'var(--ok)');
     setRow('engine', `${fmt(s.throttle * 100)} %`, s.throttle, 'var(--amber)');
     const half = s.fuel0 / 2;
     const fc = (f) => (f / half < 0.2 ? 'var(--bad)' : 'var(--amber)');
@@ -444,7 +467,8 @@ export function createHud() {
     if (s.blackout) msg = 'PILOTIN BEWUSSTLOS – KEINE STEUERUNG';
     // name the cause: only the engine can be throttled; air drag or the canopy's jerk can't
     else if (s.gNow > S.G_LIMIT) msg = s.throttle > 0 ? 'G-LAST ZU HOCH – SCHUB DROSSELN' : s.chute === 'open' ? 'G-LAST ZU HOCH – SCHIRM REISST AN' : 'G-LAST ZU HOCH – LUFTWIDERSTAND';
-    else if (s.gNow > minLimit && s.throttle > 0) { msg = 'G-LAST: CREW LEIDET'; color = 'var(--warn)'; pulse = false; }
+    else if (s.cargoDamaged && s.t - (cargoAt ??= s.t) < 3) msg = `FRACHT BESCHÄDIGT (${s.cargoDamaged.toUpperCase()})`;
+    else if (s.gNow > minLimit && s.throttle > 0) { msg = s.crew.length ? 'G-LAST: CREW LEIDET' : 'G-LAST: FRACHT IN GEFAHR – DROSSELN'; color = s.crew.length ? 'var(--warn)' : 'var(--bad)'; pulse = !s.crew.length; }
     else if (recentLoss(s)) msg = `${recentLoss(s).toUpperCase()} VERGLÜHT`;
     else if (s.chute === 'torn' && s.t - (tornAt ??= s.t) < 3) msg = 'FALLSCHIRM GERISSEN';
     else if (hottest(s).f > (hottest(s).solar && s.panels === 'out' ? 0.5 : 0.75)) { const h = hottest(s); msg = `HITZE: ${h.name.toUpperCase()} ${fmt(h.f * 100)} %${h.solar && s.panels === 'out' ? ' – EINKLAPPEN!' : ''}`; color = h.f > 0.9 ? 'var(--bad)' : 'var(--warn)'; pulse = h.f > 0.9; }
@@ -490,6 +514,7 @@ export function createHud() {
       if (S.chuteSafe(s)) { msg = 'FALLSCHIRM MÖGLICH'; color = 'var(--cyan)'; pulse = false; }
     }
     if (s.chute !== 'torn') tornAt = undefined;
+    if (!s.cargoDamaged) cargoAt = undefined;
     al.hidden = !msg || s.status !== 'flying';
     if (msg) { al.textContent = msg; al.style.color = color; al.classList.toggle('pulse', pulse); }
   }

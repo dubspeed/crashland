@@ -20,6 +20,7 @@
       <span id="planet-tag"></span>
     </header>
     <div id="alert" hidden></div>
+    <div id="mission" class="mission" hidden></div>
     <div id="readout" aria-live="off"><div class="ro-alt"><b id="ro-alt"></b><span id="ro-alt-u">über Grund</span></div><div class="ro-v"><span id="ro-vy"></span><span id="ro-vh"></span></div></div>
 
     <div id="td" hidden aria-live="off">
@@ -53,8 +54,9 @@
     </section>
 
     <section id="crew" class="panel" aria-label="Crew">
-      <div class="crew-head"><h2>Crew · G-Last</h2><span id="v-g"></span></div>
+      <div class="crew-head"><h2 id="crew-h">Crew · G-Last</h2><span id="v-g"></span></div>
       <div id="crew-faces"></div>
+      <div id="cargo" class="cargo" hidden><div class="cg-top"><b id="cg-name"></b><span id="cg-state"></span></div><div class="cg-bar"><i id="cg-g"></i><b id="cg-lim"></b></div><small id="cg-info"></small></div>
       <div id="crew-say" aria-live="polite"></div>
     </section>
     </div>
@@ -112,8 +114,10 @@
       <div id="start-select" class="seg" role="radiogroup" aria-label="Start">
         <button role="radio" data-orbit="0">Landeanflug<small>1–2 km über dem Pad</small></button>
         <button role="radio" data-orbit="1">Aus dem Orbit<small>Deorbit und Wiedereintritt</small></button>
+        <button role="radio" data-orbit="base">Basis<small>Fracht landen, Basis bauen</small></button>
       </div>
       <div id="planets"></div>
+      <p id="base-info" class="base-info" hidden></p>
       <div class="menu-tools">
         <button id="diff-btn" class="tool-btn" aria-expanded="false" aria-controls="diff"></button>
         <button id="build-btn" class="tool-btn build-btn"></button>
