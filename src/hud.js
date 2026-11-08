@@ -47,9 +47,9 @@ export function createHud() {
     const grad = tierColors.map((c, i) => `${c} ${stops[i]}% ${stops[i + 1]}%`).join(', ');
     const el = document.createElement('div');
     el.className = 'lw';
-    el.innerHTML = `<i class="glyph" aria-hidden="true">${glyphs[key]}</i><div class="lw-head"><span>${label}</span><b></b></div><div class="lw-bar" style="background: linear-gradient(90deg, ${grad})"><i></i></div>`;
+    el.innerHTML = `<i class="glyph" aria-hidden="true">${glyphs[key]}</i><div class="lw-head"><span>${label}</span><b></b></div><div class="lw-bar" style="background: linear-gradient(90deg, ${grad})"><i></i></div><b class="lw-num"></b>`;
     $('landing').append(el);
-    lw[key] = { val: el.querySelector('b'), mark: el.querySelector('.lw-bar i'), bar: el.querySelector('.lw-bar'), unit, max };
+    lw[key] = { val: el.querySelector('.lw-head b'), num: el.querySelector('.lw-num'), mark: el.querySelector('.lw-bar i'), bar: el.querySelector('.lw-bar'), unit, max };
   }
   let landFor = null;
   function applyLand(land) {
@@ -108,6 +108,7 @@ export function createHud() {
 
   const heatFrac = (s, id) => { const c = s.spec.comps.find((k) => k.id === id); return c ? (s.temp[id] - S.T_AMB) / (c.heat[1] - S.T_AMB) : 0; };
   const lostAt = {};
+  const pw = { inp: 0, use: 0 };
   const ttb = { at: undefined, v: 0 };
 
   function recentLoss(s) {
@@ -219,6 +220,8 @@ export function createHud() {
       const g = S.GRADES[gr[k]];
       lw[k].val.textContent = `${fmt(live[k], 1)} ${lw[k].unit} · ${g.name.split(' ')[0]}`;
       lw[k].val.style.color = g.color;
+      lw[k].num.textContent = k === 'tilt' ? `${fmt(live[k], 0)}°` : fmt(live[k], 1);
+      lw[k].num.style.color = g.color;
       lw[k].mark.style.left = `${Math.min(1, live[k] / lw[k].max) * 100}%`;
     }
     const gradeCls = ['ok', 'warn', 'warn', 'bad'];
@@ -327,6 +330,27 @@ export function createHud() {
     else if (alt <= burnAlt) { label = 'BURN!'; lc = 'bad'; }
     else { if (!(s.t - (ttb.at ?? -1) < 0.2 && ttb.at <= s.t)) { ttb.v = S.timeToBurn(s); ttb.at = s.t; } const tb = ttb.v; if (tb < 3) { label = 'BEREIT'; lc = 'warn'; } else { label = `in ${fmt(tb, 0)} s`; lc = 'ok'; } }
     bl.textContent = label; cls(bl, lc);
+
+    // power: charge, what the panels bring in, what the lander uses (smoothed: thrust and jets flicker)
+    {
+      const k = Math.min(1, 0.12 + (s.t < 0.1 ? 1 : 0));
+      pw.inp += ((s.powerIn ?? 0) - pw.inp) * k; pw.use += ((s.powerUse ?? 0) - pw.use) * k;
+      const net = pw.inp - pw.use, bat = s.battery;
+      $('pw-fill').style.width = `${bat}%`;
+      $('pw-fill').style.background = bat < 20 ? 'var(--bad)' : bat < 45 ? 'var(--warn)' : 'var(--cyan)';
+      const pct = $('pw-pct'); pct.textContent = `${fmt(bat)} %`; pct.className = bat < 20 ? 'bad' : bat < 45 ? 'warn' : '';
+      const noPanels = !S.hasPart(s, 'solarL') && !S.hasPart(s, 'solarR');
+      const pm = (x) => fmt(x * 60, x * 60 < 9.95 ? 1 : 0); // shown per minute: % of the battery
+      $('pw-in').textContent = noPanels ? '–' : `+${pm(pw.inp)}`;
+      $('pw-in').className = noPanels ? '' : pw.inp < 0.05 ? 'mute' : 'ok';
+      $('pw-out').textContent = `−${pm(pw.use)} %/min`;
+      // net per second, and how long until empty (or full)
+      const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
+      const el = $('pw-net');
+      if (net < -0.01) { el.textContent = `▼ ${pm(-net)} %/min · leer ${mmss(bat / -net)}`; el.className = `pw-net ${bat / -net < 60 ? 'bad' : 'warn'}`; }
+      else if (net > 0.01 && bat < 99.5) { el.textContent = `▲ ${pm(net)} %/min · voll ${mmss((100 - bat) / net)}`; el.className = 'pw-net ok'; }
+      else { el.textContent = bat >= 99.5 ? 'voll' : 'ausgeglichen'; el.className = 'pw-net'; }
+    }
 
     // components
     const awake = s.crew.filter((c) => !c.out).length;

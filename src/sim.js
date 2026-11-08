@@ -873,6 +873,7 @@ export function step(s, input, dt) {
   s.solarNow = sun;
   const gain = 1.6 * sun * (panels / 2) * (1 - s.panelFold);
   s.battery = Math.max(0, Math.min(BAT_CAP, s.battery + ((gain - use) / s.spec.batK) * dt)); // big pack: slower %
+  s.powerIn = gain / s.spec.batK; s.powerUse = use / s.spec.batK; // %/s, for the HUD
 
   // --- aerodynamic heating: hot parts glow, overheated parts blow off ---
   const flux = Math.sqrt(density(s)) * (v / 100) ** 3 * HEAT_K * (p.heatK ?? 1);

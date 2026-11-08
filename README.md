@@ -99,6 +99,9 @@ Measured with a sim pilot that only uses these aids: Luna ~4 m, Mars without win
 
 At the top centre (below the message line) the HUD always shows the altitude above ground and the vertical (↓/↑) and horizontal (→) speed. Above 1000 m the altitude is small (in km); from 1000 m down it is large, below 100 m with one decimal, and the two speeds are coloured by the lander's landing window (green soft, yellow hard, orange gear damage, red crash).
 
+
+**Power** (Energie): charge bar, what the panels bring in (☀, depends on the sun and the folding), what the lander uses (⚙: base load, attitude hold, jets, engine pumps), and the net rate with the time until empty or full, all in % of the battery per minute (the big pack charges and drains more slowly). `s.powerIn` / `s.powerUse` come from the flight model; the HUD smooths them because thrust and jets flicker. On the phone the landing-window bars (now with their values) and the power block share a small glass card top left.
+
 ## Camera views
 
 - **Hinten**: chase camera beside/behind the lander.
