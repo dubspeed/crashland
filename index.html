@@ -104,12 +104,21 @@
         <button id="help-btn" class="help-btn" aria-label="Hilfe und Steuerung">?</button>
       </div>
       <p class="tagline">So spät bremsen wie möglich, so sanft aufsetzen wie nötig.</p>
-      <div class="wind-row"><span class="wind-label">Wind</span><div id="wind-select" role="radiogroup" aria-label="Windstärke"></div></div>
-      <div class="wind-row"><span class="wind-label">Treibstoff</span><div id="fuel-select" class="opt-select" role="radiogroup" aria-label="Treibstoffvorrat"></div></div>
-      <div class="wind-row"><span class="wind-label">Hinweise</span><div id="hint-select" class="opt-select" role="radiogroup" aria-label="Hinweise im HUD"></div></div>
-      <div class="wind-row"><span class="wind-label">Computer</span><div id="auto-select" class="opt-select" role="radiogroup" aria-label="Automatische Feinregelung beim Deorbit"></div></div>
-      <div class="wind-row"><span class="wind-label">Lander</span><button id="build-btn" class="build-btn"></button></div>
+      <div id="start-select" class="seg" role="radiogroup" aria-label="Start">
+        <button role="radio" data-orbit="0">Landeanflug<small>1–2 km über dem Pad</small></button>
+        <button role="radio" data-orbit="1">Aus dem Orbit<small>Deorbit und Wiedereintritt</small></button>
+      </div>
       <div id="planets"></div>
+      <div class="menu-tools">
+        <button id="diff-btn" class="tool-btn" aria-expanded="false" aria-controls="diff"></button>
+        <button id="build-btn" class="tool-btn build-btn"></button>
+      </div>
+      <div id="diff" class="diff-panel" hidden>
+        <div class="wind-row"><span class="wind-label">Wind</span><div id="wind-select" role="radiogroup" aria-label="Windstärke"></div></div>
+        <div class="wind-row"><span class="wind-label">Treibstoff</span><div id="fuel-select" class="opt-select" role="radiogroup" aria-label="Treibstoffvorrat"></div></div>
+        <div class="wind-row"><span class="wind-label">Hinweise</span><div id="hint-select" class="opt-select" role="radiogroup" aria-label="Hinweise im HUD"></div></div>
+        <div class="wind-row"><span class="wind-label">Computer</span><div id="auto-select" class="opt-select" role="radiogroup" aria-label="Automatische Feinregelung beim Deorbit"></div></div>
+      </div>
     </div>
   </div>
 

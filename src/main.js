@@ -163,7 +163,7 @@ function setBuild(slot, id) {
   if (mode === 'menu') parkShip();
   updateBuildBtn();
 }
-const updateBuildBtn = () => { $('build-btn').innerHTML = `${buildSummary() === 'Standard' ? 'Standard-Lander' : 'Eigener Lander'} · bearbeiten<small>${buildSummary()}</small>`; };
+const updateBuildBtn = () => { $('build-btn').innerHTML = `Lander bauen<small>${buildSummary() === 'Standard' ? 'Standard' : 'Eigener Lander'}</small>`; };
 // fullscreen 3D editor (src/builder.js); the start menu steps aside while it is open
 const builder = createBuilder({
   S, ship, camera, canvas: renderer.domElement,
@@ -181,22 +181,41 @@ const bestKey = (id) => `${id}${windLevel ? `.wind${windLevel}` : ''}${settings.
 function best(id) { try { return JSON.parse(localStorage.getItem(`crashland.best.${id}`)); } catch { return null; } }
 function saveBest(id, v) { try { localStorage.setItem(`crashland.best.${id}`, JSON.stringify(v)); } catch { /* storage unavailable */ } }
 
+// start: from the approach (normal levels) or from orbit; remembered
+let fromOrbit = false;
+try { fromOrbit = localStorage.getItem('crashland.orbit') === '1'; } catch { /* default */ }
+$('start-select').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  fromOrbit = b.dataset.orbit === '1';
+  try { localStorage.setItem('crashland.orbit', fromOrbit ? '1' : '0'); } catch { /* storage unavailable */ }
+  buildMenu();
+});
+// difficulty: one summary button, the options fold out below it
+$('diff-btn').addEventListener('click', () => { const d = $('diff'); d.hidden = !d.hidden; $('diff-btn').setAttribute('aria-expanded', String(!d.hidden)); });
+
 function buildMenu() {
   const wrap = $('planets');
   wrap.innerHTML = '';
   buildWindSelect();
   buildSettings();
   updateBuildBtn();
-  for (const p of [...S.PLANETS, ...S.ORBIT_PLANETS]) {
+  for (const b of $('start-select').querySelectorAll('button')) {
+    const on = (b.dataset.orbit === '1') === fromOrbit;
+    b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
+  }
+  const bonus = (windLevel ? S.WIND_LEVELS[windLevel].bonus : 1) * settingsBonus(settings);
+  const diff = [windLevel ? `Wind ${S.WIND_LEVELS[windLevel].name.toLowerCase()}` : '', settings.fuel !== 1 ? `Treibstoff ${S.FUEL_LEVELS[settings.fuel].name.toLowerCase()}` : '',
+    settings.hints ? '' : 'ohne Hinweise', settings.autoFine ? 'Computer an' : ''].filter(Boolean);
+  $('diff-btn').innerHTML = `Schwierigkeit${Math.abs(bonus - 1) > 0.001 ? ` <em>×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}</em>` : ''}<small>${diff.length ? diff.join(' · ') : 'Standard'}</small>`;
+  for (const p of fromOrbit ? S.ORBIT_PLANETS : S.PLANETS) {
     const b = document.createElement('button');
     b.className = 'planet';
     const rec = best(bestKey(p.id));
     const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
     b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
-      <span class="pname"><b>${p.name}</b><span class="g">${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span></span>
+      <span class="pname"><b>${p.name.replace(' Orbit', '')}</b><span class="g">${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span></span>
       <p>${p.text}</p>
-      <span class="chips">${p.orbit ? '<span class="chip new">Neu · Orbit</span>' : ''}<span class="chip">${p.rho > 0 ? `Luft: ${p.atmo}` : 'keine Luft'}</span>${p.rho === 0 && windLevel ? '<span class="chip">kein Wind</span>' : ''}</span>
-      <span class="best">${rec ? `${'★'.repeat(rec.stars)}${'☆'.repeat(3 - rec.stars)} · ${rec.score} Punkte` : ''}</span>`;
+      <span class="best">${rec ? `<i>${'★'.repeat(rec.stars)}${'☆'.repeat(3 - rec.stars)}</i> ${rec.score.toLocaleString('de-DE')}` : `<span class="air">${p.rho > 0 ? `Luft: ${p.atmo}` : 'keine Luft'}</span>`}</span>`;
     b.addEventListener('click', () => start(p));
     wrap.append(b);
   }
