@@ -230,8 +230,9 @@ function buildMenu() {
   $('diff-btn').innerHTML = `Schwierigkeit${Math.abs(bonus - 1) > 0.001 ? ` <em>×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}</em>` : ''}<small>${diff.length ? diff.join(' · ') : 'Standard'}</small>`;
   $('base-info').hidden = startMode !== 'base';
   if (startMode === 'base') $('base-info').innerHTML = 'Jede Landung bringt ein Modul zur Basis. Das nächste Ziel liegt neben den Modulen, wer daraufsetzt, crasht. Intakte Module helfen den nächsten Flügen. <button id="base-reset" class="link">Basen zurücksetzen</button>';
-  $('base-reset')?.addEventListener('click', () => { if (confirm('Alle Basen zurücksetzen?')) { for (const p of S.PLANETS) saveBase(p.id, { modules: [], step: 0 }); buildMenu(); } });
-  for (const p of startMode === '1' ? S.ORBIT_PLANETS : S.PLANETS) {
+  $('base-reset')?.addEventListener('click', () => { if (confirm('Alle Basen zurücksetzen?')) { for (const p of [...S.PLANETS, ...S.ORBIT_PLANETS]) saveBase(p.id, { modules: [], step: 0 }); buildMenu(); } });
+  // base missions start from orbit (deorbit, re-entry, then down to the base)
+  for (const p of startMode === '0' ? S.PLANETS : S.ORBIT_PLANETS) {
     const b = document.createElement('button');
     b.className = 'planet';
     const rec = best(bestKey(p.id));
@@ -241,7 +242,7 @@ function buildMenu() {
       const bon = S.baseBonus(base.modules), chips = [bon.fuel > 1 ? `Treibstoff +${Math.round((bon.fuel - 1) * 100)} %` : '', bon.solar > 1 ? `Solar +${Math.round((bon.solar - 1) * 100)} %` : '', bon.score > 1 ? `Punkte +${Math.round((bon.score - 1) * 100)} %` : ''].filter(Boolean);
       const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
       b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
-        <span class="pname"><b>${p.name}</b><span class="g">${base.modules.length}/${S.MISSIONS.length}</span></span>
+        <span class="pname"><b>${p.name.replace(' Orbit', '')}</b><span class="g">${base.modules.length}/${S.MISSIONS.length}</span></span>
         <span class="dots">${S.MISSIONS.map((m, i) => `<i class="${i < base.step ? (base.modules.find((x) => x.type === m)?.damaged ? 'dmg' : 'done') : i === base.step ? 'next' : ''}"></i>`).join('')}</span>
         <p>${next ? `Mission ${base.step + 1}: <b class="mname">${S.CARGO[next].name}</b>${S.CARGO[next].crew ? '' : `<br><small>max ${S.CARGO[next].g} g · ${S.CARGO[next].touch} m/s · ${S.CARGO[next].mass} kg</small>`}` : 'Basis fertig!'}</p>
         <span class="best">${chips.join(' · ')}</span>`;

@@ -128,7 +128,7 @@ test('base building: cargo replaces the capsule, is damaged by g-load or a hard 
   const s = S.newRound(P, 0, 2, {}, { payload: 'lab' });
   assert.equal(s.crew.length, 0);
   assert.ok(!s.spec.ids.has('capsule') && s.spec.ids.has('payload'));
-  assert.equal(S.gLimitOf(s), S.CARGO.lab.g);
+  assert.equal(S.gLimitOf(s), S.CARGO.lab.g * S.CARGO_MARGIN);
   // a cargo flight lands with the HUD pilot and the cargo intact
   const { s: f } = recordPilot(P, 0, 5, makePilot(S, P, {}), 600, {}, { payload: 'depot' });
   assert.equal(f.status, 'landed'); assert.equal(f.cargo, 'intact');
@@ -144,6 +144,10 @@ test('base building: cargo replaces the capsule, is damaged by g-load or a hard 
   assert.ok(Math.abs(bon.fuel - 1.15 * 1.25) < 1e-9 && bon.score === 1);
   const slots = S.MISSIONS.map((_, k) => S.baseSlot(k));
   for (let i = 0; i < slots.length; i++) for (let j = i + 1; j < slots.length; j++) assert.ok(Math.hypot(slots[i][0] - slots[j][0], slots[i][1] - slots[j][1]) > 10);
+  // from orbit (base missions start there): the light, fragile lab gets through Brontes' thick air intact
+  const PB = S.ORBIT_PLANETS[3];
+  const { s: ob } = recordPilot(PB, 0, 5, makePilot(S, PB, {}), 900, {}, { payload: 'lab' });
+  assert.equal(ob.status, 'landed'); assert.equal(ob.cargo, 'intact', `lab: ${ob.cargoDamaged}, max ${ob.maxG.toFixed(1)} g`);
   // replays carry the cargo and the base
   const { record } = recordPilot(P, 0, 6, makePilot(S, P, {}), 600, { base: { fuel: 1.15, obstacles: [{ x: 16, z: 3, r: 1.4, name: 'Treibstoffdepot' }] } }, { payload: 'rover' });
   assert.deepEqual(summary(replay(JSON.parse(JSON.stringify(record)))), record.result);

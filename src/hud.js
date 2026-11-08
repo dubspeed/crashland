@@ -475,7 +475,7 @@ export function createHud() {
     else if (S.fuel(s) <= 0) msg = 'TREIBSTOFF LEER';
     else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
-    else if (hints && p.deorbitAt && s.pred && alt > 4000 && Math.hypot(s.pred.x, s.pred.z) < 60 && Math.hypot(s.vx, s.vz) > 80) { const lim0 = p.limit0 ?? 0.5;
+    else if (hints && p.deorbitAt && s.pred && alt > 4000 && Math.hypot(s.pred.x, s.pred.z) < 60 && Math.hypot(s.vx, s.vz) > 80) { const lim0 = s.limit0 ?? p.limit0 ?? 0.5;
       msg = s.throttle > 0 ? 'KREUZ AUF DEM PAD – SCHUB AUS' : s.limit < lim0 * 0.8 ? `KURS STIMMT – SCHUBGRENZE ZURÜCK AUF ${Math.round(lim0 * 100)} %` : 'KURS STIMMT – WIEDEREINTRITT, RETRO HALTEN'; color = 'var(--ok)'; pulse = s.throttle > 0; }
     else if (s.fineBurn) { msg = 'FEINREGELUNG – KREUZ WANDERT ZUM PAD'; color = 'var(--cyan)'; pulse = false; }
     else if (fh) {
@@ -502,7 +502,7 @@ export function createHud() {
       else if (og.brakeIn > 2.5) { msg = `ORBIT ${fmt(og.vh)} m/s · BREMSEN IN ${fmt(og.brakeIn)} s`; color = 'var(--cyan)'; pulse = false; }
       else { msg = og.brakeIn > -8 ? 'JETZT BREMSEN (RETRO)' : 'ZU SPÄT – BREMSEN!'; color = 'var(--amber)'; }
     }
-    else if (hints && s.chute === 'open' && p.rho > 0.5 && s.throttle === 0 && s.limit < (p.limit0 ?? 0.5) * 0.8 && alt > 150) { msg = `SCHUBGRENZE FÜR DIE LANDUNG HOCHSETZEN (${Math.round((p.limit0 ?? 0.5) * 100)} %)`; color = 'var(--cyan)'; pulse = false; }
+    else if (hints && s.chute === 'open' && p.rho > 0.5 && s.throttle === 0 && s.limit < (s.limit0 ?? p.limit0 ?? 0.5) * 0.8 && alt > 150) { msg = `SCHUBGRENZE FÜR DIE LANDUNG HOCHSETZEN (${Math.round((s.limit0 ?? p.limit0 ?? 0.5) * 100)} %)`; color = 'var(--cyan)'; pulse = false; }
     else if (hints && s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
     else if (hints && S.shieldDropHint(s)) {
       const why = { over: 'HITZE VORBEI', safe: 'KEINE HITZEGEFAHR', vacuum: 'KEINE LUFT' }[S.shieldDropHint(s)];

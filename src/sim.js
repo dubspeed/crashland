@@ -408,7 +408,7 @@ export function makeSpec(build = {}) {
     comps.push(c);
   }
   if (sh) comps.push({ ...SHIELD, mass: sh.mass, heat: [...sh.heat], prot: sh.prot });
-  if (cargo) comps.push({ id: 'payload', name: cargo.name, model: 'payload', mass: cargo.mass, pos: [0, 0, 0], heat: [0.15, 700] });
+  if (cargo) comps.push({ id: 'payload', name: cargo.name, model: 'payload', mass: cargo.mass, pos: [0, 0, 0], heat: [0.1, 2000] }); // in a fairing, like the capsule
   const lay = layout(b);
   for (const c of comps) {
     if (lay.pos[c.id]) c.pos = lay.pos[c.id];
@@ -458,7 +458,9 @@ export function buildWarnings(build, planets, fuelK = 1) {
 /** a part is there: built in and not destroyed */
 export const hasPart = (s, id) => s.spec.ids.has(id) && !s.lost[id] && !s.dropped[id];
 /** the g-load the flight computer plans with: the most sensitive crew member, or the cargo */
-export const gLimitOf = (s) => (s.crew.length ? Math.min(...s.crew.map((c) => c.limit)) : s.spec.payload?.g ?? G_LIMIT);
+export const gLimitOf = (s) => (s.crew.length ? Math.min(...s.crew.map((c) => c.limit)) : (s.spec.payload?.g ?? G_LIMIT) * CARGO_MARGIN);
+// cargo: the computer plans below the limit (the air and the canopy's jerk overshoot by ~15 %)
+export const CARGO_MARGIN = 0.87;
 /** decoupler: drop a part on purpose (the heat shield). It leaves with its mass; unlike a part that burned
  *  off this is no damage. Returns true if something was dropped. */
 export function jettison(s, id) {
@@ -537,8 +539,14 @@ export function createState(planet, opts = {}) {
     // circular orbit, lying on the side with the engine pointing retrograde, burn limited to a crew-friendly 50 %
     const v = orbitSpeed(planet, planet.alt);
     const s = createState({ ...planet, orbit: false }, { ...opts, wind: planet.rho > 0 ? opts.wind : 0, pitch0: 0, vz0: 0 });
+    // the starting limiter: crew-friendly, and for a light cargo low enough that the burn stays below its g limit
+    let limit0 = planet.limit0 ?? 0.5;
+    if (spec.payload) {
+      const m = spec.comps.reduce((a, c) => a + c.mass, 0) + s.fuel0;
+      limit0 = Math.min(limit0, Math.floor(((spec.payload.g * CARGO_MARGIN * G0 * m) / spec.fMax) * 20) / 20);
+    }
     return Object.assign(s, { planet, x: -planet.downrange, z: 0, y: planet.alt, vx: v, vy: 0, vz: 0,
-      a: Math.PI / 2, holdA: Math.PI / 2, b: 0, holdB: 0, sas: 'retro', limit: planet.limit0 ?? 0.5 });
+      a: Math.PI / 2, holdA: Math.PI / 2, b: 0, holdB: 0, sas: 'retro', limit: limit0, limit0 });
   }
   return {
     planet, t: 0,
@@ -681,7 +689,7 @@ export function fineHint(s) {
   if (!p.deorbitAt || !s.pred || altitude(s) <= 4000 || Math.hypot(s.vx, s.vz) < 80) return null;
   const d = Math.hypot(s.pred.x, s.pred.z);
   if (d >= 3000) return null;
-  return { d, limit: Math.max(0.05, Math.round((p.limit0 ?? 0.5) * Math.max(0.06, d / 3000) * 100) / 100) };
+  return { d, limit: Math.max(0.05, Math.round((s.limit0 ?? p.limit0 ?? 0.5) * Math.max(0.06, d / 3000) * 100) / 100) };
 }
 /** thick-air orbit levels where the canopy is never safe at terminal speed: brake with the engine first */
 export function brakeForChute(s) {
