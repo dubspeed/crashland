@@ -123,22 +123,26 @@ Attitude control needs the flight computer and power; without them it is always 
 
 ## Lander builder
 
-"Lander" in the start menu opens the builder (remembered; part of replays and of the best-score key). Six slots, each changing parts, mass, centre of mass and behaviour (`BUILD_SLOTS`, `makeSpec` in `sim.js`; every flight has its own `s.spec` instead of global constants, and the standard build reproduces the original lander bit-identically):
+"Lander bauen" in the start menu opens the builder (remembered; part of replays and of the best-score key). Eight slots with 3–5 options each, every one changing parts, mass, centre of mass and behaviour (`BUILD_SLOTS`, `PART_VARIANTS`, `makeSpec` in `sim.js`; every flight has its own `s.spec` instead of global constants, and the standard build reproduces the original lander bit-identically). Old saved builds and replays with the former "Energie" slot are mapped by `normalizeBuild`.
 
 | Slot | Options |
 |---|---|
-| Triebwerk | Standard 185 kN / Isp 290 s · Stark 240 kN / 280 s, +150 kg · Effizient 140 kN / 320 s, −70 kg |
-| Tanks | Klein 70 %, −100 kg · Standard · Groß 135 %, +120 kg |
-| Energie | Solarpaneele · Große Batterie (no panels, 2.2× capacity) · Beides (+250 kg) |
-| Fallschirm | Keiner (−120 kg) · Standard 110 m² / 70 kN · Groß 170 m² / 95 kN (+80 kg) |
-| Hitzeschild | Keiner · Hitzeschild (+240 kg): an ablative ring around the nozzle that shields everything above it while the engine end leads into the airflow (on a normal Terra entry the engine stays at ~150 °C instead of ~500 °C) |
+| Kapsel | Zweisitzer (2 crew, −500 kg) · Standard (3) · Gepanzert (3, heat limit 3200 °C, takes less heat, +350 kg) · Habitat (4 crew with Juno, +700 kg) |
+| Triebwerk | Mini 90 kN / Isp 300 s (−250 kg) · Effizient 140 kN / 320 s · Standard 185 kN / 290 s · Stark 240 kN / 280 s · Bündel: three bells, 330 kN / 275 s (+420 kg) |
+| Tanks | Mini 45 % · Klein 70 % · Standard · Groß 135 % · Riesig 180 % |
+| Solar | Keine (−220 kg) · Klein 55 % power · Standard · Groß 170 % (heats faster) |
+| Batterie | Klein 50 % · Standard · Groß 2.2× |
+| Fallschirm | Keiner · Klein 70 m² / 50 kN · Standard 110 m² / 70 kN · Groß 170 m² / 95 kN |
+| Hitzeschild | Keiner · Leicht (half the protection, 1800 °C, +120 kg, tan) · Standard (+240 kg): an ablative ring around the nozzle that shields everything above it while the engine end leads into the airflow (on a normal Terra entry the engine stays at ~150 °C instead of ~500 °C) |
+| Landebeine | Leicht · Standard · Breit (more drift and tilt) · Gefedert (30 % more sink rate, +220 kg) |
+
+Nonsense is allowed: a build without solar, with a far too weak engine or without a chute can still be flown; that is the challenge. `buildWarnings(build, planets)` tells the builder what is odd, per planet and as a list: engine too weak (thrust/weight < 1 with full tanks: red, the planet cannot be landed on; < 1.3 yellow), less Δv than the standard lander (< 93 %), too heavy for the canopy in thick air (load per m² > +4.8 %), no solar (battery minutes at base load), little power, no chute. The planet tiles get a ⚠, the option cards a "⚠ n zu schwach" / "⚠ knapper" badge. The test flies every single-option build on seven levels and requires a landing wherever the builder shows no warning, so the warnings keep matching what actually fails.
 
 **Decoupler.** A built-in heat shield can be dropped in flight: button "Schild ab" or **J** (`S.act(s, 'shield')` → `jettison`, recorded in replays). The part leaves with its 240 kg (`s.dropped`, no damage, unlike `s.lost`), pushed off along the axis and falling away in 3D (`ship.drop`). `shieldDropHint(s)` says when it is safe: no air, or no part would pass 70 % of its heat limit without the shield even if the lander kept falling (its current speed, at most the terminal speed of the air around it or free fall to the ground) down into the densest air in its current attitude. The HUD then shows "HITZE VORBEI – HITZESCHILD ABWERFEN (−240 kg)" (hints on) and the button glows. Following the hint, every level lands with more fuel and no damage; dropped at the start of Brontes Orbit, the engine peaks at ~1500 °C (limit 1800) instead of ~400 °C.
-| Landebeine | Leicht (−120 kg, less tolerance) · Standard · Breit (+120 kg, more drift and tilt allowed, rougher ground) |
 
 **Attachment points.** Parts sit on nodes of the part they hang on (`NODES`, `PART_VARIANTS`, `layout(build)` in `sim.js`): tanks against the frame's side (x = 0.6 m + tank radius), the engine from the frame's mount, the heat shield around the nozzle exit (a long vacuum bell puts it lower, the ring's inner edge fits the exit radius), the chute pack on the capsule's docking port (the canopy rig on top of it), the feet at the legs' span. The positions go into `spec.comps` and so into centre of mass, inertia and heat; `spec.footX` sets the feet for `feet()`/`altitude()`; `spec.nodes` places flame, shield and canopy rig in the renderer. The standard build lands exactly on the original positions (tested), so old flights replay unchanged.
 
-**Variant models** (`blender/build_variants.py`, reusing the helpers of `build_assets.py`): Stark = short wide bell with a cooling ring and four turbopumps; Effizient = long vacuum bell with a radiative niobium extension and a foil-wrapped chamber; tanks Klein (short, slim) and Groß (taller, fatter, two bands, stringers); legs Leicht (thin struts, tie rods, small pads, 1.8 m span) and Breit (V-struts, dampers, big pads, 2.5 m span); a big five-cell battery; a bigger chute pack. `ship.js` swaps each part holder's model for the chosen variant.
+**Variant models** (`blender/build_variants.py`, reusing the helpers of `build_assets.py`): capsules Zweisitzer (small, two windows), Gepanzert (dark tiles with seams), Habitat (tall, four windows); Mini engine (small bell), Bündel (three bells on a thrust plate); tanks Mini and Riesig; solar wings Klein (2×2 cells) and Groß (6×3); a two-cell battery; a small chute pack; legs Gefedert (thick struts, orange double dampers, big pads); Stark = short wide bell with a cooling ring and four turbopumps; Effizient = long vacuum bell with a radiative niobium extension and a foil-wrapped chamber; tanks Klein (short, slim) and Groß (taller, fatter, two bands, stringers); legs Leicht (thin struts, tie rods, small pads, 1.8 m span) and Breit (V-struts, dampers, big pads, 2.5 m span); a big five-cell battery; a bigger chute pack. `ship.js` swaps each part holder's model for the chosen variant.
 
 The builder is a fullscreen 3D editor (`src/builder.js`):
 

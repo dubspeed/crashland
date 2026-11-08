@@ -151,7 +151,7 @@ function buildSettings() {
 }
 // ---------- lander builder ----------
 let build = { ...S.DEFAULT_BUILD };
-try { Object.assign(build, JSON.parse(localStorage.getItem('crashland.build') || '{}')); } catch { /* defaults */ }
+try { build = S.normalizeBuild(JSON.parse(localStorage.getItem('crashland.build') || '{}')); } catch { /* defaults */ }
 const optName = (slot, id) => S.BUILD_SLOTS.find((x) => x.id === slot).options.find((o) => o.id === id)?.name ?? id;
 function buildSummary() {
   const diff = S.BUILD_SLOTS.filter((sl) => build[sl.id] !== S.DEFAULT_BUILD[sl.id]).map((sl) => `${sl.name}: ${optName(sl.id, build[sl.id])}`);

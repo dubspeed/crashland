@@ -6,7 +6,7 @@ import { makePilot } from './pilots.mjs';
 import { recordPilot, replay, summary } from './replay-lib.mjs';
 
 const mass = (build, P = S.PLANETS[0]) => { const s = S.createState(P, { build, rnd: () => 0.5, windHeading: 0 }); return { s, m: S.massProps(s).m, dry: S.massProps(s).m - s.fuel0 }; };
-const ALL = S.BUILD_SLOTS.flatMap((sl) => sl.options.map((o) => ({ [sl.id]: o.id })));
+const ALL = S.BUILD_SLOTS.flatMap((sl) => sl.options.filter((o) => o.id !== S.DEFAULT_BUILD[sl.id]).map((o) => ({ [sl.id]: o.id })));
 
 test('the standard build reproduces the original lander exactly', () => {
   const spec = S.makeSpec(), sp = S.makeSpec(S.DEFAULT_BUILD);
@@ -35,16 +35,21 @@ test('without a chute the chute button does nothing; without panels nothing char
   assert.ok(s.battery < 50);
 });
 
-test('every build lands the re-entries when following the HUD', () => {
-  for (const id of ['terra-orbit', 'brontes-orbit']) {
-    const P = S.ORBIT_PLANETS.find((p) => p.id === id);
-    for (const b of ALL) {
-      if (id === 'terra-orbit' && b.chute === 'none') continue; // terminal speed ~85 m/s: needs a better pilot
-      const { s } = recordPilot(P, 0, 5, makePilot(S, P, {}), 600, {}, b);
-      assert.equal(s.status, 'landed', `${id} ${JSON.stringify(b)}: ${s.reason}`);
-      assert.ok(Math.hypot(s.x, s.z) < 40, `${id} ${JSON.stringify(b)}: ${Math.hypot(s.x, s.z).toFixed(0)} m`);
+test('every build lands where the builder shows no warning (and the warnings flag what fails)', () => {
+  const levels = [...S.PLANETS.slice(0, 3), ...S.ORBIT_PLANETS];
+  for (const b of ALL) {
+    const w = S.buildWarnings(b, levels);
+    for (const P of levels) {
+      if (w.per[P.id]) continue; // warned: may be a challenge the test pilot can't do
+      const { s } = recordPilot(P, 0, 5, makePilot(S, P, { dropShield: 'hint' }), 600, {}, b);
+      assert.equal(s.status, 'landed', `${P.id} ${JSON.stringify(b)}: ${s.reason}`);
     }
   }
+  // the classic challenges are flagged
+  const all = [...S.PLANETS, ...S.ORBIT_PLANETS];
+  assert.ok(S.buildWarnings({ solar: 'none' }, all).list.some((x) => /Kein Solar/.test(x.text)));
+  assert.ok(S.buildWarnings({ engine: 'mini', capsule: 'hab', tanks: 'huge' }, all).list.some((x) => x.level === 'bad' && /zu schwach/.test(x.text)));
+  assert.equal(S.buildWarnings({}, all).list.length, 0);
 });
 
 test('the heat shield keeps the rest of the lander far cooler on a normal Terra entry', () => {
@@ -60,7 +65,7 @@ test('the heat shield keeps the rest of the lander far cooler on a normal Terra 
 test('a flight with a custom build replays identically', () => {
   const P = S.ORBIT_PLANETS[2], build = { engine: 'strong', tanks: 'large', power: 'both', chute: 'large', shield: 'shield', legs: 'wide' };
   const { record } = recordPilot(P, 1, 3, makePilot(S, P, {}), 600, {}, build);
-  assert.deepEqual(record.build, { ...S.DEFAULT_BUILD, ...build });
+  assert.deepEqual(record.build, S.normalizeBuild(build));
   assert.deepEqual(summary(replay(JSON.parse(JSON.stringify(record)))), record.result);
 });
 

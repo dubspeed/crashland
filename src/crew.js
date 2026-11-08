@@ -5,6 +5,7 @@ const LOOK = {
   kira: { skin: '#b37b52', hair: '#1b1411', hairStyle: 'short', stripe: '#ffb547' },
   bo: { skin: '#efc3a0', hair: '#c8642a', hairStyle: 'beard', stripe: '#8fe3ff' },
   ines: { skin: '#6e4832', hair: '#141010', hairStyle: 'puff', glasses: true, stripe: '#5fe0a0' },
+  juno: { skin: '#d9a77c', hair: '#e8d9b0', hairStyle: 'short', stripe: '#c58cff' },
 };
 
 const HEAD = [[50, 22], [68, 27], [76, 42], [75, 58], [68, 72], [58, 80], [50, 82], [42, 80], [32, 72], [25, 58], [24, 42], [32, 27]];
@@ -181,10 +182,10 @@ const LINES = {
   start: ['kira', 'Abstieg beginnt. Alle angeschnallt?'],
   float: ['ines', 'Schwerelos! Meine Haare…'],
   ignite: ['kira', 'Zündung!'],
-  overG: { kira: 'Halte… durch…', bo: 'Ächz! Zu viel G!', ines: 'Uff… das drückt!' },
-  dark: { kira: 'Mir wird schwarz vor Augen…', bo: 'Ich seh nur noch grau…', ines: 'Mir wird schwarz…' },
-  out: { kira: ['bo', 'Kira?! KIRA! Wach auf!'], bo: ['ines', 'Bo ist weg!'], ines: ['bo', 'Ines ist ohnmächtig!'] },
-  wake: { kira: 'Was… bin wieder da!', bo: 'Wo… was ist passiert?', ines: 'Hab ich was verpasst?' },
+  overG: { kira: 'Halte… durch…', bo: 'Ächz! Zu viel G!', ines: 'Uff… das drückt!', juno: 'Puls bei 160…' },
+  dark: { kira: 'Mir wird schwarz vor Augen…', bo: 'Ich seh nur noch grau…', ines: 'Mir wird schwarz…', juno: 'Tunnelblick… nicht gut…' },
+  out: { kira: ['bo', 'Kira?! KIRA! Wach auf!'], bo: ['ines', 'Bo ist weg!'], ines: ['bo', 'Ines ist ohnmächtig!'], juno: ['kira', 'Juno ist weggetreten!'] },
+  wake: { kira: 'Was… bin wieder da!', bo: 'Wo… was ist passiert?', ines: 'Hab ich was verpasst?', juno: 'Okay… Vitalwerte stabil.' },
   brake: ['bo', 'BREMSEN!!'],
   fuel: ['bo', 'Tank fast leer!'],
   power: ['bo', 'Strom weg! Pumpen aus!'],
@@ -203,19 +204,31 @@ const LINES = {
 };
 
 export function createCrew(container, sayEl) {
-  const cards = S.CREW.map((c) => {
-    const el = document.createElement('div');
-    el.className = 'face';
-    el.innerHTML = `<canvas></canvas><span class="nm">${c.name} <small>${c.limit.toLocaleString('de-DE')} g</small></span><div class="bar"><i></i></div>`;
-    container.append(el);
-    return { el, canvas: el.querySelector('canvas'), bar: el.querySelector('i') };
-  });
+  // one card per seat; rebuilt when the capsule has a different crew (2-4)
+  let cards = [], cardsFor = '', crewNow = S.CREW;
+  function ensureCards(crew) {
+    const key = crew.map((c) => c.id).join();
+    if (key === cardsFor) return;
+    cardsFor = key; crewNow = crew;
+    container.innerHTML = '';
+    container.style.setProperty('--n', crew.length);
+    cards = crew.map((c) => {
+      const el = document.createElement('div');
+      el.className = 'face';
+      el.innerHTML = `<canvas></canvas><span class="nm">${c.name} <small>${c.limit.toLocaleString('de-DE')} g</small></span><div class="bar"><i></i></div>`;
+      container.append(el);
+      return { el, canvas: el.querySelector('canvas'), bar: el.querySelector('i') };
+    });
+  }
+  ensureCards(S.CREW);
   let said = new Set(), sayUntil = 0, prev = null, look = 0;
 
   function say(key, who, text, t) {
     if (said.has(key)) return;
     said.add(key);
-    sayEl.innerHTML = `<b>${S.CREW.find((c) => c.id === who).name}:</b> ${text}`;
+    // a line for someone not on board (two-seater): the pilot says it
+    const c = crewNow.find((k) => k.id === who) ?? crewNow[0];
+    sayEl.innerHTML = `<b>${c.name}:</b> ${text}`;
     sayEl.classList.remove('fresh'); void sayEl.offsetWidth; sayEl.classList.add('fresh');
     sayUntil = t + 3;
   }
@@ -272,6 +285,7 @@ export function createCrew(container, sayEl) {
   }
 
   function update(s, alt, crashGrade, time) {
+    ensureCards(s.crew);
     events(s, alt, crashGrade);
     look += ((s.vx > 1 ? 1.2 : s.vx < -1 ? -1.2 : 0) - look) * 0.05;
     s.crew.forEach((c, i) => {

@@ -117,7 +117,7 @@ export function createHud() {
   }
   function hottest(s) {
     let best = { f: 0, name: '' };
-    for (const c of s.spec.comps) if (c.heat && !s.lost[c.id] && !s.dropped[c.id]) { const f = heatFrac(s, c.id); if (f > best.f) best = { f, name: c.name, solar: c.model === 'solar' }; }
+    for (const c of s.spec.comps) if (c.heat && !s.lost[c.id] && !s.dropped[c.id]) { const f = heatFrac(s, c.id); if (f > best.f) best = { f, name: c.name, solar: c.id === 'solarL' || c.id === 'solarR' }; }
     return best;
   }
 

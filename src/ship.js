@@ -2,11 +2,11 @@ import * as THREE from 'three';
 import { COMPONENTS, SHIELD, makeSpec, massProps, PIVOT_Y, density as S_density } from './sim.js';
 
 /** heat shield: a dark ablative cone ring around the nozzle (no Blender model needed) */
-function shieldModel(exitR = 0.78) {
+function shieldModel(exitR = 0.78, color = 0x3a2b22) {
   // the inner edge hugs the nozzle exit of the chosen engine (radius exitR), the rim stays at 1.8 m
   const k = exitR / 0.78;
   const prof = [[0.62 * k, 0.16], [0.7 * k, 0.18], [1.78, -0.02], [1.8, -0.1], [1.7, -0.12], [0.6 * k, 0.06]].map(([r, y]) => new THREE.Vector2(r, y));
-  const mesh = new THREE.Mesh(new THREE.LatheGeometry(prof, 28), new THREE.MeshStandardMaterial({ color: 0x3a2b22, roughness: 0.95, metalness: 0.05, flatShading: true }));
+  const mesh = new THREE.Mesh(new THREE.LatheGeometry(prof, 28), new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0.05, flatShading: true }));
   mesh.castShadow = true;
   const g = new THREE.Group(); g.add(mesh);
   return g;
@@ -30,7 +30,8 @@ export function createShip(models) {
   function modelFor(id, name) {
     const key = `${id}:${name}`;
     if (variants[key]) return variants[key];
-    const o = name.startsWith('shield') ? shieldModel(+name.split(':')[1] || 0.78) : models[name].clone(true);
+    const [, sr, sc] = name.split(':');
+    const o = name.startsWith('shield') ? shieldModel(+sr || 0.78, sc ? +sc : undefined) : models[name].clone(true);
     o.traverse((m) => {
       if (!m.isMesh) return;
       m.material = m.material.clone();
@@ -119,7 +120,7 @@ export function createShip(models) {
       if (!c) { o.parent?.remove(o); continue; }
       if (o.parent !== group) group.add(o);
       // the variant's model, placed on its attachment point
-      const m = modelFor(c.id, c.id === 'shield' ? `shield:${nodes.shieldR}` : c.model);
+      const m = modelFor(c.id, c.id === 'shield' ? `shield:${nodes.shieldR}${nodes.shieldColor ? `:${nodes.shieldColor}` : ''}` : c.model);
       if (o.children[0] !== m) { o.clear(); o.add(m); }
       o.userData.component = c;
       o.position.set(...c.pos);

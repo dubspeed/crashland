@@ -243,98 +243,178 @@ export const COMPONENTS = [
 
 // ---------- lander builder: six slots, each option changes parts, masses and performance ----------
 export const BUILD_SLOTS = [
-  { id: 'engine', name: 'Triebwerk', options: [
+  { id: 'capsule', name: 'Kapsel', short: 'Kapsel', options: [
+    { id: 'duo', name: 'Zweisitzer', desc: '2 Crew · −500 kg' },
+    { id: 'std', name: 'Standard', desc: '3 Crew' },
+    { id: 'armored', name: 'Gepanzert', desc: '3 Crew · hält viel mehr Hitze aus · +350 kg' },
+    { id: 'hab', name: 'Habitat', desc: '4 Crew · +700 kg' }] },
+  { id: 'engine', name: 'Triebwerk', short: 'Antrieb', options: [
+    { id: 'mini', name: 'Mini', desc: '90 kN · Isp 300 s · −250 kg' },
+    { id: 'eco', name: 'Effizient', desc: '140 kN · Isp 320 s · −70 kg' },
     { id: 'std', name: 'Standard', desc: '185 kN · Isp 290 s' },
     { id: 'strong', name: 'Stark', desc: '240 kN · Isp 280 s · +150 kg' },
-    { id: 'eco', name: 'Effizient', desc: '140 kN · Isp 320 s · −70 kg' }] },
-  { id: 'tanks', name: 'Tanks', options: [
+    { id: 'cluster', name: 'Bündel', desc: '3 Düsen · 330 kN · Isp 275 s · +420 kg' }] },
+  { id: 'tanks', name: 'Tanks', short: 'Tanks', options: [
+    { id: 'mini', name: 'Mini', desc: '45 % Treibstoff · −180 kg' },
     { id: 'small', name: 'Klein', desc: '70 % Treibstoff · −100 kg' },
     { id: 'std', name: 'Standard', desc: '100 % Treibstoff' },
-    { id: 'large', name: 'Groß', desc: '135 % Treibstoff · +120 kg' }] },
-  { id: 'power', name: 'Energie', options: [
-    { id: 'panels', name: 'Solarpaneele', desc: 'laden, aber hitzeempfindlich' },
-    { id: 'battery', name: 'Große Batterie', desc: 'keine Paneele · 2,2× Kapazität · +30 kg' },
-    { id: 'both', name: 'Beides', desc: 'Paneele + große Batterie · +250 kg' }] },
-  { id: 'chute', name: 'Fallschirm', options: [
+    { id: 'large', name: 'Groß', desc: '135 % Treibstoff · +120 kg' },
+    { id: 'huge', name: 'Riesig', desc: '180 % Treibstoff · +260 kg' }] },
+  { id: 'solar', name: 'Solarpaneele', short: 'Solar', options: [
+    { id: 'none', name: 'Keine', desc: 'nur Batterie · −220 kg' },
+    { id: 'small', name: 'Klein', desc: '55 % Leistung · −100 kg' },
+    { id: 'std', name: 'Standard', desc: 'laden, aber hitzeempfindlich' },
+    { id: 'large', name: 'Groß', desc: '170 % Leistung · glühen schneller · +120 kg' }] },
+  { id: 'battery', name: 'Batterie', short: 'Akku', options: [
+    { id: 'small', name: 'Klein', desc: '50 % Kapazität · −200 kg' },
+    { id: 'std', name: 'Standard', desc: '' },
+    { id: 'large', name: 'Groß', desc: '2,2× Kapazität · +250 kg' }] },
+  { id: 'chute', name: 'Fallschirm', short: 'Schirm', options: [
     { id: 'none', name: 'Keiner', desc: '−120 kg' },
+    { id: 'small', name: 'Klein', desc: '70 m² · 50 kN · −50 kg' },
     { id: 'std', name: 'Standard', desc: '110 m² · 70 kN' },
     { id: 'large', name: 'Groß', desc: '170 m² · 95 kN · +80 kg' }] },
-  { id: 'shield', name: 'Hitzeschild', options: [
+  { id: 'shield', name: 'Hitzeschild', short: 'Schild', options: [
     { id: 'none', name: 'Keiner', desc: '' },
-    { id: 'shield', name: 'Hitzeschild', desc: 'schützt, wenn das Triebwerk vorn ist · +240 kg' }] },
-  { id: 'legs', name: 'Landebeine', options: [
+    { id: 'light', name: 'Leicht', desc: 'schützt halb so gut · +120 kg' },
+    { id: 'shield', name: 'Standard', desc: 'schützt, wenn das Triebwerk vorn ist · +240 kg' }] },
+  { id: 'legs', name: 'Landebeine', short: 'Beine', options: [
     { id: 'light', name: 'Leicht', desc: 'weniger Toleranz · −120 kg' },
     { id: 'std', name: 'Standard', desc: '' },
-    { id: 'wide', name: 'Breit', desc: 'mehr Drift & Neigung · +120 kg' }] },
+    { id: 'wide', name: 'Breit', desc: 'mehr Drift & Neigung · +120 kg' },
+    { id: 'heavy', name: 'Gefedert', desc: '30 % mehr Sinkrate · +220 kg' }] },
 ];
-export const DEFAULT_BUILD = { engine: 'std', tanks: 'std', power: 'panels', chute: 'std', shield: 'none', legs: 'std' };
+export const DEFAULT_BUILD = { capsule: 'std', engine: 'std', tanks: 'std', solar: 'std', battery: 'std', chute: 'std', shield: 'none', legs: 'std' };
 export const SHIELD = { id: 'shield', name: 'Hitzeschild', model: 'shield', mass: 240, pos: [0, 0.95, 0], heat: [1.2, 3000, 6] };
+// the fourth seat of the habitat capsule
+export const CREW_EXTRA = { id: 'juno', name: 'Juno', role: 'Ärztin', limit: 3.0 };
+/** builds saved before solar and battery were separate slots ("power") */
+export function normalizeBuild(build = {}) {
+  const b = { ...build };
+  if (b.power) {
+    const m = { panels: ['std', 'std'], battery: ['none', 'large'], both: ['std', 'large'] }[b.power] ?? ['std', 'std'];
+    b.solar ??= m[0]; b.battery ??= m[1];
+    delete b.power;
+  }
+  const out = { ...DEFAULT_BUILD, ...b };
+  for (const sl of BUILD_SLOTS) if (!sl.options.some((o) => o.id === out[sl.id])) out[sl.id] = DEFAULT_BUILD[sl.id];
+  return out;
+}
 
 // ---------- attachment points ----------
 // Parts sit on nodes of the part they are attached to, so a bigger variant moves what hangs on it: tanks sit
 // against the frame's side (x = FRAME_SIDE + their radius), the engine hangs from the frame's mount, the heat
 // shield wraps the nozzle exit, the chute pack sits on the capsule's docking port, the legs carry the feet.
 // Heights in m above the foot plane (= the part positions in COMPONENTS).
-export const NODES = { frameSide: 0.6, engineMount: 2.5, capsuleTop: 5.38 };
+export const NODES = { frameSide: 0.6, engineMount: 2.5, capsuleY: 4.5 };
 export const PART_VARIANTS = {
+  // capsule: top = docking port seat above the capsule origin; crew; heat = [exposure, limit]
+  capsule: { duo: { model: 'capsule_duo', top: 0.73, mass: 1000, crew: 2 }, std: { model: 'capsule', top: 0.88, mass: 1500, crew: 3 },
+    armored: { model: 'capsule_armored', top: 0.88, mass: 1850, crew: 3, heat: [0.06, 3200] }, hab: { model: 'capsule_hab', top: 1.33, mass: 2200, crew: 4 } },
   // nozzle: exit below the part origin; exitR: exit radius (shield size, flame width); comDy: centre of mass shift
-  engine: { std: { model: 'engine', top: 1.0, nozzle: -0.8, exitR: 0.78 }, strong: { model: 'engine_strong', top: 1.0, nozzle: -0.7, exitR: 0.98 },
-    eco: { model: 'engine_eco', top: 1.0, nozzle: -1.15, exitR: 0.66, comDy: -0.12 } },
-  tanks: { small: { model: 'tank_small', r: 0.5 }, std: { model: 'tank', r: 0.55 }, large: { model: 'tank_large', r: 0.66 } },
-  power: { panels: { model: 'battery' }, battery: { model: 'battery_big' }, both: { model: 'battery_big' } },
-  chute: { none: { model: 'chutepack', half: 0.17 }, std: { model: 'chutepack', half: 0.17 }, large: { model: 'chutepack_large', half: 0.22 } },
-  legs: { light: { model: 'legs_light', foot: 1.8 }, std: { model: 'legs', foot: 2.0 }, wide: { model: 'legs_wide', foot: 2.5 } },
+  engine: { mini: { model: 'engine_mini', top: 1.0, nozzle: -0.6, exitR: 0.5, f: 90000, isp: 300, mass: 700 },
+    eco: { model: 'engine_eco', top: 1.0, nozzle: -1.15, exitR: 0.66, comDy: -0.12, f: 140000, isp: 320, mass: 880 },
+    std: { model: 'engine', top: 1.0, nozzle: -0.8, exitR: 0.78, f: F_MAX, isp: ISP, mass: 950 },
+    strong: { model: 'engine_strong', top: 1.0, nozzle: -0.7, exitR: 0.98, f: 240000, isp: 280, mass: 1100 },
+    cluster: { model: 'engine_cluster', top: 1.0, nozzle: -0.75, exitR: 0.95, f: 330000, isp: 275, mass: 1370 } },
+  tanks: { mini: { model: 'tank_mini', r: 0.45, k: 0.45, mass: 110 }, small: { model: 'tank_small', r: 0.5, k: 0.7, mass: 150 },
+    std: { model: 'tank', r: 0.55, k: 1, mass: 200 }, large: { model: 'tank_large', r: 0.66, k: 1.35, mass: 260 }, huge: { model: 'tank_huge', r: 0.75, k: 1.8, mass: 330 } },
+  // solar: k = power, heat = exposure of each wing
+  solar: { none: null, small: { model: 'solar_small', k: 0.55, mass: 60, heat: 1.3 }, std: { model: 'solar', k: 1, mass: 110, heat: 2.2 },
+    large: { model: 'solar_large', k: 1.7, mass: 170, heat: 3.0 } },
+  battery: { small: { model: 'battery_small', k: 0.5, mass: 220 }, std: { model: 'battery', k: 1, mass: 420 }, large: { model: 'battery_big', k: 2.2, mass: 670 } },
+  chute: { none: { model: 'chutepack', half: 0.17 }, small: { model: 'chutepack_small', half: 0.13, cda: 70, fmax: 50000, mass: 70 },
+    std: { model: 'chutepack', half: 0.17, cda: CHUTE_CDA, fmax: CHUTE_FMAX, mass: 120 }, large: { model: 'chutepack_large', half: 0.22, cda: 170, fmax: 95000, mass: 200 } },
+  // shield: prot = how much of the standard shield's protection
+  shield: { none: null, light: { mass: 120, prot: 0.5, heat: [1.2, 1800, 4], color: 0x8a6a48 }, shield: { mass: 240, prot: 1, heat: [1.2, 3000, 6] } },
+  // legs: mass, sink / drift / tilt tolerance factors, uneven ground, foot span
+  legs: { light: { model: 'legs_light', foot: 1.8, l: [260, 0.8, 1, 1, 0.65] }, std: { model: 'legs', foot: 2.0, l: [380, 1, 1, 1, 0.8] },
+    wide: { model: 'legs_wide', foot: 2.5, l: [500, 1, 1.4, 1.3, 1.1] }, heavy: { model: 'legs_heavy', foot: 2.1, l: [600, 1.3, 1.1, 1.1, 0.9] } },
 };
 const r3 = (v) => Math.round(v * 1000) / 1000;
 /** where every part of a build goes (positions, centre-of-mass overrides, models) and the render nodes */
 export function layout(build = {}) {
-  const b = { ...DEFAULT_BUILD, ...build };
-  const V = (slot) => PART_VARIANTS[slot][b[slot]] ?? PART_VARIANTS[slot][DEFAULT_BUILD[slot]];
-  const eng = V('engine'), tank = V('tanks'), pw = V('power'), ch = V('chute'), lg = V('legs');
+  const b = normalizeBuild(build);
+  const V = (slot) => PART_VARIANTS[slot][b[slot]];
+  const cap = V('capsule'), eng = V('engine'), tank = V('tanks'), sol = V('solar') ?? PART_VARIANTS.solar.std, bat = V('battery'), ch = V('chute'), lg = V('legs');
   const engY = r3(NODES.engineMount - eng.top), nozzleY = r3(engY + eng.nozzle);
-  const tx = r3(NODES.frameSide + tank.r), chY = r3(NODES.capsuleTop + ch.half);
+  const capTop = r3(NODES.capsuleY + cap.top);
+  const tx = r3(NODES.frameSide + tank.r), chY = r3(capTop + ch.half);
   return {
     pos: { engine: [0, engY, 0], tankL: [-tx, 2.9, 0], tankR: [tx, 2.9, 0], chute: [0, chY, 0], shield: [0, r3(nozzleY + 0.25), 0] },
     com: eng.comDy ? { engine: [0, r3(engY + eng.comDy)] } : {},
-    models: { engine: eng.model, tankL: tank.model, tankR: tank.model, battery: pw.model, chute: ch.model, legs: lg.model },
-    nodes: { flameY: r3(nozzleY + 0.02), flameK: eng.exitR / 0.78, shieldR: eng.exitR, chuteTop: r3(chY + ch.half), footX: lg.foot },
+    models: { capsule: cap.model, engine: eng.model, tankL: tank.model, tankR: tank.model, solarL: sol.model, solarR: sol.model, battery: bat.model, chute: ch.model, legs: lg.model },
+    nodes: { flameY: r3(nozzleY + 0.02), flameK: eng.exitR / 0.78, shieldR: eng.exitR, shieldColor: PART_VARIANTS.shield[b.shield]?.color, chuteTop: r3(chY + ch.half), footX: lg.foot },
   };
 }
 
 /** the lander as built: parts (masses, which exist) and performance figures. The default build gives
  *  exactly the original constants, so its flights are unchanged. */
 export function makeSpec(build = {}) {
-  const b = { ...DEFAULT_BUILD, ...build };
-  const eng = { std: [F_MAX, ISP, 950], strong: [240000, 280, 1100], eco: [140000, 320, 880] }[b.engine] ?? [F_MAX, ISP, 950];
-  const tank = { small: [0.7, 150], std: [1, 200], large: [1.35, 260] }[b.tanks] ?? [1, 200];
-  const legs = { light: [260, 0.8, 1, 1, 0.65], std: [380, 1, 1, 1, 0.8], wide: [500, 1, 1.4, 1.3, 1.1] }[b.legs] ?? [380, 1, 1, 1, 0.8];
+  const b = normalizeBuild(build);
+  const V = (slot) => PART_VARIANTS[slot][b[slot]];
+  const cap = V('capsule'), eng = V('engine'), tank = V('tanks'), sol = V('solar'), bat = V('battery'), ch = V('chute'), sh = V('shield'), legs = V('legs').l;
   const comps = [];
   for (const c0 of COMPONENTS) {
-    if ((c0.id === 'solarL' || c0.id === 'solarR') && b.power === 'battery') continue;
+    if ((c0.id === 'solarL' || c0.id === 'solarR') && !sol) continue;
     if (c0.id === 'chute' && b.chute === 'none') continue;
     const c = { ...c0 };
-    if (c.id === 'engine') c.mass = eng[2];
-    if (c.id === 'tankL' || c.id === 'tankR') c.mass = tank[1];
-    if (c.id === 'battery' && b.power !== 'panels') c.mass = b.power === 'battery' ? 670 : 670; // big pack
-    if (c.id === 'chute' && b.chute === 'large') c.mass = 200;
+    if (c.id === 'capsule') { c.mass = cap.mass; if (cap.heat) c.heat = [...cap.heat]; }
+    if (c.id === 'engine') c.mass = eng.mass;
+    if (c.id === 'tankL' || c.id === 'tankR') c.mass = tank.mass;
+    if (c.id === 'solarL' || c.id === 'solarR') { c.mass = sol.mass; if (sol.heat !== c.heat[0]) c.heat = [sol.heat, c.heat[1], c.heat[2]]; }
+    if (c.id === 'battery') c.mass = bat.mass;
+    if (c.id === 'chute') c.mass = ch.mass;
     if (c.id === 'legs') c.mass = legs[0];
     comps.push(c);
   }
-  if (b.shield === 'shield') comps.push({ ...SHIELD });
+  if (sh) comps.push({ ...SHIELD, mass: sh.mass, heat: [...sh.heat], prot: sh.prot });
   const lay = layout(b);
   for (const c of comps) {
     if (lay.pos[c.id]) c.pos = lay.pos[c.id];
     if (lay.com[c.id]) c.com = lay.com[c.id];
     c.model = lay.models[c.id] ?? c.model;
   }
+  const crew = [...CREW, CREW_EXTRA].slice(0, cap.crew).map((c) => c.id);
   return {
-    build: b, comps, ids: new Set(comps.map((c) => c.id)),
-    fMax: eng[0], isp: eng[1], tankK: tank[0], batK: b.power === 'panels' ? 1 : 2.2,
-    chuteCda: b.chute === 'large' ? 170 : CHUTE_CDA, chuteFmax: b.chute === 'large' ? 95000 : CHUTE_FMAX,
+    build: b, comps, ids: new Set(comps.map((c) => c.id)), crew,
+    fMax: eng.f, isp: eng.isp, tankK: tank.k, batK: bat.k, solarK: sol?.k ?? 0,
+    chuteCda: ch.cda ?? CHUTE_CDA, chuteFmax: ch.fmax ?? CHUTE_FMAX,
     land: { vy: LAND.vy.map((v) => v * legs[1]), vx: LAND.vx.map((v) => v * legs[2]), tilt: LAND.tilt.map((v) => v * legs[3]) },
     uneven: legs[4], footX: lay.nodes.footX, nodes: lay.nodes,
   };
 }
+
+/** what a build can't do (or only barely), per planet and overall, for the builder's warnings.
+ *  Built lander, full tanks: twr < 1 means it cannot stop a fall at all there. */
+export function buildWarnings(build, planets, fuelK = 1) {
+  const spec = makeSpec(build), out = [], per = {};
+  const dv = (b, p) => {
+    const s = createState(p, { build: b, fuelK, rnd: () => 0.5, windHeading: 0 }), sp = s.spec, m0 = massProps(s).m;
+    // load per canopy area (decides the speed under the chute, and so the final burn in thick air)
+    return { dv: sp.isp * G0 * Math.log(m0 / (m0 - s.fuel0)), twr: sp.fMax / (m0 * p.g), load: sp.ids.has('chute') ? (m0 - s.fuel0 * 0.5) / sp.chuteCda : Infinity };
+  };
+  const weak = [], short = [], heavy = [];
+  for (const p of planets) {
+    const now = dv(build, p), std = dv(DEFAULT_BUILD, p);
+    const lowDv = now.dv < std.dv * 0.93, noChute = !spec.ids.has('chute') && p.rho > 0.5, noSun = !spec.solarK && p.orbit;
+    const chuteLoad = p.rho > 0.5 && spec.ids.has('chute') && now.load > std.load * 1.048;
+    per[p.id] = now.twr < 1 ? 'bad' : now.twr < 1.3 || lowDv || noChute || noSun || chuteLoad ? 'warn' : '';
+    if (now.twr < 1) weak.push(p.name); else if (lowDv) short.push(p.name);
+    if (chuteLoad) heavy.push(p.name);
+  }
+  const names = (l) => [...new Set(l.map((n) => n.replace(' Orbit', '')))].join(', ');
+  if (weak.length) out.push({ level: 'bad', text: `Triebwerk zu schwach für ${names(weak)}` });
+  if (short.length) out.push({ level: 'warn', text: `Weniger Δv als der Standard-Lander: ${names(short)} wird knapp` });
+  if (heavy.length) out.push({ level: 'warn', text: `Schwer für den Schirm: auf ${names(heavy)} schneller unten, mehr Bremsen nötig` });
+  const use = 0.55 + 0.25; // base load with attitude hold, %/s of the standard battery
+  const mins = (BAT_CAP * spec.batK) / use / 60;
+  if (!spec.solarK) out.push({ level: mins < 3 ? 'bad' : 'warn', text: `Kein Solar: Batterie reicht ~${String(Math.round(mins * 10) / 10).replace('.', ',')} min` });
+  else if (spec.batK < 1 && spec.solarK < 1) out.push({ level: 'warn', text: 'Wenig Strom: kleine Batterie und kleine Paneele' });
+  if (!spec.ids.has('chute')) out.push({ level: 'warn', text: 'Ohne Schirm: Terra und Brontes sehr schwer' });
+  return { list: out, per };
+}
+
 /** a part is there: built in and not destroyed */
 export const hasPart = (s, id) => s.spec.ids.has(id) && !s.lost[id] && !s.dropped[id];
 /** decoupler: drop a part on purpose (the heat shield). It leaves with its mass; unlike a part that burned
@@ -351,7 +431,7 @@ function exposure(s, c, shieldF, facing, sa, sb) {
   let exp = s.planet.orbit
     ? c.heat[0] * (c.id === 'engine' ? 1 : (1 - (c.id === 'legs' ? 0.5 : 0.85) * shieldF) * (1 + 1.5 * (1 - shieldF)))
     : Math.max(0, c.heat[0] * (1 + Math.sign(c.pos[0]) * sa * 2.5 - Math.sign(c.pos[2]) * sb * 2.5));
-  if (c.model === 'solar') exp *= 1 - 0.88 * s.panelFold; // folded panels sit in the lee of the frame
+  if (c.id === 'solarL' || c.id === 'solarR') exp *= 1 - 0.88 * s.panelFold; // folded panels sit in the lee of the frame
   if (facing > 0 && c.id !== 'shield') exp *= 1 - (c.id === 'legs' ? 0.45 : 0.75) * facing;
   return exp;
 }
@@ -430,7 +510,7 @@ export function createState(planet, opts = {}) {
     spec, fuel0: planet.fuel * fuelK, fuelL: (planet.fuel * fuelK) / 2, fuelR: (planet.fuel * fuelK) / 2, battery: BAT_CAP,
     limit: 1, throttle: 0, sas: 'hold', holdA: t0, holdB: b0, sasI: 0, sasIB: 0,
     gNow: 0, maxG: 0, gStress: 0, gOverTime: 0, powered: true, blackout: false,
-    crew: CREW.map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
+    crew: [...CREW, CREW_EXTRA].filter((c) => spec.crew.includes(c.id)).map((c) => ({ ...c, stress: 0, out: false, fainted: 0 })),
     torqueCom: 0, torqueComB: 0, sasTorque: 0, temp: Object.fromEntries(spec.comps.map((c) => [c.id, T_AMB])), lost: {}, dropped: {}, peakFlux: 0, events: [],
     panels: 'out', panelFold: 0,
     chute: 'stowed', chuteT: 0, chuteInflate: 0, chuteOpen: 0, q: 0, maxQ: 0, drag: 0,
@@ -871,7 +951,7 @@ export function step(s, input, dt) {
   // orbit levels: above the air the sun shines fully; it dims to the planet's ground value with the air below
   const sun = p.orbit && p.rho > 0 ? p.solar + (1 - p.solar) * (1 - Math.min(1, density(s) / p.rho)) : p.solar;
   s.solarNow = sun;
-  const gain = 1.6 * sun * (panels / 2) * (1 - s.panelFold);
+  const gain = 1.6 * sun * (panels / 2) * (1 - s.panelFold) * (s.spec.solarK ?? 1);
   s.battery = Math.max(0, Math.min(BAT_CAP, s.battery + ((gain - use) / s.spec.batK) * dt)); // big pack: slower %
   s.powerIn = gain / s.spec.batK; s.powerUse = use / s.spec.batK; // %/s, for the HUD
 
@@ -893,6 +973,7 @@ export function step(s, input, dt) {
   if (hasPart(s, 'shield')) {
     const ux = upVector(s), vr = Math.hypot(s.vx - wind.x, s.vy, s.vz - wind.z) || 1;
     facing = Math.max(0, -((s.vx - wind.x) * ux.x + s.vy * ux.y + (s.vz - wind.z) * ux.z) / vr);
+    facing *= s.spec.comps.find((c) => c.id === 'shield').prot ?? 1; // the light shield protects less
   }
   for (const c of s.spec.comps) {
     if (s.lost[c.id] || s.dropped[c.id] || !c.heat) continue;

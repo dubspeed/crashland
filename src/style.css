@@ -68,7 +68,7 @@ dd { white-space: nowrap; }
 .crew-head { display: flex; justify-content: space-between; align-items: baseline; }
 .crew-head h2 { margin: 0; }
 #v-g { font: 700 18px var(--display); font-variant-numeric: tabular-nums; }
-#crew-faces { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 6px; }
+#crew-faces { display: grid; grid-template-columns: repeat(var(--n, 3), 1fr); gap: 6px; margin-top: 6px; }
 .face { display: grid; justify-items: center; gap: 2px; min-width: 0; }
 .face canvas { width: var(--face, 64px); height: var(--face, 64px); }
 .face .nm { font-size: 11px; line-height: 1.1; white-space: nowrap; }
@@ -592,3 +592,20 @@ body.building #top { display: none; }
   .power { padding-top: 5px; }
   .pw-top b { min-width: 26px; }
 }
+
+/* builder: warnings (a build is allowed to be odd: it is a challenge) */
+.bd-warn { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.bd-warn em { font: 600 10.5px var(--mono); font-style: normal; padding: 2px 7px; border-radius: 6px; background: rgba(255,208,77,0.1); color: var(--warn); }
+.bd-warn em.bad { background: rgba(255,93,82,0.12); color: var(--bad); }
+.bp .bp-n i { font-style: normal; margin-right: 3px; }
+.bp.w-warn .bp-n { color: var(--warn); } .bp.w-bad .bp-n { color: var(--bad); }
+.bo-b .b-bad { color: var(--bad); } .bo-b .b-warn { color: var(--warn); }
+/* more options than fit: the cards scroll sideways */
+.bd-opts { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(128px, 1fr); overflow-x: auto; scroll-snap-type: x proximity; scrollbar-width: none; }
+.bd-opts::-webkit-scrollbar { display: none; }
+.bd-opts .bo { scroll-snap-align: start; }
+.bd-opts .bo-hint { grid-column: auto; }
+.bd-slots { grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.bs { padding: 6px 1px 4px; }
+.bs svg { width: 24px; height: 24px; }
+@media (max-width: 560px) { .bs span { font-size: 8px; letter-spacing: 0; } .bs svg { width: 21px; height: 21px; } .bd-opts { grid-auto-columns: minmax(118px, 1fr); } }
