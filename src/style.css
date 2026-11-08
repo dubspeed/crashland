@@ -15,6 +15,10 @@
 }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #05060c; color: var(--ink); font: 14px/1.4 var(--mono); }
 canvas { display: block; touch-action: none; }
+/* a game, not a document: no text selection, no iOS copy/look-up callout, no tap flash, no double-tap zoom */
+*, *::before, *::after { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+input, textarea, [contenteditable] { -webkit-user-select: text; user-select: text; }
+body { touch-action: manipulation; }
 button { font: inherit; color: inherit; cursor: pointer; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 kbd { font: 600 11px var(--mono); border: 1px solid var(--glass-edge); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; color: var(--ink); }

@@ -376,6 +376,12 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
 
+// iOS: long presses would still select text or open the copy / share menu (also on the canvas)
+const editable = (e) => e.target.closest?.('input, textarea, [contenteditable]');
+addEventListener('selectstart', (e) => { if (!editable(e)) e.preventDefault(); });
+addEventListener('contextmenu', (e) => { if (!editable(e)) e.preventDefault(); });
+document.addEventListener('selectionchange', () => { const sel = getSelection(); if (sel && !sel.isCollapsed && !editable({ target: sel.anchorNode?.parentElement ?? document.body })) sel.removeAllRanges(); });
+
 // ---------- touch / mouse controls ----------
 // Each control tracks its own pointer, so lever and rotate pad work with two thumbs at once.
 function bindPointer(el, onMove, onEnd) {
