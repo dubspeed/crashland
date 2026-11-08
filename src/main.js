@@ -7,6 +7,7 @@ import { createDebris } from './debris.js';
 import { createHud, setLabel } from './hud.js';
 import { createOrbitMap } from './orbitmap.js';
 import { createReentry } from './reentry.js';
+import { createBuilder } from './builder.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -159,47 +160,20 @@ function buildSummary() {
 function setBuild(slot, id) {
   build[slot] = id;
   try { localStorage.setItem('crashland.build', JSON.stringify(build)); } catch { /* storage unavailable */ }
-  renderBuilder();
+  if (mode === 'menu') parkShip();
+  updateBuildBtn();
 }
-function renderBuilder() {
-  $('build-slots').innerHTML = S.BUILD_SLOTS.map((sl) => `<div class="build-slot"><span>${sl.name}</span><div class="opt-select" role="radiogroup" aria-label="${sl.name}">${
-    sl.options.map((o) => `<button role="radio" aria-checked="${build[sl.id] === o.id}" class="${build[sl.id] === o.id ? 'on' : ''}" data-slot="${sl.id}" data-id="${o.id}">${o.name}<small>${o.desc || '&nbsp;'}</small></button>`).join('')}</div></div>`).join('');
-  $('build-slots').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setBuild(b.dataset.slot, b.dataset.id)));
-  // figures: pinned summary (always in view) and the full table below the options
-  const spec = S.makeSpec(build);
-  const f = (n, d = 0) => n.toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
-  const per = [...S.PLANETS, ...S.ORBIT_PLANETS].map((p) => {
-    const st = S.createState(p, { build, fuelK: S.FUEL_LEVELS[settings.fuel]?.k ?? 1, rnd: () => 0.5, windHeading: 0 });
-    const m0 = S.massProps(st).m, fuel = st.fuel0;
-    return { p, fuel, m0, dv: spec.isp * S.G0 * Math.log(m0 / (m0 - fuel)), twr: spec.fMax / (m0 * p.g) };
-  });
-  const twrCls = (x) => (x < 1.3 ? 'bad' : x < 2 ? 'warn' : '');
-  const st0 = S.createState(S.PLANETS[0], { build, rnd: () => 0.5, windHeading: 0 });
-  const dry = S.massProps(st0).m - st0.fuel0;
-  // highlight what changed with the last choice
-  const vals = {
-    dry: `${f(dry)} kg`, thrust: `${f(spec.fMax / 1000)} kN`, isp: `${spec.isp} s`,
-    bat: `×${f(spec.batK, 1)}${spec.ids.has('solarL') ? '' : ', keine Paneele'}`, chute: spec.ids.has('chute') ? `${f(spec.chuteCda)} m²` : 'keiner',
-    land: `≤ ${f(spec.land.vy[2], 1)} m/s · ${f(spec.land.vx[2], 1)} m/s · ${f(spec.land.tilt[2])}°`,
-  };
-  for (const r of per) vals[r.p.id] = `${f(r.dv)}|${f(r.twr, 1)}`;
-  const prev = renderBuilder.prev ?? {}; renderBuilder.prev = vals;
-  const c = (k) => (prev[k] !== undefined && prev[k] !== vals[k] ? ' class="chg"' : '');
-  $('build-pinned').innerHTML = `<div class="bp-row"><span${c('dry')}>Leermasse <b>${vals.dry}</b></span><span${c('thrust')}>Schub <b>${vals.thrust}</b></span><span${c('isp')}>Isp <b>${vals.isp}</b></span>
-      <span${c('bat')}>Batterie <b>${vals.bat}</b></span><span${c('chute')}>Schirm <b>${vals.chute}</b></span><span${c('land')}>Landefenster <b>${vals.land}</b></span></div>
-    <div class="bp-grid">${per.map((r) => `<div class="bp-cell${prev[r.p.id] !== undefined && prev[r.p.id] !== vals[r.p.id] ? ' chg' : ''}">${r.p.name}<b>Δv ${f(r.dv)} · <span class="${twrCls(r.twr)}">${f(r.twr, 1)}</span></b></div>`).join('')}</div>`;
-  $('build-stats').innerHTML = `<table><tr><th>Planet</th><th>Treibstoff</th><th>Startmasse</th><th>Δv</th><th>Schub/Gewicht</th></tr>${
-    per.map((r) => `<tr><td>${r.p.name}</td><td>${f(r.fuel)} kg</td><td>${f(r.m0)} kg</td><td>${f(r.dv)} m/s</td><td class="${twrCls(r.twr)}">${f(r.twr, 1)}</td></tr>`).join('')}</table>`;
-  $('build-btn').innerHTML = `${buildSummary() === 'Standard' ? 'Standard-Lander' : 'Eigener Lander'} · bearbeiten<small>${buildSummary()}</small>`;
-  if (mode === 'menu') { ship.reset(spec); }
-}
-// while building, the start menu steps aside so the lander in the background is visible
-$('build-btn').addEventListener('click', () => { renderBuilder.prev = null; renderBuilder(); $('builder').hidden = false; $('menu').hidden = true; });
-const closeBuilder = () => { $('builder').hidden = true; $('menu').hidden = false; buildMenu(); };
-$('builder-close').addEventListener('click', closeBuilder);
-$('build-done').addEventListener('click', closeBuilder);
-$('build-reset').addEventListener('click', () => { build = { ...S.DEFAULT_BUILD }; setBuild('engine', 'std'); });
-$('builder').addEventListener('click', (e) => { if (e.target === $('builder')) closeBuilder(); });
+const updateBuildBtn = () => { $('build-btn').innerHTML = `${buildSummary() === 'Standard' ? 'Standard-Lander' : 'Eigener Lander'} · bearbeiten<small>${buildSummary()}</small>`; };
+// fullscreen 3D editor (src/builder.js); the start menu steps aside while it is open
+const builder = createBuilder({
+  S, ship, camera, canvas: renderer.domElement,
+  getBuild: () => build,
+  setBuild,
+  resetBuild: () => { build = { ...S.DEFAULT_BUILD }; setBuild('engine', 'std'); },
+  getFuelK: () => S.FUEL_LEVELS[settings.fuel]?.k ?? 1,
+  onClose: () => { $('menu').hidden = false; buildMenu(); },
+});
+$('build-btn').addEventListener('click', () => { $('menu').hidden = true; cam.pitch = 0; builder.open(); });
 
 /** score multiplier of the chosen settings (wind is applied separately, only where there is air) */
 const settingsBonus = (set) => (S.FUEL_LEVELS[set.fuel]?.bonus ?? 1) * (set.hints ? 1 : S.HINTS_OFF_BONUS) * (set.autoFine ? S.AUTO_FINE_BONUS : 1);
@@ -212,7 +186,7 @@ function buildMenu() {
   wrap.innerHTML = '';
   buildWindSelect();
   buildSettings();
-  $('build-btn').innerHTML = `${buildSummary() === 'Standard' ? 'Standard-Lander' : 'Eigener Lander'} · bearbeiten<small>${buildSummary()}</small>`;
+  updateBuildBtn();
   for (const p of [...S.PLANETS, ...S.ORBIT_PLANETS]) {
     const b = document.createElement('button');
     b.className = 'planet';
@@ -249,11 +223,14 @@ function showMenu() {
   mode = 'menu';
   $('menu').hidden = false; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = true;
   buildMenu();
-  // ship parked on the pad as a backdrop
   debris.clear();
+  parkShip();
+}
+/** ship parked on the pad as a backdrop (menu and builder) */
+function parkShip() {
   s = S.createState(planet, { build });
   ship.reset(s.spec); s.x = 0; s.z = 0; s.y = 0; s.vy = 0; s.vx = 0; s.vz = 0; s.a = 0; s.b = 0; s.status = 'parked';
-  ship.update(s, 0);
+  ship.update(s, time);
 }
 
 // ---------- recording (replays) ----------
@@ -509,7 +486,8 @@ addEventListener('pointermove', (e) => {
 });
 // double tap / double click on the scene: back to the view's own camera height
 renderer.domElement.addEventListener('dblclick', () => { cam.pitch = 0; });
-renderer.domElement.addEventListener('wheel', (e) => { cam.dist = Math.min(90, Math.max(12, cam.dist * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: true });
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (builder.active) return; cam.dist = Math.min(90, Math.max(12, cam.dist * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: true });
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
@@ -571,9 +549,11 @@ renderer.setAnimationLoop(() => {
     endTimer -= raw;
     if (endTimer <= 0) showResult();
   }
-  if (mode === 'menu') cam.yaw += dt * 0.12;
+  if (mode === 'menu' && !builder.active) cam.yaw += dt * 0.12;
 
+  builder.beforeUpdate();
   ship.update(s, time);
+  builder.frame(s, dt, time);
   // re-entry glow around the hull centre, and the sky / haze by how much air is above
   reentry.update(s, _hull.set(s.x, s.y + 2.8, s.z), dt, time);
   if (planet.rho > 0) {
@@ -661,8 +641,7 @@ renderer.setAnimationLoop(() => {
     cam.shake = Math.max(0, cam.shake - dt);
     camera.position.add(new THREE.Vector3().randomDirection().multiplyScalar(cam.shake * 0.8));
   }
-  // builder open on a wide screen: look past the lander so it turns in the free left part of the screen
-  if (mode === 'menu' && !$('builder').hidden && innerWidth > 900) lookAt.addScaledVector(_hull.set(Math.cos(cam.yaw), 0, -Math.sin(cam.yaw)), dist * 0.45);
+  if (builder.active) builder.placeCamera(s, cam.yaw, cam.pitch, dt, lookAt);
   camera.lookAt(lookAt);
   placeShipMark();
   if (mode === 'flight') orbitMap.draw(s);
@@ -676,4 +655,4 @@ showMenu();
 
 // handle for automated tests
 window.__crashland = { renderer, camera, cam, get state() { return s; }, exportFlight: flightRecord, act: doAct,
-  setTimeScale(k) { timeScale = Math.max(1, Math.min(50, k)); }, setWind(i) { setWind(i); }, setSettings(o) { Object.assign(settings, o); }, get record() { return rec; }, startSeed(p, seed) { forceSeed = seed; start(p); }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANETS[0] : typeof i === 'string' ? S.ORBIT_PLANETS.find((p) => p.id === i) : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; }, get world() { return world; } };
+  setTimeScale(k) { timeScale = Math.max(1, Math.min(50, k)); }, setWind(i) { setWind(i); }, setSettings(o) { Object.assign(settings, o); }, get record() { return rec; }, startSeed(p, seed) { forceSeed = seed; start(p); }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANETS[0] : typeof i === 'string' ? S.ORBIT_PLANETS.find((p) => p.id === i) : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; }, get world() { return world; }, builder, ship };

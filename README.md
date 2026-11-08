@@ -131,7 +131,13 @@ Attitude control needs the flight computer and power; without them it is always 
 | Hitzeschild | Keiner · Hitzeschild (+240 kg): an ablative ring around the nozzle that shields everything above it while the engine end leads into the airflow (on a normal Terra entry the engine stays at ~150 °C instead of ~500 °C) |
 | Landebeine | Leicht (−120 kg, less tolerance) · Standard · Breit (+120 kg, more drift and tilt allowed, rougher ground) |
 
-The builder shows dry mass, thrust, Isp, battery, chute, the landing window, and per planet the fuel, Δv and thrust-to-weight of the build; the lander in the background is rebuilt live (`ship.reset(spec)`). In the tests every build lands both re-entries within 40 m when following the HUD (Brontes within 3 m), except Terra Orbit without a chute (falling at ~85 m/s needs more than the test pilot can do).
+The builder is a fullscreen 3D editor (`src/builder.js`):
+
+- the lander stands on a turntable; drag to orbit, wheel or pinch to zoom
+- tap a part on the lander (or its icon in the slot bar at the bottom) to select its slot: the part glows, the camera flies to it and a label follows it; parts that are not built in (chute, shield, panels) show as wireframe ghosts and can be tapped too; taps get a 14 px ring of tolerance for the thin legs and the chute pack
+- the variants appear as cards with badges for what the choice would change (mass, average Δv); a chosen part pops briefly when it changes
+- the figures on top are bars against the standard build (tick = standard, cyan better, amber worse): mass, thrust, Isp, battery, chute and landing tolerance, and per planet Δv with the thrust-to-weight ratio (red below 1.3, yellow below 2)
+- the image is shifted (`camera.setViewOffset`) so the lander sits in the free space between the figures and the dock; Escape deselects, then closes In the tests every build lands both re-entries within 40 m when following the HUD (Brontes within 3 m), except Terra Orbit without a chute (falling at ~85 m/s needs more than the test pilot can do).
 
 ## Testing
 
