@@ -151,8 +151,8 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
       if (show && g.parent !== ship.group) ship.group.add(g);
       if (!show && g.parent) g.parent.remove(g);
       if (show) {
-        const c = [...S.COMPONENTS, S.SHIELD].find((x) => x.id === id);
-        g.position.set(...c.pos); g.rotation.set(0, c.mirror ? Math.PI : 0, 0);
+        const c = [...S.COMPONENTS, S.SHIELD].find((x) => x.id === id), lay = S.layout(getBuild());
+        g.position.set(...(lay.pos[id] ?? c.pos)); g.rotation.set(0, c.mirror ? Math.PI : 0, 0);
       }
     }
   }

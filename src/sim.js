@@ -270,6 +270,37 @@ export const BUILD_SLOTS = [
 export const DEFAULT_BUILD = { engine: 'std', tanks: 'std', power: 'panels', chute: 'std', shield: 'none', legs: 'std' };
 export const SHIELD = { id: 'shield', name: 'Hitzeschild', model: 'shield', mass: 240, pos: [0, 0.95, 0], heat: [1.2, 3000, 6] };
 
+// ---------- attachment points ----------
+// Parts sit on nodes of the part they are attached to, so a bigger variant moves what hangs on it: tanks sit
+// against the frame's side (x = FRAME_SIDE + their radius), the engine hangs from the frame's mount, the heat
+// shield wraps the nozzle exit, the chute pack sits on the capsule's docking port, the legs carry the feet.
+// Heights in m above the foot plane (= the part positions in COMPONENTS).
+export const NODES = { frameSide: 0.6, engineMount: 2.5, capsuleTop: 5.38 };
+export const PART_VARIANTS = {
+  // nozzle: exit below the part origin; exitR: exit radius (shield size, flame width); comDy: centre of mass shift
+  engine: { std: { model: 'engine', top: 1.0, nozzle: -0.8, exitR: 0.78 }, strong: { model: 'engine_strong', top: 1.0, nozzle: -0.7, exitR: 0.98 },
+    eco: { model: 'engine_eco', top: 1.0, nozzle: -1.15, exitR: 0.66, comDy: -0.12 } },
+  tanks: { small: { model: 'tank_small', r: 0.5 }, std: { model: 'tank', r: 0.55 }, large: { model: 'tank_large', r: 0.66 } },
+  power: { panels: { model: 'battery' }, battery: { model: 'battery_big' }, both: { model: 'battery_big' } },
+  chute: { none: { model: 'chutepack', half: 0.17 }, std: { model: 'chutepack', half: 0.17 }, large: { model: 'chutepack_large', half: 0.22 } },
+  legs: { light: { model: 'legs_light', foot: 1.8 }, std: { model: 'legs', foot: 2.0 }, wide: { model: 'legs_wide', foot: 2.5 } },
+};
+const r3 = (v) => Math.round(v * 1000) / 1000;
+/** where every part of a build goes (positions, centre-of-mass overrides, models) and the render nodes */
+export function layout(build = {}) {
+  const b = { ...DEFAULT_BUILD, ...build };
+  const V = (slot) => PART_VARIANTS[slot][b[slot]] ?? PART_VARIANTS[slot][DEFAULT_BUILD[slot]];
+  const eng = V('engine'), tank = V('tanks'), pw = V('power'), ch = V('chute'), lg = V('legs');
+  const engY = r3(NODES.engineMount - eng.top), nozzleY = r3(engY + eng.nozzle);
+  const tx = r3(NODES.frameSide + tank.r), chY = r3(NODES.capsuleTop + ch.half);
+  return {
+    pos: { engine: [0, engY, 0], tankL: [-tx, 2.9, 0], tankR: [tx, 2.9, 0], chute: [0, chY, 0], shield: [0, r3(nozzleY + 0.25), 0] },
+    com: eng.comDy ? { engine: [0, r3(engY + eng.comDy)] } : {},
+    models: { engine: eng.model, tankL: tank.model, tankR: tank.model, battery: pw.model, chute: ch.model, legs: lg.model },
+    nodes: { flameY: r3(nozzleY + 0.02), flameK: eng.exitR / 0.78, shieldR: eng.exitR, chuteTop: r3(chY + ch.half), footX: lg.foot },
+  };
+}
+
 /** the lander as built: parts (masses, which exist) and performance figures. The default build gives
  *  exactly the original constants, so its flights are unchanged. */
 export function makeSpec(build = {}) {
@@ -290,12 +321,18 @@ export function makeSpec(build = {}) {
     comps.push(c);
   }
   if (b.shield === 'shield') comps.push({ ...SHIELD });
+  const lay = layout(b);
+  for (const c of comps) {
+    if (lay.pos[c.id]) c.pos = lay.pos[c.id];
+    if (lay.com[c.id]) c.com = lay.com[c.id];
+    c.model = lay.models[c.id] ?? c.model;
+  }
   return {
     build: b, comps, ids: new Set(comps.map((c) => c.id)),
     fMax: eng[0], isp: eng[1], tankK: tank[0], batK: b.power === 'panels' ? 1 : 2.2,
     chuteCda: b.chute === 'large' ? 170 : CHUTE_CDA, chuteFmax: b.chute === 'large' ? 95000 : CHUTE_FMAX,
     land: { vy: LAND.vy.map((v) => v * legs[1]), vx: LAND.vx.map((v) => v * legs[2]), tilt: LAND.tilt.map((v) => v * legs[3]) },
-    uneven: legs[4],
+    uneven: legs[4], footX: lay.nodes.footX, nodes: lay.nodes,
   };
 }
 /** a part is there: built in and not destroyed */
@@ -567,14 +604,16 @@ export function stoppingDistance(s) {
   return d;
 }
 
-const FEET = [[-FOOT_X, 0], [FOOT_X, 0], [0, -FOOT_X], [0, FOOT_X]];
+const feetAt = (f) => [[-f, 0], [f, 0], [0, -f], [0, f]];
+const FEET = feetAt(FOOT_X);
 /** World position of each foot pad: [x, y, z, groundHeight]. */
 /** the lander turns about this body point (about its centre of mass), not about its foot plane;
  *  (s.x, s.y, s.z) stays the foot-plane centre of the upright lander, so upright nothing changes */
 export const PIVOT_Y = 3.0;
 export function feet(s) {
   const ca = Math.cos(s.a), sa = Math.sin(s.a), cb = Math.cos(s.b || 0), sb = Math.sin(s.b || 0);
-  return FEET.map(([fx, fz]) => {
+  const F = s.spec?.footX;
+  return (F && F !== FOOT_X ? feetAt(F) : FEET).map(([fx, fz]) => {
     // body point (fx, -PIVOT_Y, fz) relative to the pivot, rotated Rx(b) * Rz(a)
     const rx = fx * ca + PIVOT_Y * sa, ry = fx * sa - PIVOT_Y * ca;
     const x = s.x + rx, y = s.y + PIVOT_Y + ry * cb - fz * sb, z = (s.z || 0) + ry * sb + fz * cb;

@@ -99,3 +99,21 @@ test('the hint waits for the re-entry: dropped at the start, the lander gets muc
   const early = peak({ dropShield: 1 }), hint = peak({ dropShield: 'hint' });
   assert.ok(early > hint * 1.3, `early ${early.toFixed(0)} °C vs hint ${hint.toFixed(0)} °C`);
 });
+
+test('attachment points: the standard build sits exactly where the original parts were, variants move what hangs on them', () => {
+  const std = S.makeSpec();
+  for (const c of S.COMPONENTS) assert.deepEqual(std.comps.find((k) => k.id === c.id).pos, c.pos, c.id);
+  assert.deepEqual(S.makeSpec({ shield: 'shield' }).comps.find((c) => c.id === 'shield').pos, S.SHIELD.pos);
+  assert.equal(std.footX, S.FOOT_X);
+  const pos = (b, id) => S.makeSpec(b).comps.find((c) => c.id === id).pos;
+  assert.ok(pos({ tanks: 'large' }, 'tankR')[0] > pos({}, 'tankR')[0] && pos({ tanks: 'small' }, 'tankR')[0] < pos({}, 'tankR')[0]);
+  assert.ok(pos({ engine: 'eco', shield: 'shield' }, 'shield')[1] < S.SHIELD.pos[1]); // long bell: the shield sits lower
+  assert.ok(pos({ chute: 'large' }, 'chute')[1] > pos({}, 'chute')[1]);
+  assert.ok(S.makeSpec({ legs: 'wide' }).footX > S.FOOT_X && S.makeSpec({ legs: 'light' }).footX < S.FOOT_X);
+  // bigger tanks further out: more inertia, the lander turns slower
+  const I = (b) => S.massProps(S.createState(S.PLANETS[0], { build: b, rnd: () => 0.5, windHeading: 0 })).I;
+  assert.ok(I({ tanks: 'large' }) > I({}));
+  // wider feet: tilted, the low foot reaches further down
+  const tiltAlt = (b) => { const s = S.createState(S.PLANETS[0], { build: b, rnd: () => 0.5, windHeading: 0 }); s.x = 0; s.z = 0; s.y = 10; s.a = 0.2; s.b = 0; return S.altitude(s); };
+  assert.ok(tiltAlt({ legs: 'wide' }) < tiltAlt({}));
+});
