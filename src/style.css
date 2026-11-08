@@ -497,12 +497,12 @@ body.building #top { display: none; }
 /* result: title, stars and points, six tiles, notes only when something went wrong */
 .result-sheet { text-align: center; }
 .result-sheet .row { justify-content: center; }
-.r-score { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 6px 14px; margin: 2px 0 16px; }
+.r-score { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 14px; margin: 2px 0 14px; }
 .r-stars { font-size: 30px; letter-spacing: 4px; line-height: 1; }
 .r-stars i { font-style: normal; color: rgba(255,255,255,0.14); }
 .r-stars i.on { color: var(--warn); text-shadow: 0 0 12px rgba(255,208,77,0.45); }
-.r-pts { color: var(--mute); font-size: 12px; }
-.r-pts b { color: var(--ink); font: 700 22px var(--display); font-variant-numeric: tabular-nums; }
+.r-pts { display: flex; align-items: baseline; gap: 6px; color: var(--mute); font-size: 12px; }
+.r-pts b { color: var(--ink); font: 700 34px var(--display); font-variant-numeric: tabular-nums; line-height: 1; }
 .r-best { flex-basis: 100%; font: 600 10px var(--mono); font-style: normal; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); }
 .r-best.new { color: var(--ok); }
 .r-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0 0 12px; }
@@ -518,3 +518,7 @@ body.building #top { display: none; }
 .r-notes .ok { color: var(--ok); } .r-notes .warn { color: var(--warn); } .r-notes .bad { color: var(--bad); }
 .r-links { display: flex; justify-content: center; gap: 18px; margin-top: 12px; }
 #r-reason { margin-bottom: 14px; }
+.r-parts { flex-basis: 100%; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin-top: 2px; }
+.r-parts em { font: 600 11px var(--mono); font-style: normal; padding: 2px 7px; border-radius: 6px; background: rgba(255,255,255,0.05); color: var(--ok); font-variant-numeric: tabular-nums; }
+.r-parts em small { color: var(--mute); font-size: 10px; }
+.r-parts em.neg { color: var(--bad); } .r-parts em.mult { color: var(--cyan); }

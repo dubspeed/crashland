@@ -290,17 +290,26 @@ function precision(st) {
 function precisionBonus(st) { const { d } = precision(st); return d <= 3 ? 300 : d <= PAD_RADIUS ? 150 : 0; }
 
 function rate(st) {
-  if (st.status !== 'landed') return { stars: 0, score: 0 };
+  if (st.status !== 'landed') return { stars: 0, score: 0, parts: [], mult: 1 };
   const fuelPct = S.fuel(st) / st.fuel0;
   let stars = 3 - st.touch.grade;
   const fainted = st.crew.some((c) => c.fainted > 0);
-  if (fainted || fuelPct < 0.1 || Object.keys(st.lost).length) stars--;
+  const lost = Object.keys(st.lost).length;
+  if (fainted || fuelPct < 0.1 || lost) stars--;
   stars = Math.max(1, stars);
-  const base = fuelPct * 1000 + (st.spec.land.vy[2] - st.touch.vy) * 60 + (st.spec.land.tilt[1] - st.touch.tilt) * 10
-    - st.touch.grade * 150 + st.crew.filter((c) => !c.fainted).length * 70 + st.planet.g * 20 - Object.keys(st.lost).length * 120
-    + precisionBonus(st);
-  const score = Math.max(0, Math.round(base * (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings)));
-  return { stars, score };
+  // the score in parts (shown on the result screen); their sum times the bonus is the score
+  const parts = [
+    ['Treibstoff', fuelPct * 1000],
+    ['Landung', (st.spec.land.vy[2] - st.touch.vy) * 60 + (st.spec.land.tilt[1] - st.touch.tilt) * 10 - st.touch.grade * 150],
+    ['Ziel', precisionBonus(st)],
+    ['Crew', st.crew.filter((c) => !c.fainted).length * 70],
+    ['Planet', st.planet.g * 20],
+    ['Schäden', -lost * 120],
+  ];
+  const base = parts.reduce((a, p) => a + p[1], 0);
+  const mult = (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings);
+  const score = Math.max(0, Math.round(base * mult));
+  return { stars, score, parts: parts.filter((p) => Math.round(p[1]) !== 0), mult };
 }
 
 function finish() {
@@ -314,7 +323,7 @@ function finish() {
 
 function showResult() {
   const ok = s.status === 'landed';
-  const { stars, score } = rate(s);
+  const { stars, score, parts, mult } = rate(s);
   const f1 = (n) => n.toLocaleString('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
   // kicker: where, and the difficulty bonus as one figure
   const bonus = (s.wind.speed && planet.rho > 0 ? s.wind.bonus : 1) * settingsBonus(s.settings);
@@ -326,13 +335,17 @@ function showResult() {
   // stars and points, with the best so far
   const prev = ok ? best(bestKey(planet.id)) : null;
   const record = ok && (!prev || score > prev.score);
-  $('r-score').hidden = !ok;
-  if (ok) {
-    $('r-score').innerHTML = `<span class="r-stars">${'<i class="on">★</i>'.repeat(stars)}${'<i>★</i>'.repeat(3 - stars)}</span>`
-      + `<span class="r-pts"><b>${score.toLocaleString('de-DE')}</b> Punkte</span>`
-      + (record ? (prev ? '<em class="r-best new">Neuer Bestwert</em>' : '') : `<em class="r-best">Bestwert ${prev.score.toLocaleString('de-DE')}</em>`);
-    if (record) saveBest(bestKey(planet.id), { stars, score });
-  }
+  $('r-score').innerHTML = `<span class="r-stars">${'<i class="on">★</i>'.repeat(stars)}${'<i>★</i>'.repeat(3 - stars)}</span>`
+    + `<span class="r-pts"><b id="r-pts">0</b>Punkte</span>`
+    + (ok ? (record ? (prev ? '<em class="r-best new">Neuer Bestwert</em>' : '') : `<em class="r-best">Bestwert ${prev.score.toLocaleString('de-DE')}</em>`) : '')
+    // where the points come from, in one row
+    + (ok ? `<span class="r-parts">${parts.map(([k, v]) => `<em class="${v < 0 ? 'neg' : ''}">${v < 0 ? '−' : '+'}${Math.abs(Math.round(v)).toLocaleString('de-DE')} <small>${k}</small></em>`).join('')}${
+      Math.abs(mult - 1) > 0.001 ? `<em class="mult">×${mult.toLocaleString('de-DE', { maximumFractionDigits: 2 })} <small>Bonus</small></em>` : ''}</span>` : '');
+  if (record) saveBest(bestKey(planet.id), { stars, score });
+  // count the points up
+  const pts = $('r-pts'), t0 = performance.now();
+  const tick = () => { const k = Math.min(1, (performance.now() - t0) / 900); pts.textContent = Math.round(score * (1 - (1 - k) ** 3)).toLocaleString('de-DE'); if (k < 1) requestAnimationFrame(tick); };
+  if (score) tick();
   $('r-reason').hidden = ok;
   if (!ok) $('r-reason').textContent = `Aufschlag: ${s.reason}.`;
   // six tiles: the touchdown window (coloured by grade) and how the flight went
