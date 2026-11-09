@@ -121,6 +121,7 @@ export function createHud() {
   let crewTick = 0;
   const crew = createCrew($('crew-faces'), $('crew-say'));
   let tornAt, cargoAt;
+  const sasMsg = { mode: undefined, text: '', until: 0 };
 
   const heatFrac = (s, id) => { const c = s.spec.comps.find((k) => k.id === id); return c ? (s.temp[id] - S.T_AMB) / (c.heat[1] - S.T_AMB) : 0; };
   const lostAt = {};
@@ -494,10 +495,20 @@ export function createHud() {
     let msg = null, color = 'var(--bad)', pulse = true;
     // hints (advice) can be switched off in the start menu; warnings always show
     const hints = s.settings?.hints !== false;
+    // a newly active attitude mode is named once in the message line
+    if (s.sas !== sasMsg.mode) {
+      if (sasMsg.mode !== undefined && s.t > 0.5 && s.status === 'flying') {
+        sasMsg.text = `LAGEREGLER: ${{ hold: 'HALTEN', retro: 'RETRO', retro2: 'RETRO 2', up: 'SENKRECHT' }[s.sas] ?? 'AUS'}`;
+        sasMsg.until = s.t + 2;
+      }
+      sasMsg.mode = s.sas;
+    }
+    if (s.t < 0.05) sasMsg.until = 0;
     const fh = hints && !s.settings?.autoFine ? S.fineHint(s) : null;
     if (s.blackout) msg = 'PILOTIN BEWUSSTLOS – KEINE STEUERUNG';
     // name the cause: only the engine can be throttled; air drag or the canopy's jerk can't
     else if (s.gNow > S.G_LIMIT) msg = s.throttle > 0 ? 'G-LAST ZU HOCH – SCHUB DROSSELN' : s.chute === 'open' ? 'G-LAST ZU HOCH – SCHIRM REISST AN' : 'G-LAST ZU HOCH – LUFTWIDERSTAND';
+    else if (sasMsg.until > s.t) { msg = sasMsg.text; color = 'var(--cyan)'; pulse = false; }
     else if (s.cargoDamaged && s.t - (cargoAt ??= s.t) < 3) msg = `FRACHT BESCHÄDIGT (${s.cargoDamaged.toUpperCase()})`;
     else if (s.gNow > minLimit && s.throttle > 0) { msg = s.crew.length ? 'G-LAST: CREW LEIDET' : 'G-LAST: FRACHT IN GEFAHR – DROSSELN'; color = s.crew.length ? 'var(--warn)' : 'var(--bad)'; pulse = !s.crew.length; }
     else if (recentLoss(s)) msg = `${recentLoss(s).toUpperCase()} VERGLÜHT`;
