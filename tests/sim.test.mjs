@@ -88,3 +88,22 @@ test('Retro after an overshot braking burn turns upright calmly instead of spinn
   assert.ok(!burning, 'never overshot');
   assert.ok(maxW < 0.45, `turned at ${(maxW * 57.3).toFixed(0)}°/s`);
 });
+
+test('uneven ground: a bit too rough damages the gear, far too rough tips over', () => {
+  const P = S.ORBIT_PLANETS[0];
+  // find spots off the pad with the right roughness
+  const s0 = S.newRound(P, 0, 1);
+  const spots = { mid: null, bad: null };
+  for (let x = -600; x < -100 && !(spots.mid && spots.bad); x += 1.3) for (let z = -300; z < 300 && !(spots.mid && spots.bad); z += 7.7) {
+    const k = S.groundSpread(s0, x, z) / s0.spec.uneven;
+    if (!spots.mid && k > 1.3 && k < 2) spots.mid = [x, z];
+    if (!spots.bad && k > 3.5) spots.bad = [x, z];
+  }
+  for (const [name, want] of [['mid', 'landed'], ['bad', 'crashed']]) {
+    const s = S.newRound(P, 0, 1); const [x, z] = spots[name];
+    Object.assign(s, { x, z, y: S.terrainHeight(x, z) + 1.5, vx: 0, vy: -1.5, vz: 0, a: 0, b: 0, w: 0, wb: 0, sas: 'up' });
+    for (let i = 0; i < 600 && s.status === 'flying'; i++) S.advance(s, { thrust: false });
+    assert.equal(s.status, want, `${name}: ${s.reason}`);
+    if (name === 'mid') assert.equal(s.touch.grade, 2);
+  }
+});

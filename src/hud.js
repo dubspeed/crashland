@@ -547,6 +547,11 @@ export function createHud() {
     }
     else if (hints && s.chute === 'open' && p.rho > 0.5 && s.throttle === 0 && s.limit < (s.limit0 ?? p.limit0 ?? 0.5) * 0.8 && alt > 150) { msg = `SCHUBGRENZE FÜR DIE LANDUNG HOCHSETZEN (${Math.round((s.limit0 ?? p.limit0 ?? 0.5) * 100)} %)`; color = 'var(--cyan)'; pulse = false; }
     else if (hints && s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
+    else if (s.pred && alt < 150 && alt > 2 && S.groundSpread(s, s.pred.x, s.pred.z) > s.spec.uneven) {
+      // the touchdown point is on rough ground (off the pad's flat zone): the gear would be damaged or tip over
+      const k = S.groundSpread(s, s.pred.x, s.pred.z) / s.spec.uneven;
+      msg = k > S.UNEVEN_TIP ? 'BODEN ZU UNEBEN – ZUM PAD STEUERN' : 'BODEN UNEBEN – BESSER ZUM PAD'; color = k > S.UNEVEN_TIP ? 'var(--bad)' : 'var(--warn)'; pulse = k > S.UNEVEN_TIP;
+    }
     else if (hints && S.shieldDropHint(s)) {
       const why = { over: 'HITZE VORBEI', safe: 'KEINE HITZEGEFAHR', vacuum: 'KEINE LUFT' }[S.shieldDropHint(s)];
       msg = `${why} – HITZESCHILD ABWERFEN (−${fmt(S.SHIELD.mass)} kg)`; color = 'var(--cyan)'; pulse = false;

@@ -165,7 +165,13 @@ export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) 
   return s;
 }
 export const STEP = 1 / 120;
-export const SAS_DELAY = 1.5; // s the attitude switch has to rest before the chosen mode takes over
+export const SAS_DELAY = 1.5;
+export const UNEVEN_TIP = 2.5; // ground height difference under the feet (in units of the legs' range) that tips the lander over
+/** how uneven the ground is under the feet if the lander stood upright at (x, z): height spread of the four feet */
+export function groundSpread(s, x, z) {
+  const f = s.spec?.footX ?? FOOT_X, h = [[f, 0], [-f, 0], [0, f], [0, -f]].map(([dx, dz]) => terrainHeight(x + dx, z + dz));
+  return Math.max(...h) - Math.min(...h);
+} // s the attitude switch has to rest before the chosen mode takes over
 /** player / autopilot actions between steps (recorded for replays) */
 export function act(s, name) {
   if (name === 'chute') return toggleChute(s);
@@ -1071,12 +1077,15 @@ export function step(s, input, dt) {
     if (g.vy === 3) why.push(`zu schnell (${sink.toFixed(1)} m/s, max ${r1(L.vy[2])})`);
     if (g.vx === 3) why.push(`seitliche Drift (${drift.toFixed(1)} m/s, max ${r1(L.vx[2])})`);
     if (g.tilt === 3) why.push(`zu schräg (${tilt.toFixed(0)}°, max ${Math.round(L.tilt[2])}°)`);
-    if (Math.max(...hs) - Math.min(...hs) > s.spec.uneven) why.push('Gelände zu uneben');
+    // uneven ground: within the legs' range fine, up to UNEVEN_TIP times it the gear takes damage, beyond it tips over
+    const spread = Math.max(...hs) - Math.min(...hs), fmt1 = (v) => String(Math.round(v * 10) / 10).replace('.', ',');
+    if (spread > s.spec.uneven * UNEVEN_TIP) why.push(`Gelände zu uneben, umgekippt (${fmt1(spread)} m Höhenunterschied, max ${fmt1(s.spec.uneven * UNEVEN_TIP)})`);
+    else if (spread > s.spec.uneven) { g.uneven = 2; s.unevenDamage = spread; }
     if (s.lost.legs) why.push('Landebeine verglüht');
     // base: landed on (or against) a module that is already there
     const hit = s.obstacles.find((o) => Math.hypot(s.x - o.x, s.z - o.z) < o.r + s.spec.footX * 0.85);
     if (hit) why.push(`auf ${hit.name} gelandet`);
-    const overall = why.length ? 3 : Math.max(g.vy, g.vx, g.tilt);
+    const overall = why.length ? 3 : Math.max(g.vy, g.vx, g.tilt, g.uneven ?? 0);
     // crash energy 0..1: how violent the impact was (drives debris and explosion size)
     const energy = Math.min(1, Math.max(0, (sink - L.vy[2]) / 18 + (drift - L.vx[2]) / 25 + 0.1));
     s.touch = { vy: sink, vx: drift, tilt, grades: g, grade: overall, energy };

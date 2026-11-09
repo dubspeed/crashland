@@ -603,6 +603,7 @@ function showResult() {
   }
   $('r-again').innerHTML = mission && (mission.result === 'intact' || mission.result === 'damaged') && loadBase(mission.planetId).step < S.MISSIONS.length ? 'Nächste Mission <kbd>R</kbd>' : 'Nochmal <kbd>R</kbd>';
   if (!ok && s.crew.length) notes.push(crash.crew ? ['Crew gerettet', 'ok'] : ['Crew verloren', 'bad']);
+  if (ok && s.unevenDamage) notes.push([`Boden uneben (${s.unevenDamage.toFixed(1).replace('.', ',')} m): Fahrwerk beschädigt`, 'warn']);
   if (!ok && crash.kind === 'explosion') notes.push([`${Math.round(crash.fuelBurned)} kg Treibstoff explodiert`, 'bad']);
   for (const c of s.crew) if (c.fainted) notes.push([`${c.name} ${c.fainted}× ohnmächtig`, 'warn']);
   for (const c of s.spec.comps) if (s.lost[c.id]) notes.push([`${c.name} verglüht`, 'bad']);
