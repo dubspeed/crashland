@@ -64,3 +64,14 @@ test('chute safety looks ahead: rising pressure near the limit is not safe', () 
   s.qRate = S.CHUTE_QMAX * 0.2; assert.ok(!S.chuteSafe(s));
   s.q = S.CHUTE_QMAX * 0.99; s.qRate = -100; assert.ok(!S.chuteSafe(s));
 });
+
+test('attitude modes: cycling through quickly only applies the mode it rests on', () => {
+  const s = S.newRound(S.ORBIT_PLANETS[0], 0, 1);
+  for (let i = 0; i < 240; i++) S.advance(s, { thrust: false }); // 2 s in, Retro
+  assert.equal(s.sas, 'retro');
+  const seen = new Set();
+  for (const k of [0, 1, 2]) { S.act(s, 'sas'); for (let i = 0; i < 30; i++) { S.advance(s, { thrust: false }); seen.add(s.sas); } } // three taps, 0.25 s apart
+  assert.deepEqual([...seen], ['retro']); // never Retro 2 or Senkrecht on the way
+  for (let i = 0; i < 120; i++) S.advance(s, { thrust: false });
+  assert.equal(s.sas, false); // rests on "Aus"
+});

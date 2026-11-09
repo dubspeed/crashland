@@ -688,3 +688,4 @@ body.building #top { display: none; }
 #pred-mark.edge .arrow { display: block; }
 #pred-mark.edge svg { transform: scale(0.7); }
 #pred-mark.on-pad .arrow { border-left-color: #5fe0a0; }
+.tog.pending .badge { animation: pulse 0.4s steps(2) infinite; color: var(--amber); }

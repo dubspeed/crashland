@@ -463,7 +463,13 @@ export function createHud() {
     { const ms = lever.querySelector('.mark span'), txt = `${fmt(s.limit * 100)} %`; if (ms.textContent !== txt) ms.textContent = txt; }
     lever.setAttribute('aria-valuenow', Math.round(s.limit * 100));
     const sas = $('c-sas');
-    { const m = { hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkrecht', off: 'Aus' }[s.sas || 'off']; setLabel(sas, m, 'T', `Lageregler: ${m}`, { hold: 'H', retro: 'R', retro2: 'R2', up: '↑', off: '–' }[s.sas || 'off']); }
+    {
+      // a mode that is still waiting (switch must rest) blinks in the badge
+      const pend = s.sasPending !== undefined, mode = (pend ? s.sasPending : s.sas) || 'off';
+      const m = { hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkrecht', off: 'Aus' }[mode];
+      setLabel(sas, m, 'T', `Lageregler: ${m}${pend ? ' (gleich aktiv)' : ''}`, { hold: 'H', retro: 'R', retro2: 'R2', up: '↑', off: '–' }[mode]);
+      sas.classList.toggle('pending', pend);
+    }
     sas.classList.toggle('on', !!s.sas);
     lever.classList.toggle('on', s.throttle > 0);
     const rcs = $('c-rcs');

@@ -165,17 +165,26 @@ export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) 
   return s;
 }
 export const STEP = 1 / 120;
+export const SAS_DELAY = 0.8; // s the attitude switch has to rest before the chosen mode takes over
 /** player / autopilot actions between steps (recorded for replays) */
 export function act(s, name) {
   if (name === 'chute') return toggleChute(s);
   if (name === 'panels') return togglePanels(s);
   if (name === 'shield') return jettison(s, 'shield');
-  if (name === 'sas') { s.sas = { hold: 'retro', retro: 'retro2', retro2: 'up', up: false }[s.sas] ?? 'hold'; s.holdA = s.a; s.holdB = s.b; }
+  if (name === 'sas') {
+    // the next mode only takes over once the switch rests for SAS_DELAY (cycling past "Senkrecht" to get to
+    // "Aus" must not flip the lander); before the flight really starts it switches at once
+    const from = s.sasPending !== undefined ? s.sasPending : s.sas;
+    const next = { hold: 'retro', retro: 'retro2', retro2: 'up', up: false }[from] ?? 'hold';
+    if (s.t < 0.5) { s.sas = next; s.sasPending = undefined; s.holdA = s.a; s.holdB = s.b; }
+    else { s.sasPending = next; s.sasAt = s.t + SAS_DELAY; }
+  }
 }
 /** one fixed simulation step, including the touchdown prediction the flight computer uses (refreshed every
  *  0.1 s of sim time, independent of the frame rate, so a round replays exactly) */
 export function advance(s, input) {
   s.stepN = s.stepN ?? 0;
+  if (s.sasPending !== undefined && s.t >= s.sasAt) { s.sas = s.sasPending; s.sasPending = undefined; s.holdA = s.a; s.holdB = s.b; }
   // during the deorbit fine control the cross moves hundreds of metres per m/s: refresh it 4x as often
   const fine = s.planet.deorbitAt && s.throttle > 0 && s.pred && Math.hypot(s.pred.x, s.pred.z) < 3000 && s.y > 4000;
   if (s.status === 'flying' && s.stepN % (fine ? 3 : 12) === 0) s.pred = predictImpact(s);
