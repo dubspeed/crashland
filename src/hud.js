@@ -125,7 +125,7 @@ export function createHud() {
 
   const heatFrac = (s, id) => { const c = s.spec.comps.find((k) => k.id === id); return c ? (s.temp[id] - S.T_AMB) / (c.heat[1] - S.T_AMB) : 0; };
   const lostAt = {};
-  const pw = { inp: 0, use: 0 };
+  const pw = { inp: 0, use: 0, gen: 0 };
   const ttb = { at: undefined, v: 0 };
 
   function recentLoss(s) {
@@ -371,8 +371,8 @@ export function createHud() {
     // power: charge, what the panels bring in, what the lander uses (smoothed: thrust and jets flicker)
     {
       const k = Math.min(1, 0.12 + (s.t < 0.1 ? 1 : 0));
-      pw.inp += ((s.powerIn ?? 0) - pw.inp) * k; pw.use += ((s.powerUse ?? 0) - pw.use) * k;
-      const net = pw.inp - pw.use, bat = s.battery;
+      pw.inp += ((s.powerIn ?? 0) - pw.inp) * k; pw.use += ((s.powerUse ?? 0) - pw.use) * k; pw.gen += ((s.powerGen ?? 0) - pw.gen) * k;
+      const net = pw.inp + pw.gen - pw.use, bat = s.battery;
       $('pw-fill').style.width = `${bat}%`;
       $('pw-fill').style.background = bat < 20 ? 'var(--bad)' : bat < 45 ? 'var(--warn)' : 'var(--cyan)';
       const pct = $('pw-pct'); pct.textContent = `${fmt(bat)} %`; pct.className = bat < 20 ? 'bad' : bat < 45 ? 'warn' : '';
@@ -381,6 +381,7 @@ export function createHud() {
       $('pw-in').textContent = noPanels ? '–' : `+${pm(pw.inp)}`;
       $('pw-in').className = noPanels ? '' : pw.inp < 0.05 ? 'mute' : 'ok';
       $('pw-out').textContent = `−${pm(pw.use)} %/min`;
+      $('pw-gen-w').hidden = !s.spec.engineGen; $('pw-gen').textContent = `+${pm(pw.gen)}`;
       // net per second, and how long until empty (or full)
       const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
       // phone: the bar alone says it, charging (stripes run right, ▲) or draining (stripes run left, ▼)

@@ -263,8 +263,8 @@ export const BUILD_SLOTS = [
     { id: 'mini', name: 'Mini', desc: '90 kN · Isp 300 s · −250 kg' },
     { id: 'eco', name: 'Effizient', desc: '140 kN · Isp 320 s · −70 kg' },
     { id: 'std', name: 'Standard', desc: '185 kN · Isp 290 s' },
-    { id: 'strong', name: 'Stark', desc: '240 kN · Isp 280 s · +150 kg' },
-    { id: 'cluster', name: 'Bündel', desc: '3 Düsen · 330 kN · Isp 275 s · +420 kg' }] },
+    { id: 'strong', name: 'Stark', desc: '240 kN · Isp 280 s · Generator: Strom beim Brennen · +150 kg' },
+    { id: 'cluster', name: 'Bündel', desc: '3 Düsen · 330 kN · Isp 275 s · Generator · +420 kg' }] },
   { id: 'tanks', name: 'Tanks', short: 'Tanks', options: [
     { id: 'mini', name: 'Mini', desc: '45 % Treibstoff · −180 kg' },
     { id: 'small', name: 'Klein', desc: '70 % Treibstoff · −100 kg' },
@@ -360,8 +360,9 @@ export const PART_VARIANTS = {
   engine: { mini: { model: 'engine_mini', top: 1.0, nozzle: -0.6, exitR: 0.5, f: 90000, isp: 300, mass: 700 },
     eco: { model: 'engine_eco', top: 1.0, nozzle: -1.15, exitR: 0.66, comDy: -0.12, f: 140000, isp: 320, mass: 880 },
     std: { model: 'engine', top: 1.0, nozzle: -0.8, exitR: 0.78, f: F_MAX, isp: ISP, mass: 950 },
-    strong: { model: 'engine_strong', top: 1.0, nozzle: -0.7, exitR: 0.98, f: 240000, isp: 280, mass: 1100 },
-    cluster: { model: 'engine_cluster', top: 1.0, nozzle: -0.75, exitR: 0.95, f: 330000, isp: 275, mass: 1370 } },
+    // gen: gas-generator engines drive an alternator on the turbopump (%/s of the standard battery at full thrust)
+    strong: { model: 'engine_strong', top: 1.0, nozzle: -0.7, exitR: 0.98, f: 240000, isp: 280, mass: 1100, gen: 1.8 },
+    cluster: { model: 'engine_cluster', top: 1.0, nozzle: -0.75, exitR: 0.95, f: 330000, isp: 275, mass: 1370, gen: 2.6 } },
   tanks: { mini: { model: 'tank_mini', r: 0.45, k: 0.45, mass: 110 }, small: { model: 'tank_small', r: 0.5, k: 0.7, mass: 150 },
     std: { model: 'tank', r: 0.55, k: 1, mass: 200 }, large: { model: 'tank_large', r: 0.66, k: 1.35, mass: 260 }, huge: { model: 'tank_huge', r: 0.75, k: 1.8, mass: 330 } },
   // solar: k = power, heat = exposure of each wing
@@ -427,7 +428,7 @@ export function makeSpec(build = {}) {
   const crew = cargo ? [] : [...CREW, CREW_EXTRA].slice(0, cap.crew).map((c) => c.id);
   return {
     build: b, comps, ids: new Set(comps.map((c) => c.id)), crew, payload: cargo ? { id: b.payload, g: cargo.g, touch: cargo.touch } : null,
-    fMax: eng.f, isp: eng.isp, tankK: tank.k, batK: bat.k, solarK: sol?.k ?? 0,
+    fMax: eng.f, isp: eng.isp, engineGen: eng.gen ?? 0, tankK: tank.k, batK: bat.k, solarK: sol?.k ?? 0,
     chuteCda: ch.cda ?? CHUTE_CDA, chuteFmax: ch.fmax ?? CHUTE_FMAX,
     land: { vy: LAND.vy.map((v) => v * legs[1]), vx: LAND.vx.map((v) => v * legs[2]), tilt: LAND.tilt.map((v) => v * legs[3]) },
     uneven: legs[4], footX: lay.nodes.footX, nodes: lay.nodes,
@@ -1009,15 +1010,17 @@ export function step(s, input, dt) {
   }
 
   // --- power ---
-  const use = 0.55 + (s.sas ? 0.25 : 0) + 2.2 * rcsUse + 1.2 * thr;
+  // base load: computer, radio, sensors, and life support with a crew (the uncrewed cargo core needs less)
+  const use = (s.spec.payload ? 0.25 : 0.55) + (s.sas ? 0.25 : 0) + 2.2 * rcsUse + 1.2 * thr;
+  const gen = (s.spec.engineGen ?? 0) * thr; // alternator on the turbopump (strong engines)
   s.panelFold = Math.max(0, Math.min(1, s.panelFold + (s.panels === 'in' ? dt : -dt) / 1.2));
   const panels = (hasPart(s, 'solarL') ? 1 : 0) + (hasPart(s, 'solarR') ? 1 : 0);
   // orbit levels: above the air the sun shines fully; it dims to the planet's ground value with the air below
   const sun = p.orbit && p.rho > 0 ? p.solar + (1 - p.solar) * (1 - Math.min(1, density(s) / p.rho)) : p.solar;
   s.solarNow = sun;
   const gain = 1.6 * sun * (panels / 2) * (1 - s.panelFold) * (s.spec.solarK ?? 1);
-  s.battery = Math.max(0, Math.min(BAT_CAP, s.battery + ((gain - use) / s.spec.batK) * dt)); // big pack: slower %
-  s.powerIn = gain / s.spec.batK; s.powerUse = use / s.spec.batK; // %/s, for the HUD
+  s.battery = Math.max(0, Math.min(BAT_CAP, s.battery + ((gain + gen - use) / s.spec.batK) * dt)); // big pack: slower %
+  s.powerIn = gain / s.spec.batK; s.powerGen = gen / s.spec.batK; s.powerUse = use / s.spec.batK; // %/s, for the HUD
 
   // --- aerodynamic heating: hot parts glow, overheated parts blow off ---
   const flux = Math.sqrt(density(s)) * (v / 100) ** 3 * HEAT_K * (p.heatK ?? 1);
