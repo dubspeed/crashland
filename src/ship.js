@@ -146,7 +146,6 @@ export function createShip(models) {
       if (m.isMesh) { m.material.emissive.copy(m.material.userData.base.color); m.material.emissiveIntensity = m.material.userData.base.i; }
     });
     flame.visible = true;
-    helpers.visible = true;
   }
 
   // hard landing: legs buckle, ship settles lower

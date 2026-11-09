@@ -134,7 +134,9 @@ let mode = 'menu'; // menu | flight | end
 let endTimer = 0;
 const input = { thrust: false, rcs: 0, limitDir: 0 };
 const keys = new Set();
-let showCom = true;
+// centre-of-mass marker and thrust axis: off by default, C (desktop) switches it, remembered
+let showCom = false;
+try { showCom = localStorage.getItem('crashland.com') === '1'; } catch { /* default */ }
 let cam = { yaw: 0.35, pitch: 0, dist: 28, shake: 0, view: 'chase' };
 const VIEWS = { chase: 'Lander', target: 'Ziel' }; // (the oblique and top views are still in the camera code)
 try { const v = localStorage.getItem('crashland.view'); if (VIEWS[v]) cam.view = v; } catch { /* storage unavailable */ }
@@ -322,7 +324,7 @@ function showMenu() {
 /** ship parked on the pad as a backdrop (menu and builder) */
 function parkShip() {
   s = S.createState(planet, { build });
-  ship.reset(s.spec); s.x = 0; s.z = 0; s.y = 0; s.vy = 0; s.vx = 0; s.vz = 0; s.a = 0; s.b = 0; s.status = 'parked';
+  ship.reset(s.spec); ship.helpers.visible = showCom; s.x = 0; s.z = 0; s.y = 0; s.vy = 0; s.vx = 0; s.vz = 0; s.a = 0; s.b = 0; s.status = 'parked';
   ship.update(s, time);
 }
 
@@ -576,7 +578,7 @@ bindPointer($('c-rcs'), (e, r) => {
   touch.py = shape(((r.top + r.height / 2) - e.clientY) / (r.height / 2));
 }, () => { touch.px = 0; touch.py = 0; });
 function cycleSas() { doAct('sas'); }
-function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
+function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); try { localStorage.setItem('crashland.com', showCom ? '1' : '0'); } catch { /* storage unavailable */ } }
 // switches fire on touch-down (iOS: the HUD swallows touches so nothing gets selected, see below);
 // a click without a pointer (keyboard: Enter / Space on a focused button) still works
 function tap(el, fn) {
@@ -595,7 +597,7 @@ const swallow = (e) => { if (!editable(e)) e.preventDefault(); };
 $('hud').addEventListener('touchstart', swallow, { passive: false });
 renderer.domElement.addEventListener('touchstart', swallow, { passive: false });
 $('hud').addEventListener('touchend', swallow, { passive: false });
-$('c-com').classList.add('on');
+$('c-com').classList.toggle('on', showCom);
 // ---------- debug overlay: F3, ?debug, or three taps on the title (phone) ----------
 const dbg = { on: false, frames: 0, acc: 0, worst: 0, steps: 0, at: 0 };
 function setDebug(on) { dbg.on = on; $('debug').hidden = !on; try { localStorage.setItem('crashland.debug', on ? '1' : ''); } catch { /* storage unavailable */ } }
