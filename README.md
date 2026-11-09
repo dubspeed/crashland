@@ -214,3 +214,5 @@ Base mode has "Karriere" (with money) or "Sandbox" (everything free) — the swi
 - **Modules:** depot −15 % and refinery −30 % fuel price, research station +3k and rover +2k per later mission.
 - Balance (test pilot, standard lander, all eight missions): early missions net about +8k (one mid-sized upgrade), later ones more; a crash costs ~20k.
 - **Reset** in Schwierigkeit → Spielstand: Geld, Basen, or Alles (also the mission landers and best scores).
+
+**Calm attitude turns.** Two fixes after a replayed flight that spun at 65°/s: on orbit levels Retro follows the velocity only while it is fast (> 25 m/s) or changes smoothly — when a braking burn overshoots, the velocity passes through zero and its direction flips, then Retro holds the capped near-vertical lean instead; and in the target modes (Retro, Senkrecht) the attitude error is capped at 0.35 rad, so big turns run at a steady ~0.3 rad/s instead of whipping round and swinging past. Regression test: an overshot burn on Luna Orbit now turns at < 26°/s (was 75°/s). Reference flights: only two orbit replays moved by millimetres.

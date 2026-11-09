@@ -75,3 +75,16 @@ test('attitude modes: cycling through quickly only applies the mode it rests on'
   for (let i = 0; i < Math.ceil(S.SAS_DELAY / S.STEP) + 2; i++) S.advance(s, { thrust: false });
   assert.equal(s.sas, false); // rests on "Aus"
 });
+
+test('Retro after an overshot braking burn turns upright calmly instead of spinning round', () => {
+  const s = S.newRound(S.ORBIT_PLANETS[0], 0, 1);
+  let maxW = 0, burning = true;
+  for (let i = 0; i < 120 * 40; i++) {
+    if (burning && s.vx < -3) burning = false; // braked a little too much: the velocity has reversed
+    S.advance(s, { thrust: burning });
+    if (!burning) maxW = Math.max(maxW, Math.abs(s.w));
+    if (!burning && s.t > 200) break;
+  }
+  assert.ok(!burning, 'never overshot');
+  assert.ok(maxW < 0.45, `turned at ${(maxW * 57.3).toFixed(0)}°/s`);
+});

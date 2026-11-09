@@ -852,7 +852,10 @@ function controlAxis(s, ang, rate, holdKey, integKey, cmd, target, comTorque, I,
   } else if (s.sas && s.computerOK) {
     // 'up' holds vertical, 'retro' leans against the drift; integrate only near the target (no windup)
     if (Math.abs(A - target) < 0.1) s[integKey] = Math.max(-0.5, Math.min(0.5, s[integKey] + (A - target) * dt));
-    s[tauKey] = clamp(-(2.2 * (A - target) + 2.6 * W + 1.2 * s[integKey]) * I - comTorque);
+    // big turns (Senkrecht from lying flat, Retro after an overshot burn) at a steady rate instead of a whip:
+    // the error is capped, so the turn rate stays near 0.3 rad/s and the lander does not swing past
+    const err = Math.max(-0.35, Math.min(0.35, A - target));
+    s[tauKey] = clamp(-(2.2 * err + 2.6 * W + 1.2 * s[integKey]) * I - comTorque);
   }
   return Math.abs(s[tauKey]) / RCS_TORQUE;
 }
@@ -904,7 +907,12 @@ export function step(s, input, dt) {
     // of a burn the velocity direction is meaningless and would tip the lander over
     const vh = Math.hypot(s.vx, s.vz), v = Math.hypot(vh, s.vy);
     // (under an open canopy it hangs straight instead of fighting the chute)
-    if (v > 0.5 && (vh > 25 || altitude(s) > 400) && !(s.chute === 'open' && p.rho > 0)) { tA = Math.atan2(s.vx, -s.vy); tB = -Math.asin(Math.max(-1, Math.min(1, s.vz / v))); }
+    // only while there is real speed: when a burn overshoots, the velocity passes through zero and its direction
+    // flips by up to 180° within a second, which would spin the lander around (then: the capped lean)
+    if (v > 0.5 && (vh > 25 || altitude(s) > 400) && !(s.chute === 'open' && p.rho > 0)) {
+      const rA = Math.atan2(s.vx, -s.vy), rB = -Math.asin(Math.max(-1, Math.min(1, s.vz / v)));
+      if (v > 25 || Math.hypot(rA - s.a, rB - s.b) < 0.6) { tA = rA; tB = rB; }
+    }
   }
   let cmdA = input.rcs || 0, cmdB = input.rcsZ || 0;
   // under an open canopy the pad steers the parachute (pulls the risers) instead of tilting the lander
