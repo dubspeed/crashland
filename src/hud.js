@@ -7,11 +7,25 @@ const fmt = (n, d = 0) => n.toLocaleString('de-DE', { minimumFractionDigits: d, 
 const cls = (el, c) => { el.className = c || ''; };
 // button caption + keyboard shortcut; only touches the DOM when the text changes, so the node under
 // the mouse isn't replaced every frame (that can swallow clicks)
-export function setLabel(el, text, key) {
-  if (el.dataset.label === text) return;
-  el.dataset.label = text;
-  el.textContent = text;
-  if (key) { const k = document.createElement('kbd'); k.textContent = key; el.append(k); }
+// control icons (24×24, stroke = currentColor); a button names its icon in data-icon
+const ICONS = {
+  chute: '<path d="M3 11a9 7 0 0 1 18 0z"/><path d="M3 11l9 9 9-9M12 11v9"/>',
+  panels: '<path d="M2 8h8v8H2zM14 8h8v8h-8z"/><path d="M10 12h4M6 8v8M18 8v8"/>',
+  shield: '<path d="M3 8c3 2 15 2 18 0l-2 6c-3 2-11 2-14 0z"/><path d="M12 15v6M9 19l3 2 3-2"/>',
+  sas: '<circle cx="12" cy="12" r="8"/><path d="M12 4v4M12 16v4M4 12h4M16 12h4"/><circle cx="12" cy="12" r="1.5"/>',
+  view: '<path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/>',
+  com: '<circle cx="12" cy="12" r="7"/><path d="M12 5v14M5 12h14"/>',
+  map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
+};
+/** button label: icon (from data-icon), a short word, the keyboard shortcut (desktop); title = what it does */
+export function setLabel(el, text, key, title) {
+  const k = `${text}|${title ?? ''}`;
+  if (el.dataset.label === k) return;
+  el.dataset.label = k;
+  const ic = ICONS[el.dataset.icon];
+  el.innerHTML = `${ic ? `<svg viewBox="0 0 24 24" aria-hidden="true">${ic}</svg>` : ''}<span class="t">${text}</span>${key ? `<kbd>${key}</kbd>` : ''}`;
+  el.title = title ?? text;
+  el.setAttribute('aria-label', title ?? text);
 }
 
 export function createHud() {
@@ -93,9 +107,10 @@ export function createHud() {
     if (!isFinite(top)) return;
     const bottom = innerHeight - top + 16;
     if (innerHeight - bottom - tr.height < innerHeight * 0.55) {
-      // not enough room between lander and controls (small phones): use the free sky under the crew row
+      // not enough room between lander and controls (small phones): right under the altitude readout
+      const ro = $('readout').getBoundingClientRect();
       td.style.bottom = 'auto';
-      td.style.top = 'calc(118px + env(safe-area-inset-top, 0px))';
+      td.style.top = `${Math.round((ro.height ? ro.bottom : 118) + 8)}px`;
     } else {
       td.style.top = '';
       td.style.bottom = `${Math.round(bottom)}px`;
@@ -319,10 +334,7 @@ export function createHud() {
       $('cg-lim').style.left = `${(1 / 1.25) * 100}%`;
       $('cg-info').textContent = `max ${pl.g} g · Aufsetzen ≤ ${pl.touch} m/s`;
     }
-    // base mission: what to deliver, above the altitude readout
-    const mi = $('mission'), mt = s.settings?.base ? (pl ? `${S.CARGO[pl.id].name} zur Basis` : 'Crew zur Basis') : '';
-    mi.hidden = !mt || s.status !== 'flying';
-    if (mt && mi.textContent !== mt) mi.textContent = mt;
+
 
     // fuel: amount and how long it lasts at full thrust
     const fuelNow = S.fuel(s), fuelFrac = fuelNow / s.fuel0;
@@ -401,14 +413,14 @@ export function createHud() {
     const pb = $('c-panels');
     const solarGone = !S.hasPart(s, 'solarL') && !S.hasPart(s, 'solarR');
     const noPanels = !s.spec.ids.has('solarL');
-    setLabel(pb, noPanels ? 'Keine Paneele' : solarGone ? 'Paneele weg' : s.panels === 'out' ? 'Paneele einklappen' : 'Paneele ausklappen', 'E');
-    pb.disabled = solarGone;
+    setLabel(pb, s.panels === 'out' || noPanels || solarGone ? 'Paneele' : 'Eingekl.', 'E', noPanels ? 'Keine Paneele' : solarGone ? 'Paneele weg' : s.panels === 'out' ? 'Paneele einklappen' : 'Paneele ausklappen');
+    pb.disabled = solarGone || noPanels;
     pb.classList.toggle('on', s.panels === 'in' && !solarGone);
     const solarHeat = Math.max(...['solarL', 'solarR'].filter((id) => !s.lost[id]).map((id) => heatFrac(s, id)), 0);
     pb.classList.toggle('warn', s.panels === 'out' && solarHeat > 0.3 && !solarGone);
     const cb = $('c-chute');
     const noChute = !s.spec.ids.has('chute');
-    setLabel(cb, noChute ? 'Kein Schirm' : { burned: 'Schirm verglüht', stowed: 'Fallschirm', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute], 'P');
+    setLabel(cb, s.chute === 'open' && air ? 'Abwerfen' : 'Schirm', 'P', noChute ? 'Kein Schirm' : { burned: 'Schirm verglüht', stowed: 'Fallschirm öffnen', open: air ? 'Schirm abwerfen' : 'Schirm (nutzlos)', cut: 'Schirm weg', torn: 'Schirm gerissen' }[s.chute]);
     cb.disabled = noChute || s.chute === 'cut' || s.chute === 'torn' || s.chute === 'burned' || (s.chute === 'open' && !air);
     cb.classList.toggle('on', s.chute === 'open' && air);
     cb.classList.toggle('ready', s.chute === 'stowed' && air && s.status === 'flying' && S.chuteSafe(s) && s.t > 0.2);
@@ -416,7 +428,7 @@ export function createHud() {
     const sb = $('c-shield');
     sb.hidden = !s.spec.ids.has('shield');
     const dropHint = S.shieldDropHint(s);
-    setLabel(sb, s.lost.shield ? 'Schild verglüht' : s.dropped.shield ? 'Schild weg' : 'Schild ab', 'J');
+    setLabel(sb, 'Schild ab', 'J', s.lost.shield ? 'Schild verglüht' : s.dropped.shield ? 'Schild weg' : 'Hitzeschild abwerfen');
     sb.disabled = !S.hasPart(s, 'shield') || s.status !== 'flying';
     sb.classList.toggle('ready', !!dropHint && s.settings?.hints !== false);
     // heat: hot or destroyed components override their row
@@ -450,7 +462,7 @@ export function createHud() {
     { const ms = lever.querySelector('.mark span'), txt = `${fmt(s.limit * 100)} %`; if (ms.textContent !== txt) ms.textContent = txt; }
     lever.setAttribute('aria-valuenow', Math.round(s.limit * 100));
     const sas = $('c-sas');
-    setLabel(sas, `Lageregler: ${{ hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkrecht', off: 'Aus' }[s.sas || 'off']}`, 'T');
+    { const m = { hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkr.', off: 'Aus' }[s.sas || 'off']; setLabel(sas, m, 'T', `Lageregler: ${m}`); }
     sas.classList.toggle('on', !!s.sas);
     lever.classList.toggle('on', s.throttle > 0);
     const rcs = $('c-rcs');

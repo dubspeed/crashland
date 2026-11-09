@@ -76,7 +76,7 @@ How it works (kept separate so it can be removed again):
 | E | Paneele | Fold the solar panels in / out |
 | T | Lageregler | Attitude control: **Hold** (default) / Retro / Retro 2 / Vertical / Off |
 | C | Schwerpunkt | Show centre of mass and thrust axis |
-| V | Ansicht | Camera: behind / oblique / target / top-down (screen-up always matches the tilt pad) |
+| V | Kamera | Camera: behind the lander / target view (screen-up always matches the tilt pad); the oblique and top-down views are still in the code but no longer offered |
 | R / M | buttons | Restart / planet select |
 | K | Karte | Orbit map with apoapsis / periapsis (orbit levels) |
 | – | drag / swipe on the 3D scene | Orbit the camera around the lander: sideways = around, up/down = higher or lower (from above to slightly below); double tap / double click resets the height; wheel = zoom |
@@ -189,3 +189,7 @@ Third start mode "Basis": every mission starts from orbit (deorbit, re-entry, th
 - **Score:** a delivered cargo adds 500 points (damaged 150); a lost cargo scores nothing. Base flights don't touch the best scores of the free levels.
 - **HUD:** the mission line above the altitude, a cargo card (g-load against the limit, intact / damaged) instead of the crew faces, "FRACHT BESCHÄDIGT" and "G-LAST: FRACHT IN GEFAHR" alerts.
 - Replays carry cargo (`build.payload`) and base (`settings.base`: bonuses and obstacles), so they stay exact.
+
+## Controls on the phone
+
+The switches are icon buttons with one short word (Schirm, Paneele, Schild ab, the attitude mode, Kamera, Karte); the full action is in the title / aria label, the keyboard shortcut shows on desktop only. The camera button switches between the two views that matter: behind the lander and the target view. On phones the HUD avoids overlaps: crew speech stays to the right of the landing-window card, the altitude has no "über Grund" label, alerts are smaller (landscape: in the strip at the top), and when there is no room above the controls the touchdown bar sits right under the altitude.

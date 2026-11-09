@@ -618,9 +618,6 @@ body.building #top { display: none; }
 .planet .dots i.done { background: var(--ok); } .planet .dots i.dmg { background: var(--warn); } .planet .dots i.next { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
 .planet .mname { font: 700 13px var(--display); color: var(--ink); letter-spacing: 0.02em; }
 .planet:disabled { opacity: 0.6; }
-.mission { position: absolute; left: 50%; transform: translateX(-50%); top: calc(74px + env(safe-area-inset-top, 0px)); font: 600 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--cyan); text-shadow: 0 1px 3px #000; white-space: nowrap; pointer-events: none; }
-@media (max-width: 520px) { .mission { top: calc(150px + env(safe-area-inset-top, 0px)); } }
-@media (max-height: 520px) { .mission { top: calc(72px + env(safe-area-inset-top, 0px)); } }
 .cargo { display: grid; gap: 4px; margin-top: 6px; min-width: 150px; }
 .cg-top { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
 .cg-top b { font: 700 13px var(--display); }
@@ -632,3 +629,31 @@ body.building #top { display: none; }
 @media (max-width: 520px), (max-height: 520px) {
   #crew.cargo-mode { background: rgba(9,13,22,0.55) !important; border: 1px solid var(--glass-edge) !important; border-radius: 10px !important; padding: 6px 9px !important; }
 }
+
+/* control buttons: icon + one short word (+ shortcut on desktop) */
+.tog { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.tog svg { width: 17px; height: 17px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.tog .t { white-space: nowrap; }
+@media (max-width: 520px), (max-height: 520px) {
+  #controls .toggles { display: grid; grid-template-columns: repeat(3, 58px); gap: 6px; }
+  #controls .tog { flex-direction: column; gap: 2px; min-height: 0; height: 50px; padding: 5px 2px 4px; font-size: 10px; line-height: 1.1; }
+  #controls .tog svg { width: 20px; height: 20px; }
+  #controls .tog kbd, #c-com { display: none; }
+}
+
+/* phone: less text, nothing on top of each other */
+@media (max-width: 520px) {
+  #crew-say { width: calc(100vw - 214px); max-width: 220px; font-size: 11px; line-height: 1.25; }
+  #ro-alt-u { display: none; }
+  #alert { font-size: 13px; letter-spacing: 0.06em; max-width: calc(100vw - 150px); }
+}
+@media (max-height: 520px) {
+  #ro-alt-u { display: none; }
+  #crew-say { max-width: 220px; font-size: 11px; }
+}
+@media (max-height: 520px) {
+  /* landscape: the alert in the free strip at the top centre, above the altitude */
+  #alert { top: calc(12px + env(safe-area-inset-top, 0px)) !important; font-size: 12px; letter-spacing: 0.05em; max-width: calc(100vw - 2 * 270px); white-space: normal; text-align: center; line-height: 1.25; }
+  #readout { top: calc(84px + env(safe-area-inset-top, 0px)); }
+}
+@media (max-height: 520px) { #td { width: min(240px, calc(100vw - 2 * 260px)) !important; top: calc(46px + env(safe-area-inset-top, 0px)) !important; } }

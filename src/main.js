@@ -103,7 +103,7 @@ const input = { thrust: false, rcs: 0, limitDir: 0 };
 const keys = new Set();
 let showCom = true;
 let cam = { yaw: 0.35, pitch: 0, dist: 28, shake: 0, view: 'chase' };
-const VIEWS = { chase: 'Hinten', oblique: 'Schräg', target: 'Ziel', top: 'Oben' };
+const VIEWS = { chase: 'Lander', target: 'Ziel' }; // (the oblique and top views are still in the camera code)
 try { const v = localStorage.getItem('crashland.view'); if (VIEWS[v]) cam.view = v; } catch { /* storage unavailable */ }
 function toggleView() {
   const order = Object.keys(VIEWS);
@@ -114,7 +114,7 @@ function toggleView() {
 }
 function viewButton() {
   const b = document.getElementById('c-view');
-  setLabel(b, `Ansicht: ${VIEWS[cam.view]}`, 'V');
+  setLabel(b, VIEWS[cam.view], 'V', `Kamera: ${VIEWS[cam.view]} (umschalten)`);
   b.classList.toggle('on', cam.view !== 'chase');
 }
 viewButton();
@@ -583,8 +583,8 @@ function toggleMap(force) {
   $('c-map').classList.toggle('on', orbitMap.visible);
 }
 $('c-map').addEventListener('click', () => toggleMap());
-setLabel($('c-map'), 'Karte', 'K');
-setLabel($('c-com'), 'Schwerpunkt', 'C');
+setLabel($('c-map'), 'Karte', 'K', 'Bahnkarte');
+setLabel($('c-com'), 'SP', 'C', 'Schwerpunkt anzeigen');
 // buttons never take keyboard focus: otherwise Space (thrust) or Enter would also "press" the last clicked button
 for (const b of document.querySelectorAll('#controls .tog')) b.addEventListener('mousedown', (e) => e.preventDefault());
 $('r-again').addEventListener('click', () => start(planet));

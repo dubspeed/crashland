@@ -20,7 +20,6 @@
       <span id="planet-tag"></span>
     </header>
     <div id="alert" hidden></div>
-    <div id="mission" class="mission" hidden></div>
     <div id="readout" aria-live="off"><div class="ro-alt"><b id="ro-alt"></b><span id="ro-alt-u">über Grund</span></div><div class="ro-v"><span id="ro-vy"></span><span id="ro-vh"></span></div></div>
 
     <div id="td" hidden aria-live="off">
@@ -82,13 +81,13 @@
     <div id="controls">
       <div class="left">
         <div class="toggles">
-          <button id="c-chute" class="tog chute"></button>
-          <button id="c-panels" class="tog"></button>
-          <button id="c-shield" class="tog shield" hidden></button>
-          <button id="c-sas" class="tog"></button>
-          <button id="c-view" class="tog"></button>
-          <button id="c-com" class="tog">Schwerpunkt</button>
-          <button id="c-map" class="tog" hidden>Karte</button>
+          <button id="c-chute" class="tog chute" data-icon="chute"></button>
+          <button id="c-panels" class="tog" data-icon="panels"></button>
+          <button id="c-shield" class="tog shield" data-icon="shield" hidden></button>
+          <button id="c-sas" class="tog" data-icon="sas"></button>
+          <button id="c-view" class="tog" data-icon="view"></button>
+          <button id="c-com" class="tog" data-icon="com"></button>
+          <button id="c-map" class="tog" data-icon="map" hidden></button>
         </div>
         <div id="c-rcs" class="rcs" role="group" aria-label="Neigen: in die gewünschte Richtung drücken, oben ist vom Bildschirm weg">
           <span class="ar u">▲</span><span class="ar d">▼</span><span class="ar l">◀</span><span class="ar r">▶</span><i class="knob"></i>
@@ -162,7 +161,7 @@
         <dl class="help-keys touch-hint">
           <dt>Schubhebel rechts</dt><dd>gedrückt halten = Schub, Höhe des Fingers = Stärke</dd>
           <dt>Steuerkreuz links</dt><dd>in die Richtung drücken, in die du kippen willst; oben = vom Bildschirm weg</dd>
-          <dt>Schalter</dt><dd>Fallschirm, Paneele, Lageregler, Ansicht</dd>
+          <dt>Schalter</dt><dd>Schirm, Paneele, Schild ab, Lageregler, Kamera, Karte</dd>
           <dt>Titel 3× tippen</dt><dd>Technik-Anzeige (FPS, Draw Calls) ein/aus</dd>
           <dt>Wischen</dt><dd>Kamera um das Schiff drehen: seitlich = rundherum, hoch/runter = von oben oder unten; Doppeltipp = zurück</dd>
         </dl>
@@ -171,7 +170,7 @@
           <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / Pfeile</dt><dd>neigen (oben = vom Bildschirm weg)</dd>
           <dt><kbd>+</kbd> <kbd>−</kbd> · <kbd>1</kbd>–<kbd>0</kbd></dt><dd>Schubbegrenzer</dd>
           <dt><kbd>P</kbd> · <kbd>E</kbd></dt><dd>Fallschirm · Paneele ein/aus</dd>
-          <dt><kbd>T</kbd> · <kbd>V</kbd></dt><dd>Lageregler · Ansicht (Hinten, Schräg, Ziel, Oben)</dd>
+          <dt><kbd>T</kbd> · <kbd>V</kbd></dt><dd>Lageregler · Kamera (Lander, Ziel)</dd>
           <dt><kbd>R</kbd> · <kbd>M</kbd></dt><dd>Neustart · Menü</dd>
           <dt><kbd>K</kbd></dt><dd>Bahnkarte (Orbit-Level)</dd>
           <dt><kbd>F3</kbd></dt><dd>Technik-Anzeige (FPS, Draw Calls), am Handy: Titel dreimal antippen</dd>
