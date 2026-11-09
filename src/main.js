@@ -9,6 +9,7 @@ import { createOrbitMap } from './orbitmap.js';
 import { createReentry } from './reentry.js';
 import { createBuilder } from './builder.js';
 import { cargoModel } from './cargo.js';
+import * as E from './economy.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -211,11 +212,24 @@ function openMissionBuilder(p) {
   $('menu').hidden = true; cam.pitch = 0;
   parkShip();
   const bonus = [bon.fuel > 1 ? `Treibstoff +${Math.round((bon.fuel - 1) * 100)} %` : '', bon.solar > 1 ? `Solar +${Math.round((bon.solar - 1) * 100)} %` : ''].filter(Boolean).join(' · ');
+  const sub = `${p.name.replace(' Orbit', '')} aus dem Orbit · ${c.crew ? '4 Crew im Habitat' : `${c.mass} kg · max ${c.g} g · Aufsetzen ≤ ${c.touch} m/s`}${bonus ? ` · Basis: ${bonus}` : ''}`;
   builder.open({
     title: `Mission ${step + 1} · ${c.name}`,
-    sub: `${p.name.replace(' Orbit', '')} aus dem Orbit · ${c.crew ? '4 Crew im Habitat' : `${c.mass} kg · max ${c.g} g · Aufsetzen ≤ ${c.touch} m/s`}${bonus ? ` · Basis: ${bonus}` : ''}`,
+    sub,
     planets: [p], ref: missionBuildFor(type, true), hideSlots: ['capsule'],
     onStart: () => start(p, { step }),
+    // career: what this lander costs, the account, Start only if affordable (or the emergency credit)
+    status: career() ? (b) => {
+      const c = loadCareer(), econ = E.baseEconomy(base.modules), fk = (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * bon.fuel;
+      const cost = E.flightCost(b, p, fk, econ.fuelPrice), ok = c.money >= cost.total;
+      const broke = c.money < E.cheapestCost(type, p, fk, econ.fuelPrice);
+      return {
+        sub: `${sub}<br><b class="${ok ? '' : 'bad'}">Kosten ${E.cr(cost.total)}</b> <small>(Teile ${E.cr(cost.parts)} · Treibstoff ${E.cr(cost.fuel)})</small> · Konto <b>${E.cr(c.money)}</b> · Prämie ${E.cr(E.FEES[type])}`
+          + (broke ? ` <button class="link loan">Notkredit +${E.cr(E.LOAN)}</button>` : ''),
+        canStart: ok, startLabel: ok ? 'Start ▶' : 'Zu teuer',
+      };
+    } : null,
+    badge: career() ? (b, alt) => { const d = E.partsPrice(alt) - E.partsPrice(b); return Math.abs(d) >= 100 ? `<em class="${d < 0 ? 'b-up' : 'b-down'}">${d > 0 ? '+' : '−'}${E.cr(Math.abs(d))}</em>` : ''; } : null,
   });
 }
 function setBuild(slot, id) {
@@ -242,6 +256,26 @@ const builder = createBuilder({
   onClose: (starting) => { editMission = null; if (!starting) { $('menu').hidden = false; buildMenu(); } },
 });
 $('build-btn').addEventListener('click', () => { $('menu').hidden = true; cam.pitch = 0; builder.open(); });
+// settings: reset the game state while testing (money, bases, or everything incl. mission landers and best scores)
+function resetGame(what) {
+  const label = { money: 'Geld und Kredit zurücksetzen?', bases: 'Alle Basen zurücksetzen?', all: 'Alles zurücksetzen (Geld, Basen, Missions-Lander, Bestwerte)?' }[what];
+  if (!confirm(label)) return;
+  try {
+    if (what !== 'bases') localStorage.removeItem('crashland.career');
+    if (what !== 'money') for (const p of [...S.PLANETS, ...S.ORBIT_PLANETS]) localStorage.removeItem(baseKey(p.id));
+    if (what === 'all') for (const k of Object.keys(localStorage)) if (k.startsWith('crashland.mbuild.') || k.startsWith('crashland.best.')) localStorage.removeItem(k);
+  } catch { /* storage unavailable */ }
+  buildMenu();
+}
+$('reset-money').addEventListener('click', () => resetGame('money'));
+$('reset-bases').addEventListener('click', () => resetGame('bases'));
+$('reset-all').addEventListener('click', () => resetGame('all'));
+// emergency credit in the briefing (only offered when even the cheapest lander is too expensive)
+$('build-sub').addEventListener('click', (e) => {
+  if (!e.target.closest('.loan')) return;
+  const c = loadCareer(); c.money += E.LOAN; c.debt += E.LOAN; saveCareer(c);
+  builder.refresh();
+});
 
 /** score multiplier of the chosen settings (wind is applied separately, only where there is air) */
 const settingsBonus = (set) => (S.FUEL_LEVELS[set.fuel]?.bonus ?? 1) * (set.hints ? 1 : S.HINTS_OFF_BONUS) * (set.autoFine ? S.AUTO_FINE_BONUS : 1);
@@ -263,6 +297,12 @@ $('start-select').addEventListener('click', (e) => {
 const baseKey = (id) => `crashland.base.${id}`;
 function loadBase(id) { try { return JSON.parse(localStorage.getItem(baseKey(id))) ?? { modules: [], step: 0 }; } catch { return { modules: [], step: 0 }; } }
 function saveBase(id, b) { try { localStorage.setItem(baseKey(id), JSON.stringify(b)); } catch { /* storage unavailable */ } }
+// career money (prototype): one account for all bases; "sandbox" = everything free
+let economy = 'career';
+try { economy = localStorage.getItem('crashland.economy') ?? 'career'; } catch { /* default */ }
+function loadCareer() { try { return { money: E.START_MONEY, debt: 0, ...JSON.parse(localStorage.getItem('crashland.career') ?? '{}') }; } catch { return { money: E.START_MONEY, debt: 0 }; } }
+function saveCareer(c) { try { localStorage.setItem('crashland.career', JSON.stringify(c)); } catch { /* storage unavailable */ } }
+const career = () => economy === 'career';
 let mission = null; // the base mission being flown: { planetId, step, type, target: [x, z] }
 const baseGroup = new THREE.Group(); scene.add(baseGroup);
 /** the modules of a base around the current target (the target is the origin of the flight) */
@@ -296,8 +336,13 @@ function buildMenu() {
     settings.hints ? '' : 'ohne Hinweise', settings.autoFine ? 'Computer an' : ''].filter(Boolean);
   $('diff-btn').innerHTML = `Schwierigkeit${Math.abs(bonus - 1) > 0.001 ? ` <em>×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}</em>` : ''}<small>${diff.length ? diff.join(' · ') : 'Standard'}</small>`;
   $('base-info').hidden = startMode !== 'base';
-  if (startMode === 'base') $('base-info').innerHTML = 'Jede Landung bringt ein Modul zur Basis. Das nächste Ziel liegt neben den Modulen, wer daraufsetzt, crasht. Intakte Module helfen den nächsten Flügen. <button id="base-reset" class="link">Basen zurücksetzen</button>';
-  $('base-reset')?.addEventListener('click', () => { if (confirm('Alle Basen zurücksetzen?')) { for (const p of [...S.PLANETS, ...S.ORBIT_PLANETS]) saveBase(p.id, { modules: [], step: 0 }); buildMenu(); } });
+  if (startMode === 'base') {
+    const c = loadCareer();
+    $('base-info').innerHTML = `<span class="eco-row"><span class="eco-seg"><button data-eco="career" class="${career() ? 'on' : ''}">Karriere</button><button data-eco="sandbox" class="${career() ? '' : 'on'}">Sandbox</button></span>`
+      + (career() ? `<b class="money">${E.cr(c.money)}</b>${c.debt > 0 ? ` <small class="debt">Kredit ${E.cr(c.debt)}</small>` : ''}` : '<small>alles kostenlos</small>') + '</span>'
+      + 'Jede Landung bringt ein Modul zur Basis. Das nächste Ziel liegt neben den Modulen, wer daraufsetzt, crasht. Intakte Module helfen den nächsten Flügen.';
+    $('base-info').querySelectorAll('[data-eco]').forEach((b) => b.addEventListener('click', () => { economy = b.dataset.eco; try { localStorage.setItem('crashland.economy', economy); } catch { /* storage unavailable */ } buildMenu(); }));
+  }
   // base missions start from orbit (deorbit, re-entry, then down to the base)
   for (const p of startMode === '0' ? S.PLANETS : S.ORBIT_PLANETS) {
     const b = document.createElement('button');
@@ -409,6 +454,12 @@ function start(p, ms) {
     flightBuild = missionBuildFor(mission.type); // the lander set up in the mission briefing
     const obstacles = base.modules.map((m) => ({ x: +(m.x - mission.target[0]).toFixed(2), z: +(m.z - mission.target[1]).toFixed(2), r: S.CARGO[m.type].r, name: S.CARGO[m.type].name }));
     flightSettings = { ...settings, base: { fuel: bon.fuel, solar: bon.solar, score: bon.score, obstacles } };
+    // career: the lander and its fuel are paid at the start
+    if (career()) {
+      const econ = E.baseEconomy(base.modules), cost = E.flightCost(flightBuild, p, (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * bon.fuel, econ.fuelPrice);
+      const cc = loadCareer(); cc.money -= cost.total; saveCareer(cc);
+      Object.assign(mission, { career: true, cost, econ });
+    }
     showBase(base, mission.target);
   } else showBase(null);
   s = S.newRound(planet, windLevel, seed, flightSettings, flightBuild);
@@ -476,6 +527,13 @@ function finish() {
       base.step = mission.step + 1;
       saveBase(mission.planetId, base);
     }
+    if (mission.career) {
+      // income: fee, aim, unburnt fuel, recovered lander, base income; half of it pays back a credit
+      const pay = E.payout(s, mission.type, mission.result, mission.cost, mission.econ);
+      const cc = loadCareer(), repay = Math.min(cc.debt, Math.round(pay.total / 2));
+      cc.money += pay.total - repay; cc.debt -= repay; saveCareer(cc);
+      mission.pay = { ...pay, repay, money: cc.money };
+    }
   }
   if (!ok) { debris.explode(ship, s); cam.shake = s.touch.crash.kind === 'wreck' ? 0.4 : 0.5 + s.touch.energy; }
   else if (s.touch.grade >= 1) { debris.puff(ship, s, s.touch.grade); cam.shake = 0.15 * s.touch.grade; }
@@ -533,6 +591,14 @@ function showResult() {
     if (mission.result === 'damaged') notes.push([`${c.name} beschädigt (${s.cargoDamaged}) · kein Bonus · Basis ${base.modules.length}/${S.MISSIONS.length}`, 'warn']);
     if (mission.result === 'far') notes.push([`mehr als ${BASE_REACH} m vom Ziel: die Basis kann ${c.name} nicht nutzen`, 'warn']);
     if (mission.result === 'lost' && !c.crew) notes.push([`${c.name} verloren`, 'bad']);
+  }
+  if (mission?.pay) {
+    const P = mission.pay;
+    for (const [k, v] of P.lines) notes.push([`${k} +${E.cr(v)}`, 'ok']);
+    notes.push([`Kosten −${E.cr(mission.cost.total)}`, 'bad']);
+    if (P.repay) notes.push([`Kredit −${E.cr(P.repay)}`, 'warn']);
+    const net = P.total - mission.cost.total;
+    notes.push([`Saldo ${net >= 0 ? '+' : ''}${E.cr(net)} · Konto ${E.cr(P.money)}`, net >= 0 ? 'ok' : 'bad']);
   }
   $('r-again').innerHTML = mission && (mission.result === 'intact' || mission.result === 'damaged') && loadBase(mission.planetId).step < S.MISSIONS.length ? 'Nächste Mission <kbd>R</kbd>' : 'Nochmal <kbd>R</kbd>';
   if (!ok && s.crew.length) notes.push(crash.crew ? ['Crew gerettet', 'ok'] : ['Crew verloren', 'bad']);

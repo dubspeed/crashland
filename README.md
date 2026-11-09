@@ -203,3 +203,14 @@ The switches are icon-only buttons (chute, panels, shield, attitude control, cam
 **Side thruster puffs.** The four RCS blocks near the top now show short white puffs whenever the jets fire (`updatePuffs` in `ship.js`), from the tilt pad or the attitude control: their rate follows the torque the flight model commands (`s._tauA`, `s._tauB`), and they blow away from the push (a torque tipping the top to −x fires towards +x). On cargo flights the jets sit on the frame top.
 
 **Mission briefing.** Tapping a base card opens the builder as the briefing for that mission (`openMissionBuilder`): the title names mission and cargo, a line its limits and the base's bonuses, the cargo sits on the lander, the capsule slot is gone (the cargo replaces it; the crew mission flies the habitat), and figures and warnings count only the target planet from orbit, with the base's fuel bonus, compared with the standard lander carrying the same cargo (`buildWarnings(..., ref)`). The lander is remembered per cargo type (`crashland.mbuild.<type>`); "Start ▶" flies it. After a delivered module, "Nächste Mission" opens the next briefing; "Nochmal" (R) flies the same lander again.
+
+## Money (base career, prototype)
+
+Base mode has "Karriere" (with money) or "Sandbox" (everything free) — the switch sits under the planet cards with the account. `src/economy.js`:
+
+- **Prices:** every builder option (`PRICES`; mini engine 2k … Bündel 18k Cr), the uncrewed cargo core 2k, fuel 10 Cr/kg. The standard lander with a cargo costs about 20k with fuel; start money 40k.
+- **Paid at the start** of a mission (`flightCost`): the briefing shows cost (parts + fuel), account and fee; Start says "Zu teuer" if it isn't affordable, the option cards show the price difference. If even the cheapest lander is too expensive, an emergency credit (+30k) appears; half of each later payout pays it back.
+- **Payout** (`payout`): the fee for a delivered cargo (`FEES`, 14k beacon … 30k crew; damaged 40 %), +5k bullseye / +2k on the pad, unburnt fuel back, the landed descent stage recovered (40 % of the part value, hard landing 25 %, crash nothing), and the base's income.
+- **Modules:** depot −15 % and refinery −30 % fuel price, research station +3k and rover +2k per later mission.
+- Balance (test pilot, standard lander, all eight missions): early missions net about +8k (one mid-sized upgrade), later ones more; a crash costs ~20k.
+- **Reset** in Schwierigkeit → Spielstand: Geld, Basen, or Alles (also the mission landers and best scores).

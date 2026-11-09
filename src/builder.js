@@ -96,6 +96,12 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     // what is odd about this build (it can still be flown: a challenge)
     $('build-warn').innerHTML = warn.list.map((x) => `<em class="${x.level}">⚠ ${x.text}</em>`).join('');
     $('build-warn').hidden = !warn.list.length;
+    // mission briefing extras (money): the line under the title and whether Start is possible
+    if (ctx?.status) {
+      const st = ctx.status(build);
+      $('build-sub').innerHTML = st.sub; $('build-sub').hidden = false;
+      $('build-done').disabled = !st.canStart; $('build-done').innerHTML = st.startLabel;
+    }
     return now;
   }
 
@@ -124,7 +130,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
       const cant = Object.values(w.per).filter((x) => x === 'bad').length;
       const warnBadge = cant > cantCur ? `<em class="b-bad">⚠ ${cant} zu schwach</em>` : flagged(w) > flagged(wCur) ? '<em class="b-warn">⚠ knapper</em>' : '';
       const badges = o.id === build[slot] ? `<em class="b-cur">gewählt</em>${cant ? `<em class="b-bad">⚠ ${cant} zu schwach</em>` : ''}`
-        : `${warnBadge}${Math.abs(dm) > 0.5 ? `<em class="${dm < 0 ? 'b-up' : 'b-down'}">${dm > 0 ? '+' : '−'}${f(Math.abs(dm))} kg</em>` : ''}${Math.abs(dv) > 0.005 ? `<em class="${dv > 0 ? 'b-up' : 'b-down'}">Δv ${dv > 0 ? '+' : '−'}${f(Math.abs(dv) * 100)} %</em>` : ''}`;
+        : `${warnBadge}${ctx?.badge ? ctx.badge(build, { ...build, [slot]: o.id }) : ''}${Math.abs(dm) > 0.5 ? `<em class="${dm < 0 ? 'b-up' : 'b-down'}">${dm > 0 ? '+' : '−'}${f(Math.abs(dm))} kg</em>` : ''}${Math.abs(dv) > 0.005 ? `<em class="${dv > 0 ? 'b-up' : 'b-down'}">Δv ${dv > 0 ? '+' : '−'}${f(Math.abs(dv) * 100)} %</em>` : ''}`;
       return `<button class="bo${o.id === build[slot] ? ' on' : ''}" data-id="${o.id}" aria-pressed="${o.id === build[slot]}"><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b">${badges}</span></button>`;
     }).join('');
   }
@@ -346,5 +352,5 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     onClose(starting);
   }
 
-  return { open, close, frame, beforeUpdate, placeCamera, pick, get active() { return active; }, select, choose, get slot() { return slot; } };
+  return { open, close, refresh, frame, beforeUpdate, placeCamera, pick, get active() { return active; }, select, choose, get slot() { return slot; } };
 }

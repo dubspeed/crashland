@@ -705,3 +705,15 @@ body.building #top { display: none; }
 .bd-sub { margin: -2px 0 8px; font-size: 11px; color: var(--cyan); }
 #builder.mission .bd-head h2 { font-size: 14px; color: var(--amber); }
 #builder.mission .bd-slots { grid-template-columns: repeat(7, 1fr); }
+
+/* career money */
+.eco-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+.eco-seg { display: inline-flex; border: 1px solid var(--glass-edge); border-radius: 8px; overflow: hidden; }
+.eco-seg button { border: 0; background: none; padding: 4px 10px; font: 600 11px var(--mono); color: var(--mute); }
+.eco-seg button.on { background: var(--amber); color: #1a1006; }
+.base-info .money { font: 700 15px var(--display); color: var(--ok); }
+.base-info .debt { color: var(--warn); }
+.bd-sub .bad { color: var(--bad); }
+.bd-sub .link { background: none; border: 0; padding: 0; color: var(--warn); text-decoration: underline; font: inherit; }
+#build-done:disabled { opacity: 0.5; background: var(--glass); color: var(--bad); border-color: var(--bad); }
+.reset-row button small { white-space: nowrap; }
