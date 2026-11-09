@@ -700,3 +700,8 @@ body.building #top { display: none; }
 .st-bar { width: 100%; height: 3px; border-radius: 2px; background: rgba(255,255,255,0.1); overflow: hidden; }
 .st-bar i { display: block; height: 100%; width: 0; background: var(--amber); }
 @media (max-width: 400px) { .st-modes span { font-size: 11.5px; padding: 3px 5px; } }
+
+/* builder as mission briefing */
+.bd-sub { margin: -2px 0 8px; font-size: 11px; color: var(--cyan); }
+#builder.mission .bd-head h2 { font-size: 14px; color: var(--amber); }
+#builder.mission .bd-slots { grid-template-columns: repeat(7, 1fr); }

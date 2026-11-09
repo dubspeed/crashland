@@ -193,7 +193,39 @@ function buildSummary() {
   const diff = S.BUILD_SLOTS.filter((sl) => build[sl.id] !== S.DEFAULT_BUILD[sl.id]).map((sl) => `${sl.name}: ${optName(sl.id, build[sl.id])}`);
   return diff.length ? diff.join(' · ') : 'Standard';
 }
+// mission briefing: the lander for one cargo, remembered per cargo type
+let editMission = null, missionBuild = null;
+function missionBuildFor(type, fresh = false) {
+  let b = { ...build };
+  if (!fresh) try { const saved = JSON.parse(localStorage.getItem(`crashland.mbuild.${type}`)); if (saved) b = saved; } catch { /* default: the free build */ }
+  if (fresh) b = { ...S.DEFAULT_BUILD };
+  b = S.normalizeBuild(b); delete b.payload;
+  return S.CARGO[type].crew ? { ...b, capsule: 'hab' } : { ...b, payload: type };
+}
+function openMissionBuilder(p) {
+  const base = loadBase(p.id), step = base.step, type = S.MISSIONS[step];
+  if (!type) return;
+  const c = S.CARGO[type], bon = S.baseBonus(base.modules);
+  editMission = { planet: p, step, type, fuel: bon.fuel };
+  missionBuild = missionBuildFor(type);
+  $('menu').hidden = true; cam.pitch = 0;
+  parkShip();
+  const bonus = [bon.fuel > 1 ? `Treibstoff +${Math.round((bon.fuel - 1) * 100)} %` : '', bon.solar > 1 ? `Solar +${Math.round((bon.solar - 1) * 100)} %` : ''].filter(Boolean).join(' · ');
+  builder.open({
+    title: `Mission ${step + 1} · ${c.name}`,
+    sub: `${p.name.replace(' Orbit', '')} aus dem Orbit · ${c.crew ? '4 Crew im Habitat' : `${c.mass} kg · max ${c.g} g · Aufsetzen ≤ ${c.touch} m/s`}${bonus ? ` · Basis: ${bonus}` : ''}`,
+    planets: [p], ref: missionBuildFor(type, true), hideSlots: ['capsule'],
+    onStart: () => start(p, { step }),
+  });
+}
 function setBuild(slot, id) {
+  if (editMission) {
+    missionBuild[slot] = id;
+    const save = { ...missionBuild }; delete save.payload;
+    try { localStorage.setItem(`crashland.mbuild.${editMission.type}`, JSON.stringify(save)); } catch { /* storage unavailable */ }
+    parkShip();
+    return;
+  }
   build[slot] = id;
   try { localStorage.setItem('crashland.build', JSON.stringify(build)); } catch { /* storage unavailable */ }
   if (mode === 'menu') parkShip();
@@ -203,11 +235,11 @@ const updateBuildBtn = () => { $('build-btn').innerHTML = `Lander bauen<small>${
 // fullscreen 3D editor (src/builder.js); the start menu steps aside while it is open
 const builder = createBuilder({
   S, ship, camera, canvas: renderer.domElement,
-  getBuild: () => build,
+  getBuild: () => (editMission ? missionBuild : build),
   setBuild,
-  resetBuild: () => { build = { ...S.DEFAULT_BUILD }; setBuild('engine', 'std'); },
-  getFuelK: () => S.FUEL_LEVELS[settings.fuel]?.k ?? 1,
-  onClose: () => { $('menu').hidden = false; buildMenu(); },
+  resetBuild: () => { if (editMission) { missionBuild = missionBuildFor(editMission.type, true); setBuild('engine', missionBuild.engine); } else { build = { ...S.DEFAULT_BUILD }; setBuild('engine', 'std'); } },
+  getFuelK: () => (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * (editMission?.fuel ?? 1),
+  onClose: (starting) => { editMission = null; if (!starting) { $('menu').hidden = false; buildMenu(); } },
 });
 $('build-btn').addEventListener('click', () => { $('menu').hidden = true; cam.pitch = 0; builder.open(); });
 
@@ -281,7 +313,7 @@ function buildMenu() {
         <span class="dots">${S.MISSIONS.map((m, i) => `<i class="${i < base.step ? (base.modules.find((x) => x.type === m)?.damaged ? 'dmg' : 'done') : i === base.step ? 'next' : ''}"></i>`).join('')}</span>
         <p>${next ? `Mission ${base.step + 1}: <b class="mname">${S.CARGO[next].name}</b>${S.CARGO[next].crew ? '' : `<br><small>max ${S.CARGO[next].g} g · ${S.CARGO[next].touch} m/s · ${S.CARGO[next].mass} kg</small>`}` : 'Basis fertig!'}</p>
         <span class="best">${chips.join(' · ')}</span>`;
-      if (next) b.addEventListener('click', () => start(p, { step: base.step }));
+      if (next) b.addEventListener('click', () => openMissionBuilder(p));
       else b.disabled = true;
       wrap.append(b);
       continue;
@@ -323,7 +355,7 @@ function showMenu() {
 }
 /** ship parked on the pad as a backdrop (menu and builder) */
 function parkShip() {
-  s = S.createState(planet, { build });
+  s = S.createState(planet, { build: editMission ? missionBuild : build });
   ship.reset(s.spec); ship.helpers.visible = showCom; s.x = 0; s.z = 0; s.y = 0; s.vy = 0; s.vx = 0; s.vz = 0; s.a = 0; s.b = 0; s.status = 'parked';
   ship.update(s, time);
 }
@@ -374,7 +406,7 @@ function start(p, ms) {
   if (mission) {
     // cargo flight: the payload replaces the capsule; the crew mission flies the habitat capsule
     const base = loadBase(p.id), bon = S.baseBonus(base.modules), c = S.CARGO[mission.type];
-    flightBuild = c.crew ? { ...build, capsule: 'hab' } : { ...build, payload: mission.type };
+    flightBuild = missionBuildFor(mission.type); // the lander set up in the mission briefing
     const obstacles = base.modules.map((m) => ({ x: +(m.x - mission.target[0]).toFixed(2), z: +(m.z - mission.target[1]).toFixed(2), r: S.CARGO[m.type].r, name: S.CARGO[m.type].name }));
     flightSettings = { ...settings, base: { fuel: bon.fuel, solar: bon.solar, score: bon.score, obstacles } };
     showBase(base, mission.target);
@@ -643,7 +675,11 @@ $('icon-legend').innerHTML = [
 setLabel($('c-com'), 'SP', 'C', 'Schwerpunkt anzeigen');
 // buttons never take keyboard focus: otherwise Space (thrust) or Enter would also "press" the last clicked button
 for (const b of document.querySelectorAll('#controls .tog')) b.addEventListener('mousedown', (e) => e.preventDefault());
-$('r-again').addEventListener('click', () => start(planet));
+$('r-again').addEventListener('click', () => {
+  // base: after a delivered module the next mission starts with its briefing (the lander for that cargo)
+  if (mission && (mission.result === 'intact' || mission.result === 'damaged') && loadBase(mission.planetId).step < S.MISSIONS.length) { const p = planet; showMenu(); openMissionBuilder(p); return; }
+  start(planet);
+});
 $('result-open').addEventListener('click', () => { $('result').hidden = false; $('result-open').hidden = true; $('r-again').focus(); });
 $('r-close').addEventListener('click', () => { $('result').hidden = true; $('result-open').hidden = false; });
 $('r-menu').addEventListener('click', showMenu);

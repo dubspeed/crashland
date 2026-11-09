@@ -437,7 +437,7 @@ export function makeSpec(build = {}) {
 
 /** what a build can't do (or only barely), per planet and overall, for the builder's warnings.
  *  Built lander, full tanks: twr < 1 means it cannot stop a fall at all there. */
-export function buildWarnings(build, planets, fuelK = 1) {
+export function buildWarnings(build, planets, fuelK = 1, ref = DEFAULT_BUILD) {
   const spec = makeSpec(build), out = [], per = {};
   const dv = (b, p) => {
     const s = createState(p, { build: b, fuelK, rnd: () => 0.5, windHeading: 0 }), sp = s.spec, m0 = massProps(s).m;
@@ -446,7 +446,7 @@ export function buildWarnings(build, planets, fuelK = 1) {
   };
   const weak = [], short = [], heavy = [];
   for (const p of planets) {
-    const now = dv(build, p), std = dv(DEFAULT_BUILD, p);
+    const now = dv(build, p), std = dv(ref, p); // ref: what "standard" means (with a cargo: the standard lander carrying it)
     const lowDv = now.dv < std.dv * 0.93, noChute = !spec.ids.has('chute') && p.rho > 0.5, noSun = !spec.solarK && p.orbit;
     const chuteLoad = p.rho > 0.5 && spec.ids.has('chute') && now.load > std.load * 1.048;
     per[p.id] = now.twr < 1 ? 'bad' : now.twr < 1.3 || lowDv || noChute || noSun || chuteLoad ? 'warn' : '';

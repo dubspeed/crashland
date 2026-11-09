@@ -23,6 +23,10 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   const $ = (id) => document.getElementById(id);
   const root = $('builder');
   let active = false, slot = null, hover = null, pulse = { ids: [], t: 1 };
+  // mission briefing: { title, sub, planets, ref, hideSlots, onStart } (null = free building)
+  let ctx = null;
+  const planetsNow = () => ctx?.planets ?? [...S.PLANETS, ...S.ORBIT_PLANETS];
+  const refBuild = () => ctx?.ref ?? S.DEFAULT_BUILD;
   const view = { tgt: new THREE.Vector3(0, 2.8, 0), dist: 17, zoom: 1, pitch: 0.28 };
 
   // ---------- figures ----------
@@ -30,7 +34,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   const dryMass = (spec) => spec.comps.reduce((a, c) => a + c.mass, 0);
   const figures = (build) => {
     const spec = S.makeSpec(build);
-    const per = [...S.PLANETS, ...S.ORBIT_PLANETS].map((p) => {
+    const per = planetsNow().map((p) => {
       const st = S.createState(p, { build, fuelK: getFuelK(), rnd: () => 0.5, windHeading: 0 });
       const m0 = S.massProps(st).m, fuel = st.fuel0;
       return { p, dv: spec.isp * S.G0 * Math.log(m0 / (m0 - fuel)), twr: spec.fMax / (m0 * p.g) };
@@ -67,7 +71,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   function renderFigures() {
     const build = getBuild();
     const now = figures(build);
-    std ??= figures(S.DEFAULT_BUILD);
+    std ??= figures(refBuild());
     const sp = now.spec, ss = std.spec;
     const g = (label, val, barHtml) => `<div class="g"><span class="g-l">${label}</span>${barHtml}<span class="g-v">${val}</span></div>`;
     $('build-gauges').innerHTML =
@@ -80,7 +84,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
       g('Landung', `${f(landK(sp) * 100)} %`, bar(landK(sp), 'land', 1, true));
     // per planet: Δv against the standard lander (tick at 2/3), thrust-to-weight as a coloured figure;
     // a planet the builder warns about gets a ⚠ (red: cannot land there at all)
-    const warn = S.buildWarnings(build, [...S.PLANETS, ...S.ORBIT_PLANETS], getFuelK());
+    const warn = S.buildWarnings(build, planetsNow(), getFuelK(), refBuild());
     $('build-planets').innerHTML = now.per.map((r, i) => {
       const s0 = std.per[i].dv, k = r.dv / s0;
       const cls = k > 1.02 ? ' up' : k < 0.98 ? ' down' : '';
@@ -98,8 +102,8 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   // ---------- slot bar and option cards ----------
   function renderSlots() {
     const build = getBuild();
-    $('build-slots').innerHTML = S.BUILD_SLOTS.map((sl) => {
-      const changed = build[sl.id] !== S.DEFAULT_BUILD[sl.id];
+    $('build-slots').innerHTML = S.BUILD_SLOTS.filter((sl) => !ctx?.hideSlots?.includes(sl.id)).map((sl) => {
+      const changed = build[sl.id] !== refBuild()[sl.id];
       return `<button class="bs${slot === sl.id ? ' on' : ''}${changed ? ' mod' : ''}" data-slot="${sl.id}" aria-pressed="${slot === sl.id}" title="${sl.name}">${icon(sl.id)}<span>${sl.short ?? sl.name}</span></button>`;
     }).join('');
   }
@@ -108,7 +112,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     if (!slot) { box.innerHTML = '<p class="bo-hint">Tippe auf ein Bauteil am Lander oder unten auf ein Symbol.</p>'; return; }
     const build = getBuild(), sl = S.BUILD_SLOTS.find((x) => x.id === slot);
     const cur = figures(build);
-    const planets = [...S.PLANETS, ...S.ORBIT_PLANETS], wCur = S.buildWarnings(build, planets, getFuelK());
+    const planets = planetsNow(), wCur = S.buildWarnings(build, planets, getFuelK(), refBuild());
     const flagged = (w) => Object.values(w.per).filter(Boolean).length, cantCur = Object.values(wCur.per).filter((x) => x === 'bad').length;
     box.innerHTML = sl.options.map((o) => {
       const alt = o.id === build[slot] ? cur : figures({ ...build, [slot]: o.id });
@@ -116,7 +120,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
       const dm = alt.dry - cur.dry;
       const dv = alt.per.reduce((a, r, i) => a + r.dv / cur.per[i].dv, 0) / alt.per.length - 1;
       // and whether it makes the lander unflyable somewhere (or more planets tricky)
-      const w = o.id === build[slot] ? wCur : S.buildWarnings({ ...build, [slot]: o.id }, planets, getFuelK());
+      const w = o.id === build[slot] ? wCur : S.buildWarnings({ ...build, [slot]: o.id }, planets, getFuelK(), refBuild());
       const cant = Object.values(w.per).filter((x) => x === 'bad').length;
       const warnBadge = cant > cantCur ? `<em class="b-bad">⚠ ${cant} zu schwach</em>` : flagged(w) > flagged(wCur) ? '<em class="b-warn">⚠ knapper</em>' : '';
       const badges = o.id === build[slot] ? `<em class="b-cur">gewählt</em>${cant ? `<em class="b-bad">⚠ ${cant} zu schwach</em>` : ''}`
@@ -132,7 +136,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     const b = e.target.closest('.bo'); if (!b || !slot) return;
     choose(slot, b.dataset.id);
   });
-  $('build-done').addEventListener('click', () => close());
+  $('build-done').addEventListener('click', () => { const c = ctx; close(!!c); c?.onStart?.(); });
   $('build-reset').addEventListener('click', () => { resetBuild(); baseScale.clear(); pulse = { ids: Object.keys(SLOT_OF), t: 0 }; refresh(); });
 
   function choose(sl, id) {
@@ -318,14 +322,19 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     tag.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
   }
 
-  function open() {
-    active = true; slot = null; hover = null; view.zoom = 1; std = null;
+  function open(context = null) {
+    active = true; slot = null; hover = null; view.zoom = 1; std = null; ctx = context;
     root.hidden = false;
+    $('build-title').textContent = ctx?.title ?? 'Lander bauen';
+    $('build-sub').hidden = !ctx?.sub; $('build-sub').innerHTML = ctx?.sub ?? '';
+    $('build-done').innerHTML = ctx?.onStart ? 'Start ▶' : 'Fertig';
+    root.classList.toggle('mission', !!ctx);
     document.body.classList.add('building');
     refresh();
   }
-  function close() {
+  function close(starting = false) {
     if (!active) return;
+    ctx = null;
     active = false; slot = null; hover = null;
     root.hidden = true;
     document.body.classList.remove('building');
@@ -334,7 +343,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     deck.parent?.remove(deck);
     updateGhosts();
     ship.reset(S.makeSpec(getBuild()));
-    onClose();
+    onClose(starting);
   }
 
   return { open, close, frame, beforeUpdate, placeCamera, pick, get active() { return active; }, select, choose, get slot() { return slot; } };
