@@ -155,8 +155,8 @@ export function createWorld(scene, models) {
       seg.castShadow = true;
       sock.add(seg);
     }
-    ground.add(pole, sock);
-    ground.userData.sock = sock;
+    // no air, no windsock (the Moon has nothing to blow it)
+    if (p.rho > 0) { ground.add(pole, sock); ground.userData.sock = sock; }
 
     // faint light column above the pad so it can be found from high up
     const bh = curveR ? 3000 : 600, br = curveR ? 5 : 1.2;
