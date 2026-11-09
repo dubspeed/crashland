@@ -8,7 +8,7 @@ const cls = (el, c) => { el.className = c || ''; };
 // button caption + keyboard shortcut; only touches the DOM when the text changes, so the node under
 // the mouse isn't replaced every frame (that can swallow clicks)
 // control icons (24×24, stroke = currentColor); a button names its icon in data-icon
-const ICONS = {
+export const ICONS = {
   chute: '<path d="M3 11a9 7 0 0 1 18 0z"/><path d="M3 11l9 9 9-9M12 11v9"/>',
   panels: '<path d="M2 8h8v8H2zM14 8h8v8h-8z"/><path d="M10 12h4M6 8v8M18 8v8"/>',
   shield: '<path d="M3 8c3 2 15 2 18 0l-2 6c-3 2-11 2-14 0z"/><path d="M12 15v6M9 19l3 2 3-2"/>',
@@ -18,12 +18,13 @@ const ICONS = {
   map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
 };
 /** button label: icon (from data-icon), a short word, the keyboard shortcut (desktop); title = what it does */
-export function setLabel(el, text, key, title) {
-  const k = `${text}|${title ?? ''}`;
+export function setLabel(el, text, key, title, badge) {
+  const k = `${text}|${title ?? ''}|${badge ?? ''}`;
   if (el.dataset.label === k) return;
   el.dataset.label = k;
   const ic = ICONS[el.dataset.icon];
-  el.innerHTML = `${ic ? `<svg viewBox="0 0 24 24" aria-hidden="true">${ic}</svg>` : ''}<span class="t">${text}</span>${key ? `<kbd>${key}</kbd>` : ''}`;
+  // icon buttons show no word (it's in the help and the title); a badge carries a mode (Retro 2, Ziel)
+  el.innerHTML = `${ic ? `<svg viewBox="0 0 24 24" aria-hidden="true">${ic}</svg>` : ''}${ic ? '' : `<span class="t">${text}</span>`}${badge ? `<b class="badge">${badge}</b>` : ''}${key ? `<kbd>${key}</kbd>` : ''}`;
   el.title = title ?? text;
   el.setAttribute('aria-label', title ?? text);
 }
@@ -462,7 +463,7 @@ export function createHud() {
     { const ms = lever.querySelector('.mark span'), txt = `${fmt(s.limit * 100)} %`; if (ms.textContent !== txt) ms.textContent = txt; }
     lever.setAttribute('aria-valuenow', Math.round(s.limit * 100));
     const sas = $('c-sas');
-    { const m = { hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkr.', off: 'Aus' }[s.sas || 'off']; setLabel(sas, m, 'T', `Lageregler: ${m}`); }
+    { const m = { hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkrecht', off: 'Aus' }[s.sas || 'off']; setLabel(sas, m, 'T', `Lageregler: ${m}`, { hold: 'H', retro: 'R', retro2: 'R2', up: '↑', off: '–' }[s.sas || 'off']); }
     sas.classList.toggle('on', !!s.sas);
     lever.classList.toggle('on', s.throttle > 0);
     const rcs = $('c-rcs');

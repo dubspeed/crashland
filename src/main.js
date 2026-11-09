@@ -4,7 +4,7 @@ import { loadModels } from './models.js';
 import { createWorld } from './world.js';
 import { createShip } from './ship.js';
 import { createDebris } from './debris.js';
-import { createHud, setLabel } from './hud.js';
+import { createHud, setLabel, ICONS } from './hud.js';
 import { createOrbitMap } from './orbitmap.js';
 import { createReentry } from './reentry.js';
 import { createBuilder } from './builder.js';
@@ -114,7 +114,7 @@ function toggleView() {
 }
 function viewButton() {
   const b = document.getElementById('c-view');
-  setLabel(b, VIEWS[cam.view], 'V', `Kamera: ${VIEWS[cam.view]} (umschalten)`);
+  setLabel(b, VIEWS[cam.view], 'V', `Kamera: ${VIEWS[cam.view]} (umschalten)`, cam.view === 'target' ? 'Ziel' : '');
   b.classList.toggle('on', cam.view !== 'chase');
 }
 viewButton();
@@ -584,6 +584,15 @@ function toggleMap(force) {
 }
 $('c-map').addEventListener('click', () => toggleMap());
 setLabel($('c-map'), 'Karte', 'K', 'Bahnkarte');
+// help: the switches are icons only, this says what they do
+$('icon-legend').innerHTML = [
+  ['chute', '<b>Fallschirm</b> öffnen, offen: abwerfen · leuchtet orange, wenn er jetzt geht', 'P'],
+  ['panels', '<b>Solarpaneele</b> ein-/ausklappen · rot, wenn sie zu heiß werden', 'E'],
+  ['shield', '<b>Hitzeschild</b> abwerfen (nur wenn verbaut) · leuchtet, wenn die Hitze vorbei ist', 'J'],
+  ['sas', '<b>Lageregler</b> wechseln: H Halten · R Retro · R2 Retro 2 · ↑ Senkrecht', 'T'],
+  ['view', '<b>Kamera</b>: hinter dem Lander oder Ziel-Ansicht', 'V'],
+  ['map', '<b>Bahnkarte</b> (nur aus dem Orbit)', 'K'],
+].map(([ic, txt, key]) => `<dt><svg viewBox="0 0 24 24">${ICONS[ic]}</svg></dt><dd>${txt} <kbd class="key-only">${key}</kbd></dd>`).join('');
 setLabel($('c-com'), 'SP', 'C', 'Schwerpunkt anzeigen');
 // buttons never take keyboard focus: otherwise Space (thrust) or Enter would also "press" the last clicked button
 for (const b of document.querySelectorAll('#controls .tog')) b.addEventListener('mousedown', (e) => e.preventDefault());
