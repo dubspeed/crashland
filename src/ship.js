@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { COMPONENTS, SHIELD, makeSpec, massProps, PIVOT_Y, density as S_density } from './sim.js';
+import { COMPONENTS, SHIELD, makeSpec, massProps, PIVOT_Y, RCS_TORQUE, density as S_density } from './sim.js';
 import { cargoModel } from './cargo.js';
 // placeholder for the cargo on base flights (its model depends on the cargo type)
 const PAYLOAD = { id: 'payload', name: 'Fracht', model: 'payload:beacon', pos: [0, 4.75, 0] };
@@ -94,6 +94,44 @@ export function createShip(models) {
     return k < 0.5 ? heatCol.setRGB(0.55 + k * 0.9, 0.05 + k * 0.5, 0) : heatCol.setRGB(1, 0.3 + (k - 0.5) * 1.1, (k - 0.5) * 0.6);
   }
 
+  // side thrusters (RCS): short white puffs at the four jet blocks near the top, pointing away from the push
+  const PUFF = 120;
+  const pPos = new Float32Array(PUFF * 3), pVel = new Float32Array(PUFF * 3), pLife = new Float32Array(PUFF);
+  const pGeo = new THREE.BufferGeometry(); pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+  const puffs = new THREE.Points(pGeo, new THREE.PointsMaterial({ color: 0xeaf4ff, size: 0.75, map: null, transparent: true, opacity: 0.8, depthWrite: false, blending: THREE.AdditiveBlending }));
+  puffs.frustumCulled = false; pLife.fill(0);
+  group.add(puffs);
+  let pNext = 0;
+  const jetsAt = (spec) => { const y = spec?.ids?.has('capsule') ? 4.05 : 3.6; return [[0.6, y, 0.6], [-0.6, y, 0.6], [0.6, y, -0.6], [-0.6, y, -0.6]]; };
+  let jets = jetsAt(makeSpec());
+  function updatePuffs(s, dt) {
+    const on = s.status === 'flying';
+    // torque a > 0 tips the top towards -x: the jets up there blow towards +x; torque b > 0 tips it to +z: they blow to -z
+    const ka = on ? Math.min(1, Math.abs(s._tauA || 0) / RCS_TORQUE) : 0, kb = on ? Math.min(1, Math.abs(s._tauB || 0) / RCS_TORQUE) : 0;
+    const emit = (k, dir) => {
+      if (k < 0.03) return;
+      let n = Math.random() < k * dt * 90 ? 1 + Math.floor(k * 2) : 0;
+      while (n-- > 0) {
+        const j = jets[Math.floor(Math.random() * 4)], i = pNext++ % PUFF;
+        pPos[i * 3] = j[0] + dir[0] * 0.2; pPos[i * 3 + 1] = j[1]; pPos[i * 3 + 2] = j[2] + dir[2] * 0.2;
+        pVel[i * 3] = dir[0] * (5 + Math.random() * 3) + (Math.random() - 0.5) * 1.5;
+        pVel[i * 3 + 1] = (Math.random() - 0.5) * 1.5;
+        pVel[i * 3 + 2] = dir[2] * (5 + Math.random() * 3) + (Math.random() - 0.5) * 1.5;
+        pLife[i] = 0.18 + Math.random() * 0.12;
+      }
+    };
+    emit(ka, [Math.sign(s._tauA || 0), 0, 0]);
+    emit(kb, [0, 0, -Math.sign(s._tauB || 0)]);
+    let alive = 0;
+    for (let i = 0; i < PUFF; i++) {
+      if (pLife[i] <= 0) { pPos[i * 3 + 1] = -1e5; continue; }
+      pLife[i] -= dt; alive++;
+      for (let k = 0; k < 3; k++) { pPos[i * 3 + k] += pVel[i * 3 + k] * dt; pVel[i * 3 + k] *= 1 - dt * 3; }
+    }
+    puffs.visible = alive > 0;
+    if (alive) pGeo.attributes.position.needsUpdate = true;
+  }
+
   // embers streaming off hot parts
   const EMB = 400;
   const embPos = new Float32Array(EMB * 3), embVel = new Float32Array(EMB * 3), embLife = new Float32Array(EMB);
@@ -106,6 +144,7 @@ export function createShip(models) {
   embGeo.setAttribute('position', new THREE.BufferAttribute(embPos, 3));
   const embers = new THREE.Points(embGeo, new THREE.PointsMaterial({ color: 0xff8a20, size: 0.6, map: new THREE.CanvasTexture(dot), transparent: true, opacity: 0.95, depthWrite: false }));
   embers.frustumCulled = false;
+  puffs.material.map = embers.material.map; puffs.material.needsUpdate = true; // the same soft dot
   let embNext = 0, scene = null;
   const loose = []; // parts that blew off: { obj, v, w, t }
   const tmpV = new THREE.Vector3();
@@ -133,6 +172,7 @@ export function createShip(models) {
     }
     flame.position.y = nodes.flameY; flameK = nodes.flameK;
     rigScale = b.chute === 'large' ? 1.24 : 1;
+    jets = jetsAt(spec); pLife.fill(0);
     group.userData.sink = 0;
     group.userData.physics = false;
     group.quaternion.identity();
@@ -176,6 +216,7 @@ export function createShip(models) {
       part.rotation.z = th; // the left wing is mirrored via rotation.y = π, so the same z angle folds both up
     }
     updateHeat(s, dt);
+    updatePuffs(s, dt);
     const thr = s.status === 'flying' ? s.throttle : 0;
     const flick = 0.9 + Math.random() * 0.2;
     flame.visible = thr > 0.01;
