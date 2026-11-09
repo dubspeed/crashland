@@ -544,12 +544,24 @@ bindPointer($('c-rcs'), (e, r) => {
 }, () => { touch.px = 0; touch.py = 0; });
 function cycleSas() { doAct('sas'); }
 function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); }
-$('c-sas').addEventListener('click', cycleSas);
-$('c-chute').addEventListener('click', () => doAct('chute'));
-$('c-view').addEventListener('click', toggleView);
-$('c-panels').addEventListener('click', () => doAct('panels'));
-$('c-shield').addEventListener('click', () => doAct('shield'));
-$('c-com').addEventListener('click', toggleCom);
+// switches fire on touch-down (iOS: the HUD swallows touches so nothing gets selected, see below);
+// a click without a pointer (keyboard: Enter / Space on a focused button) still works
+function tap(el, fn) {
+  el.addEventListener('pointerdown', (e) => { if (e.button > 0 || el.disabled) return; e.preventDefault(); fn(); });
+  el.addEventListener('click', (e) => { if (e.detail === 0) fn(); });
+}
+tap($('c-sas'), cycleSas);
+tap($('c-chute'), () => doAct('chute'));
+tap($('c-view'), toggleView);
+tap($('c-panels'), () => doAct('panels'));
+tap($('c-shield'), () => doAct('shield'));
+tap($('c-com'), toggleCom);
+// iOS: a long press or double tap in the flight HUD or on the 3D view would start a text selection or the
+// copy / look-up menu. Swallowing the touches there stops that (pointer events still arrive).
+const swallow = (e) => { if (!editable(e)) e.preventDefault(); };
+$('hud').addEventListener('touchstart', swallow, { passive: false });
+renderer.domElement.addEventListener('touchstart', swallow, { passive: false });
+$('hud').addEventListener('touchend', swallow, { passive: false });
 $('c-com').classList.add('on');
 // ---------- debug overlay: F3, ?debug, or three taps on the title (phone) ----------
 const dbg = { on: false, frames: 0, acc: 0, worst: 0, steps: 0, at: 0 };
@@ -582,7 +594,7 @@ function toggleMap(force) {
   orbitMap.visible = force ?? !orbitMap.visible;
   $('c-map').classList.toggle('on', orbitMap.visible);
 }
-$('c-map').addEventListener('click', () => toggleMap());
+tap($('c-map'), () => toggleMap());
 setLabel($('c-map'), 'Karte', 'K', 'Bahnkarte');
 // help: the switches are icons only, this says what they do
 $('icon-legend').innerHTML = [
@@ -632,6 +644,9 @@ addEventListener('pointermove', (e) => {
 });
 // double tap / double click on the scene: back to the view's own camera height
 renderer.domElement.addEventListener('dblclick', () => { cam.pitch = 0; });
+// touch: the browser's double tap is swallowed (see above), so count it here
+let lastTap = 0;
+renderer.domElement.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'touch') return; const now = performance.now(); if (now - lastTap < 320) cam.pitch = 0; lastTap = now; });
 renderer.domElement.addEventListener('wheel', (e) => {
   if (builder.active) return; cam.dist = Math.min(90, Math.max(12, cam.dist * (1 + Math.sign(e.deltaY) * 0.1))); }, { passive: true });
 addEventListener('resize', () => {
