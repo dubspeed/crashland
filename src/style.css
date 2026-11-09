@@ -677,3 +677,14 @@ body.building #top { display: none; }
 .icon-legend dd b { color: var(--ink); font-weight: 600; }
 .icon-legend .key-only { display: none; }
 @media (hover: hover) and (pointer: fine) { .icon-legend .key-only { display: inline-block; } }
+
+/* predicted touchdown point when the 3D cross is too small to see (orbit approach) */
+#pred-mark { position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 1; }
+#pred-mark svg { position: absolute; left: -16px; top: -16px; width: 32px; height: 32px; overflow: visible; filter: drop-shadow(0 0 4px rgba(255,181,71,0.6)); }
+#pred-mark.on-pad svg path:last-of-type, #pred-mark.on-pad svg circle { stroke: #5fe0a0; }
+#pred-mark.on-pad svg { filter: drop-shadow(0 0 5px rgba(95,224,160,0.8)); }
+#pred-mark .arrow { display: none; position: absolute; left: 0; top: 0; width: 0; height: 0; border-left: 12px solid #ffb547; border-top: 8px solid transparent; border-bottom: 8px solid transparent;
+  transform: rotate(var(--rot, 0rad)) translate(18px, -8px); transform-origin: 0 0; filter: drop-shadow(0 0 3px rgba(0,0,0,0.8)); }
+#pred-mark.edge .arrow { display: block; }
+#pred-mark.edge svg { transform: scale(0.7); }
+#pred-mark.on-pad .arrow { border-left-color: #5fe0a0; }

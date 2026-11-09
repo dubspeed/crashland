@@ -72,6 +72,39 @@ function updateMarkers() {
   const k = Math.min(6, 1 + alt / 120); // grow with height so it stays visible from above
   impact.scale.setScalar(k); belowRing.scale.setScalar(Math.min(4, 1 + alt / 200));
 }
+// the predicted touchdown point as a screen marker of fixed size when the 3D cross is only a few pixels
+// (from orbit the ground is kilometres away); it turns green when the cross sits on the pad
+const predMark = document.getElementById('pred-mark');
+const predV = new THREE.Vector3();
+function placePredMark() {
+  let show = mode === 'flight' && s.status === 'flying' && impact.visible;
+  if (show) {
+    predV.copy(impact.position);
+    const depth = predV.distanceTo(camera.position);
+    const px = ((5 * impact.scale.x) / (2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)))) * innerHeight;
+    predV.project(camera);
+    let nx = predV.x, ny = predV.y;
+    if (predV.z > 1) { nx = -nx; ny = -ny; } // behind the camera: the direction flips
+    const inside = predV.z < 1 && Math.abs(nx) < 0.92 && Math.abs(ny) < 0.92;
+    show = !inside || px < 40;
+    if (show) {
+      // on screen: the cross itself; off screen: an arrow at the edge pointing to it
+      let x = (nx * 0.5 + 0.5) * innerWidth, y = (-ny * 0.5 + 0.5) * innerHeight;
+      if (!inside) {
+        // the edge of the free area: not under the controls at the bottom
+        const L = 34, R = innerWidth - 34, T = 48, B = innerHeight - (innerWidth < 560 ? 250 : 150);
+        const cx = (L + R) / 2, cy = (T + B) / 2, dx = x - cx, dy = y - cy;
+        const k = Math.min((R - cx) / Math.abs(dx || 1e-6), (B - cy) / Math.abs(dy || 1e-6));
+        x = cx + dx * k; y = cy + dy * k;
+        predMark.style.setProperty('--rot', `${Math.atan2(dy, dx)}rad`);
+      }
+      predMark.classList.toggle('edge', !inside);
+      predMark.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
+      predMark.classList.toggle('on-pad', Math.hypot(s.pred.x, s.pred.z) < 30);
+    }
+  }
+  if (predMark.hidden === show) predMark.hidden = !show;
+}
 // screen marker above the lander when it is only a few pixels tall (zoomed-out views)
 const shipMark = document.getElementById('ship-mark');
 const markV = new THREE.Vector3();
@@ -805,7 +838,7 @@ renderer.setAnimationLoop(() => {
   }
   if (builder.active) builder.placeCamera(s, cam.yaw, cam.pitch, dt, lookAt);
   camera.lookAt(lookAt);
-  placeShipMark();
+  placeShipMark(); placePredMark();
   if (mode === 'flight') orbitMap.draw(s);
   world.update(camera, focus, time, mode === 'menu' ? { x: 0, z: 0 } : { x: s.windX, z: s.windZ }, dt);
   renderer.render(scene, camera);
