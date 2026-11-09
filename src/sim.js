@@ -165,7 +165,7 @@ export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) 
   return s;
 }
 export const STEP = 1 / 120;
-export const SAS_DELAY = 0.8; // s the attitude switch has to rest before the chosen mode takes over
+export const SAS_DELAY = 1.5; // s the attitude switch has to rest before the chosen mode takes over
 /** player / autopilot actions between steps (recorded for replays) */
 export function act(s, name) {
   if (name === 'chute') return toggleChute(s);

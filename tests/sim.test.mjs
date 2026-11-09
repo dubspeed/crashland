@@ -72,6 +72,6 @@ test('attitude modes: cycling through quickly only applies the mode it rests on'
   const seen = new Set();
   for (const k of [0, 1, 2]) { S.act(s, 'sas'); for (let i = 0; i < 30; i++) { S.advance(s, { thrust: false }); seen.add(s.sas); } } // three taps, 0.25 s apart
   assert.deepEqual([...seen], ['retro']); // never Retro 2 or Senkrecht on the way
-  for (let i = 0; i < 120; i++) S.advance(s, { thrust: false });
+  for (let i = 0; i < Math.ceil(S.SAS_DELAY / S.STEP) + 2; i++) S.advance(s, { thrust: false });
   assert.equal(s.sas, false); // rests on "Aus"
 });

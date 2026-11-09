@@ -469,6 +469,18 @@ export function createHud() {
       const m = { hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkrecht', off: 'Aus' }[mode];
       setLabel(sas, m, 'T', `Lageregler: ${m}${pend ? ' (gleich aktiv)' : ''}`, { hold: 'H', retro: 'R', retro2: 'R2', up: '↑', off: '–' }[mode]);
       sas.classList.toggle('pending', pend);
+      // the choice in big, above the controls (the thumb covers the button): every mode in a row, the chosen
+      // one lit, and a bar that fills until it takes over
+      const toast = $('sas-toast');
+      toast.hidden = !pend;
+      if (pend) {
+        const order = ['hold', 'retro', 'retro2', 'up', 'off'], names = { hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkrecht', off: 'Aus' };
+        const html = order.map((k) => `<span class="${k === mode ? 'on' : ''}">${names[k]}</span>`).join('');
+        if (toast.dataset.m !== mode) { toast.dataset.m = mode; $('st-modes').innerHTML = html; }
+        $('st-fill').style.width = `${Math.min(100, (1 - (s.sasAt - s.t) / S.SAS_DELAY) * 100)}%`;
+        const tg = document.querySelector('#controls .toggles').getBoundingClientRect();
+        toast.style.bottom = `${Math.round(innerHeight - tg.top + 10)}px`;
+      }
     }
     sas.classList.toggle('on', !!s.sas);
     lever.classList.toggle('on', s.throttle > 0);
