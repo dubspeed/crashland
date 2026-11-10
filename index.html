@@ -23,7 +23,7 @@
     <div id="alert" hidden></div>
     <div id="readout" aria-live="off"><div class="ro-alt"><b id="ro-alt"></b><span id="ro-alt-u">über Grund</span></div><div class="ro-v"><span id="ro-vy"></span><span id="ro-vh"></span></div></div>
 
-    <div id="sas-toast" hidden aria-live="polite"><span class="st-l">Lageregler</span><div id="st-modes" class="st-modes"></div><div class="st-bar"><i id="st-fill"></i></div></div>
+    <div id="sas-toast" hidden aria-live="polite"><span class="st-l">Lageregler</span><div id="st-modes" class="st-modes"></div><span id="st-desc" class="st-desc"></span><div class="st-bar"><i id="st-fill"></i></div></div>
     <div id="td" hidden aria-live="off">
       <div class="td-top"><span id="td-v" class="td-v"></span><span class="td-unit">m/s</span><span id="td-grade" class="td-grade"></span></div>
       <div class="td-wrap"><div id="td-scale" class="td-scale"><i id="td-mark"></i></div><div id="td-ticks" class="td-ticks"></div></div>
@@ -158,7 +158,7 @@
         <p>Dein Lander fällt antriebslos auf den Planeten. Zünde das Triebwerk so spät wie möglich und so kurz wie nötig: der <b>Suicide Burn</b>. Der Bordcomputer zeigt dir am Burn-Streifen, wann es so weit ist. Setz auf dem Landeplatz auf, langsam, gerade und ohne Seitendrift.</p>
         <p><b>Lander bauen</b> im Startmenü: Triebwerk, Tanks, Energie, Fallschirm, Hitzeschild und Landebeine wählen. Jede Wahl ändert Masse, Schwerpunkt und Verhalten, die Tabelle zeigt Δv und Schub/Gewicht pro Planet.</p>
         <p><b>Schwierigkeit</b> im Startmenü: Wind, <b>Treibstoff</b> (knapp / normal / reichlich), <b>Hinweise</b> (Tipps wie „Bremsen in …“, „Fallschirm möglich“, empfohlener Schub; Warnungen bleiben immer an) und <b>Computer</b> (automatische Feinregelung beim Deorbit, sonst regelst du selbst nach dem Hinweis). Schwerer gibt mehr Punkte.</p>
-        <p><b>Luna Orbit</b> (neu, Prototyp): du startest im Orbit mit rund 119 m/s. Der Lageregler steht auf Retro und richtet das Triebwerk gegen die Flugrichtung. Warte auf <b>JETZT BREMSEN</b>, gib Schub, bis das orange Kreuz auf dem Landeplatz liegt, dann fallen lassen und wie gewohnt landen. Zu spät bremsen heißt: übers Ziel hinaus. <b>Mars Orbit</b> ist dasselbe mit dünner Luft: sie bremst mit, wärmt den Lander (Paneele einklappen) und der Schirm spart etwas Treibstoff. <b>Terra Orbit</b> und <b>Brontes Orbit</b> sind Wiedereintritte: nur kurz bremsen (der Bordcomputer regelt fein, bis das Kreuz auf dem Landeplatz liegt), Lageregler auf Retro lassen, dann schützt das Triebwerk vorn den Rest vor der Hitze. Wenn das Kreuz nah am Ziel ist, mit wenig Schub fein nachregeln (der Hinweis sagt, wie viel) und danach die Schubgrenze wieder hochsetzen. Danach Schirm, auf Brontes vorher mit Schub für den Schirm abbremsen.</p>
+        <p><b>Luna Orbit</b> (neu, Prototyp): du startest im Orbit mit rund 119 m/s. Der Lageregler steht auf <b>Bremsen</b> und richtet das Triebwerk gegen die Flugrichtung. Warte auf <b>JETZT BREMSEN</b>, gib Schub, bis das orange Kreuz auf dem Landeplatz liegt, dann fallen lassen und wie gewohnt landen. Zu spät bremsen heißt: übers Ziel hinaus. <b>Mars Orbit</b> ist dasselbe mit dünner Luft: sie bremst mit, wärmt den Lander (Paneele einklappen) und der Schirm spart etwas Treibstoff. <b>Terra Orbit</b> und <b>Brontes Orbit</b> sind Wiedereintritte: nur kurz bremsen (der Bordcomputer regelt fein, bis das Kreuz auf dem Landeplatz liegt), Lageregler auf Bremsen lassen, dann schützt das Triebwerk vorn den Rest vor der Hitze. Wenn das Kreuz nah am Ziel ist, mit wenig Schub fein nachregeln (der Hinweis sagt, wie viel) und danach die Schubgrenze wieder hochsetzen. Danach Schirm, auf Brontes vorher mit Schub für den Schirm abbremsen.</p>
       </section>
 
       <section>
@@ -205,7 +205,7 @@
           <li>Das <b>orange Kreuz</b> (am Boden und im Kompass) zeigt, wo du ohne Schub aufschlagen würdest. Bring es aufs Pad.</li>
           <li><b>Am Fallschirm</b> lenkt das Steuerkreuz den Schirm: er gleitet in die gedrückte Richtung.</li>
           <li><b>Ohne Luft</b> (Luna): hoch oben in Richtung der Abweichung neigen und kurz Schub geben, das Kreuz wandert mit.</li>
-          <li>Mit dem Lageregler <b>Retro 2</b> gibt das Steuerkreuz beim Bremsen die Flugrichtung vor; loslassen stoppt die Drift.</li>
+          <li>Mit dem Lageregler <b>Landen</b> gibt das Steuerkreuz die Flugrichtung vor; loslassen stoppt die Drift von selbst.</li>
           <li>Unter 3 m vom Pad-Zentrum gibt es einen Volltreffer-Bonus.</li>
           <li><b>Batterie:</b> Ohne Strom fallen Bordcomputer und Lageregler aus. Eingeklappte Paneele laden nicht.</li>
         </ul>
@@ -214,10 +214,10 @@
       <section>
         <h3>Lageregler</h3>
         <dl class="help-keys">
-          <dt>Halten</dt><dd>hält die Neigung, die du eingestellt hast</dd>
-          <dt>Retro</dt><dd>senkrecht, beim Bremsen bis 10° gegen die Drift</dd>
-          <dt>Retro 2</dt><dd>gegen Bewegung und Wind, bis 20°; Steuerkreuz = Flugrichtung</dd>
-          <dt>Senkrecht · Aus</dt><dd>immer gerade · keine Hilfe</dd>
+          <dt>H · Halten</dt><dd>hält die Lage, die du eingestellt hast; das Steuerkreuz dreht den Lander</dd>
+          <dt>B · Bremsen</dt><dd>Triebwerk gegen die Flugrichtung: für das Bremsmanöver aus dem Orbit und den Wiedereintritt; langsam und tief steht der Lander fast gerade und lehnt sich beim Schub bis 10° gegen die Drift</dd>
+          <dt>L · Landen</dt><dd>für den Endanflug: stoppt seitliche Drift und hält gegen Wind (bis 20° Neigung); das Steuerkreuz sagt, wohin und wie schnell du fliegen willst (bis 8 m/s), loslassen = stehen bleiben</dd>
+          <dt>– · Aus</dt><dd>keine Hilfe: das Steuerkreuz zündet die Düsen direkt, nichts bremst die Drehung</dd>
         </dl>
       </section>
 

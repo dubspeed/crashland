@@ -181,7 +181,8 @@ export function act(s, name) {
     // the next mode only takes over once the switch rests for SAS_DELAY (cycling past "Senkrecht" to get to
     // "Aus" must not flip the lander); before the flight really starts it switches at once
     const from = s.sasPending !== undefined ? s.sasPending : s.sas;
-    const next = { hold: 'retro', retro: 'retro2', retro2: 'up', up: false }[from] ?? 'hold';
+    // Halten → Bremsen (retro) → Landen (retro2) → Aus → Halten ('up', vertical, is no longer offered)
+    const next = { hold: 'retro', retro: 'retro2', retro2: false, up: false }[from] ?? 'hold';
     if (s.t < 0.5) { s.sas = next; s.sasPending = undefined; s.holdA = s.a; s.holdB = s.b; }
     else { s.sasPending = next; s.sasAt = s.t + SAS_DELAY; }
   }

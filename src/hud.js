@@ -8,6 +8,14 @@ const cls = (el, c) => { el.className = c || ''; };
 // button caption + keyboard shortcut; only touches the DOM when the text changes, so the node under
 // the mouse isn't replaced every frame (that can swallow clicks)
 // control icons (24×24, stroke = currentColor); a button names its icon in data-icon
+// attitude modes as the player sees them (internal ids stay: retro = Bremsen, retro2 = Landen)
+export const SAS_MODES = {
+  hold: { name: 'Halten', badge: 'H', what: 'hält die Lage – das Steuerkreuz dreht den Lander' },
+  retro: { name: 'Bremsen', badge: 'B', what: 'Triebwerk gegen die Flugrichtung – zum Bremsen aus dem Orbit' },
+  retro2: { name: 'Landen', badge: 'L', what: 'stoppt seitliche Drift von selbst – Steuerkreuz = wohin fliegen' },
+  up: { name: 'Senkrecht', badge: '↑', what: 'hält den Lander gerade' },
+  off: { name: 'Aus', badge: '–', what: 'keine Hilfe – du steuerst die Düsen direkt' },
+};
 export const ICONS = {
   chute: '<path d="M3 11a9 7 0 0 1 18 0z"/><path d="M3 11l9 9 9-9M12 11v9"/>',
   panels: '<path d="M2 8h8v8H2zM14 8h8v8h-8z"/><path d="M10 12h4M6 8v8M18 8v8"/>',
@@ -23,7 +31,7 @@ export function setLabel(el, text, key, title, badge) {
   if (el.dataset.label === k) return;
   el.dataset.label = k;
   const ic = ICONS[el.dataset.icon];
-  // icon buttons show no word (it's in the help and the title); a badge carries a mode (Retro 2, Ziel)
+  // icon buttons show no word (it's in the help and the title); a badge carries a mode (L, Ziel)
   el.innerHTML = `${ic ? `<svg viewBox="0 0 24 24" aria-hidden="true">${ic}</svg>` : ''}${ic ? '' : `<span class="t">${text}</span>`}${badge ? `<b class="badge">${badge}</b>` : ''}${key ? `<kbd>${key}</kbd>` : ''}`;
   el.title = title ?? text;
   el.setAttribute('aria-label', title ?? text);
@@ -468,17 +476,17 @@ export function createHud() {
     {
       // a mode that is still waiting (switch must rest) blinks in the badge
       const pend = s.sasPending !== undefined, mode = (pend ? s.sasPending : s.sas) || 'off';
-      const m = { hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkrecht', off: 'Aus' }[mode];
-      setLabel(sas, m, 'T', `Lageregler: ${m}${pend ? ' (gleich aktiv)' : ''}`, { hold: 'H', retro: 'R', retro2: 'R2', up: '↑', off: '–' }[mode]);
+      const M = SAS_MODES[mode];
+      setLabel(sas, M.name, 'T', `Lageregler: ${M.name} – ${M.what}${pend ? ' (gleich aktiv)' : ''}`, M.badge);
       sas.classList.toggle('pending', pend);
       // the choice in big, above the controls (the thumb covers the button): every mode in a row, the chosen
       // one lit, and a bar that fills until it takes over
       const toast = $('sas-toast');
       toast.hidden = !pend;
       if (pend) {
-        const order = ['hold', 'retro', 'retro2', 'up', 'off'], names = { hold: 'Halten', retro: 'Retro', retro2: 'Retro 2', up: 'Senkrecht', off: 'Aus' };
-        const html = order.map((k) => `<span class="${k === mode ? 'on' : ''}">${names[k]}</span>`).join('');
-        if (toast.dataset.m !== mode) { toast.dataset.m = mode; $('st-modes').innerHTML = html; }
+        const order = ['hold', 'retro', 'retro2', 'off'];
+        const html = order.map((k) => `<span class="${k === mode ? 'on' : ''}">${SAS_MODES[k].name}</span>`).join('');
+        if (toast.dataset.m !== mode) { toast.dataset.m = mode; $('st-modes').innerHTML = html; $('st-desc').textContent = SAS_MODES[mode].what; }
         $('st-fill').style.width = `${Math.min(100, (1 - (s.sasAt - s.t) / S.SAS_DELAY) * 100)}%`;
         const tg = document.querySelector('#controls .toggles').getBoundingClientRect();
         toast.style.bottom = `${Math.round(innerHeight - tg.top + 10)}px`;
@@ -499,7 +507,7 @@ export function createHud() {
     // a newly active attitude mode is named once in the message line
     if (s.sas !== sasMsg.mode) {
       if (sasMsg.mode !== undefined && s.t > 0.5 && s.status === 'flying') {
-        sasMsg.text = `LAGEREGLER: ${{ hold: 'HALTEN', retro: 'RETRO', retro2: 'RETRO 2', up: 'SENKRECHT' }[s.sas] ?? 'AUS'}`;
+        sasMsg.text = `LAGEREGLER: ${SAS_MODES[s.sas || 'off'].name.toUpperCase()}`;
         sasMsg.until = s.t + 2;
       }
       sasMsg.mode = s.sas;
@@ -519,7 +527,7 @@ export function createHud() {
     else if (fuelFrac < 0.12 && s.throttle > 0) { msg = 'TREIBSTOFF KNAPP'; color = 'var(--warn)'; pulse = false; }
     else if (!s.powered) { msg = 'BATTERIE LEER – PUMPEN AUS, MAX. 60 % SCHUB'; color = 'var(--warn)'; }
     else if (hints && p.deorbitAt && s.pred && alt > 4000 && Math.hypot(s.pred.x, s.pred.z) < 60 && Math.hypot(s.vx, s.vz) > 80) { const lim0 = s.limit0 ?? p.limit0 ?? 0.5;
-      msg = s.throttle > 0 ? 'KREUZ AUF DEM PAD – SCHUB AUS' : s.limit < lim0 * 0.8 ? `KURS STIMMT – SCHUBGRENZE ZURÜCK AUF ${Math.round(lim0 * 100)} %` : 'KURS STIMMT – WIEDEREINTRITT, RETRO HALTEN'; color = 'var(--ok)'; pulse = s.throttle > 0; }
+      msg = s.throttle > 0 ? 'KREUZ AUF DEM PAD – SCHUB AUS' : s.limit < lim0 * 0.8 ? `KURS STIMMT – SCHUBGRENZE ZURÜCK AUF ${Math.round(lim0 * 100)} %` : 'KURS STIMMT – WIEDEREINTRITT, LAGEREGLER AUF BREMSEN'; color = 'var(--ok)'; pulse = s.throttle > 0; }
     else if (s.fineBurn) { msg = 'FEINREGELUNG – KREUZ WANDERT ZUM PAD'; color = 'var(--cyan)'; pulse = false; }
     else if (fh) {
       // deorbit fine control as advice: the cross reacts to every m/s now
@@ -543,7 +551,7 @@ export function createHud() {
       const og = S.orbitGuide(s);
       if (s.throttle > 0) { msg = `BREMSEN · ${fmt(og.vh)} m/s`; color = 'var(--amber)'; pulse = false; }
       else if (og.brakeIn > 2.5) { msg = `ORBIT ${fmt(og.vh)} m/s · BREMSEN IN ${fmt(og.brakeIn)} s`; color = 'var(--cyan)'; pulse = false; }
-      else { msg = og.brakeIn > -8 ? 'JETZT BREMSEN (RETRO)' : 'ZU SPÄT – BREMSEN!'; color = 'var(--amber)'; }
+      else { msg = og.brakeIn > -8 ? 'JETZT BREMSEN (LAGEREGLER: BREMSEN)' : 'ZU SPÄT – BREMSEN!'; color = 'var(--amber)'; }
     }
     else if (hints && s.chute === 'open' && p.rho > 0.5 && s.throttle === 0 && s.limit < (s.limit0 ?? p.limit0 ?? 0.5) * 0.8 && alt > 150) { msg = `SCHUBGRENZE FÜR DIE LANDUNG HOCHSETZEN (${Math.round((s.limit0 ?? p.limit0 ?? 0.5) * 100)} %)`; color = 'var(--cyan)'; pulse = false; }
     else if (hints && s.powered && s.vy < -0.5 && isFinite(d) && alt <= burnAlt && s.throttle < 0.95 * s.limit) msg = 'BURN!';
