@@ -746,3 +746,16 @@ body.building #top { display: none; }
 #flyover small { display: block; margin-top: 8px; font-size: 10.5px; color: var(--mute); }
 body.flyover #readout, body.flyover #alert, body.flyover #td, body.flyover #sas-toast { visibility: hidden; }
 #flyover { top: calc(17% + env(safe-area-inset-top, 0px)); }
+
+/* chips with icons instead of sentences */
+.chips-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 2px 0; }
+.ch { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.07); font: 600 11px var(--mono); color: var(--ink); white-space: nowrap; }
+.ch i { font-style: normal; opacity: 0.85; }
+.ch.ok { color: var(--ok); } .ch.bad { color: var(--bad); background: rgba(255,93,82,0.12); } .ch.cost { color: var(--amber); }
+.bd-sub { display: grid; gap: 4px; margin-bottom: 8px; color: var(--ink); }
+.ring-seg { display: inline-flex; border: 1px solid var(--glass-edge); border-radius: 999px; overflow: hidden; margin-right: 4px; }
+.ring-seg .ringsel { margin: 0; border: 0; border-radius: 0; padding: 2px 10px; }
+.ring-seg .ringsel small { margin-left: 3px; }
+.mbtn { padding: 5px 9px; font: 700 12px var(--display); color: var(--amber); }
+.base-card .best, .mlocked { display: none; }
+.icon-key { font-size: 11px; color: var(--mute); }

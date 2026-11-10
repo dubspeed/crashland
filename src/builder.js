@@ -133,7 +133,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
         : `${warnBadge}${ctx?.badge ? ctx.badge(build, { ...build, [slot]: o.id }) : ''}${Math.abs(dm) > 0.5 ? `<em class="${dm < 0 ? 'b-up' : 'b-down'}">${dm > 0 ? '+' : '−'}${f(Math.abs(dm))} kg</em>` : ''}${Math.abs(dv) > 0.005 ? `<em class="${dv > 0 ? 'b-up' : 'b-down'}">Δv ${dv > 0 ? '+' : '−'}${f(Math.abs(dv) * 100)} %</em>` : ''}`;
       // career: a part the bases have not unlocked yet
       const lock = ctx?.locked?.(slot, o.id);
-      if (lock) return `<button class="bo locked" data-id="${o.id}" disabled><b>🔒 ${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b"><em class="b-lock">kommt mit: ${lock}</em></span></button>`;
+      if (lock) return `<button class="bo locked" data-id="${o.id}" disabled><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b"><em class="b-lock" title="kommt mit dem Modul ${lock}">🔒 ${lock}</em></span></button>`;
       return `<button class="bo${o.id === build[slot] ? ' on' : ''}" data-id="${o.id}" aria-pressed="${o.id === build[slot]}"><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b">${badges}</span></button>`;
     }).join('');
   }
