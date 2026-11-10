@@ -800,7 +800,8 @@ export function destroy(s, id) {
  *  Free fall: thrust axis opposite the velocity over ground. Burning: lean so the thrust's sideways part
  *  kills the ground drift in ~1.25 s and holds against the current air force (wind). Capped at 20°. */
 export const RETRO2_MAX = 0.35; // rad
-export const VCMD = 8; // m/s over ground at full pad deflection (Retro 2)
+export const VCMD = 8;
+export const RCS_TRANS = 2400; // N: the side thrusters pushing sideways (Landen mode), ~0.4 m/s² on the standard lander // m/s over ground at full pad deflection (Retro 2)
 function retro2Targets(s, F, m, dt, moveX = 0, moveZ = 0) {
   const steering = Math.hypot(moveX, moveZ) > 0.01;
   if (F > 0) s.r2BurnT = s.t;
@@ -816,8 +817,8 @@ function retro2Targets(s, F, m, dt, moveX = 0, moveZ = 0) {
     // fly at the commanded ground velocity (0 when the pad is released = stop the drift)
     // allowed sideways speed shrinks near the ground so a held stick can't drag you in sideways
     const vmax = Math.max(1, Math.min(VCMD, altitude(s) * 0.2));
-    hx = (-(px - moveX * vmax) * 0.6 * m - (s.dragX || 0)) / Fe;
-    hz = (-(pz - moveZ * vmax) * 0.6 * m - (s.dragZ || 0)) / Fe;
+    hx = (-(px - moveX * vmax) * 1.0 * m - (s.dragX || 0)) / Fe;
+    hz = (-(pz - moveZ * vmax) * 1.0 * m - (s.dragZ || 0)) / Fe;
   } else if (steering) {
     // free fall: lean the way the pilot wants to go, ready for the burn
     hx = moveX * 0.25; hz = moveZ * 0.25;
@@ -926,14 +927,22 @@ export function step(s, input, dt) {
   const chuteSteer = s.chute === 'open' && s.planet.rho > 0 && s.chuteInflate > 0.5;
   s.steerX = chuteSteer ? -cmdA : 0; s.steerZ = chuteSteer ? cmdB : 0;
   if (chuteSteer) { cmdA = cmdB = 0; }
+  let trans = null; // Landen: side thrusters push sideways towards the commanded ground velocity
   if (s.sas === 'retro2') {
     // velocity command: the pad says where to fly (world direction), the computer tilts to get there
-    [tA, tB] = retro2Targets(s, F, m, dt, -cmdA, cmdB);
+    const moveX = -cmdA, moveZ = cmdB;
+    [tA, tB] = retro2Targets(s, F, m, dt, moveX, moveZ);
     cmdA = cmdB = 0;
+    if (s.computerOK && !s.blackout && !(s.chute === 'open' && p.rho > 0)) {
+      const vmax = Math.max(1, Math.min(VCMD, altitude(s) * 0.2)), amax = RCS_TRANS / m;
+      const ex = moveX * vmax - s.vx, ez = moveZ * vmax - s.vz, want = Math.hypot(ex, ez) * 1.2;
+      const acc = Math.min(amax, want), k = want > 1e-6 ? acc / want * 1.2 : 0;
+      trans = { ax: ex * k, az: ez * k, use: acc / amax };
+    }
   }
   const ra = controlAxis(s, 'a', 'w', 'holdA', 'sasI', cmdA, tA, s.torqueCom, I, dt);
   const rb = controlAxis(s, 'b', 'wb', 'holdB', 'sasIB', cmdB, tB, s.torqueComB, I, dt);
-  const rcsUse = Math.max(ra, rb);
+  const rcsUse = Math.min(1, Math.max(ra, rb) + (trans ? trans.use * 0.5 : 0));
   s.w += ((s.torqueCom + s._tauA) / I) * dt;
   s.wb += ((s.torqueComB + s._tauB) / I) * dt;
   s.a += s.w * dt;
@@ -995,6 +1004,7 @@ export function step(s, input, dt) {
   s.vx += ((F * u.x + dx) / m + (cv ? cv.ax : 0)) * dt;
   s.vy += ((F * u.y + dy) / m - (cv ? cv.gy : p.g)) * dt;
   s.vz += ((F * u.z + dz) / m + (cv ? cv.az : 0)) * dt;
+  if (trans) { s.vx += trans.ax * dt; s.vz += trans.az * dt; }
   if (s.steerX || s.steerZ) {
     // steerable canopy: glide up to CHUTE_GLIDE m/s through the air in the commanded direction
     const sl = Math.hypot(s.steerX, s.steerZ), ex = s.steerX / sl, ez = s.steerZ / sl;
