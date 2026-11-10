@@ -671,19 +671,22 @@ function showResult() {
   if (mission) {
     const base = loadBase(mission.planetId), c = S.CARGO[mission.type];
     const unl = Object.entries(B.UNLOCKS[mission.type] ?? {}).flatMap(([sl, os]) => os.map((o) => S.BUILD_SLOTS.find((x) => x.id === sl).options.find((x) => x.id === o).name + ' ' + S.BUILD_SLOTS.find((x) => x.id === sl).short));
-    if (mission.result === 'intact') notes.push([`${c.name} aufgebaut · ${c.bonus} · Basis ${base.modules.length}/${S.MISSIONS.length}`, 'ok']);
-    if ((mission.result === 'intact' || mission.result === 'damaged') && career() && unl.length) notes.push([`Neu im Baukasten: ${unl.join(', ')}`, 'ok']);
-    if (mission.result === 'damaged') notes.push([`${c.name} beschädigt (${s.cargoDamaged}) · kein Bonus · Basis ${base.modules.length}/${S.MISSIONS.length}`, 'warn']);
+    if (mission.result === 'intact') notes.push([`✓ ${c.name} · ${base.modules.length}/${S.MISSIONS.length}`, 'ok']);
+    if ((mission.result === 'intact' || mission.result === 'damaged') && career() && unl.length) notes.push([`🔓 ${unl.join(', ')}`, 'ok']);
+    if (mission.result === 'damaged') notes.push([`⚠ ${c.name} beschädigt (${s.cargoDamaged}) · ${base.modules.length}/${S.MISSIONS.length}`, 'warn']);
     if (mission.result === 'far') notes.push([`mehr als ${BASE_REACH} m vom Ziel: die Basis kann ${c.name} nicht nutzen`, 'warn']);
     if (mission.result === 'lost' && !c.crew) notes.push([`${c.name} verloren`, 'bad']);
   }
+  // money: one figure on the result, the breakdown in its own window
+  let money = '';
   if (mission?.pay) {
-    const P = mission.pay;
-    for (const [k, v] of P.lines) notes.push([`${k} +${E.cr(v)}`, 'ok']);
-    notes.push([`Kosten −${E.cr(mission.cost.total)}`, 'bad']);
-    if (P.repay) notes.push([`Kredit −${E.cr(P.repay)}`, 'warn']);
-    const net = P.total - mission.cost.total;
-    notes.push([`Saldo ${net >= 0 ? '+' : ''}${E.cr(net)} · Konto ${E.cr(P.money)}`, net >= 0 ? 'ok' : 'bad']);
+    const P = mission.pay, net = P.total - mission.cost.total;
+    money = `<button id="r-money" class="r-money ${net >= 0 ? 'ok' : 'bad'}">${net >= 0 ? '+' : '−'}${E.cr(Math.abs(net))} <small>💰 ${E.cr(P.money)} · Details</small></button>`;
+    const row = (k, v, cls) => `<tr class="${cls}"><td>${k}</td><td>${v >= 0 ? '+' : '−'}${E.cr(Math.abs(v))}</td></tr>`;
+    $('money-rows').innerHTML = P.lines.map(([k, v]) => row(k, v, 'ok')).join('')
+      + row(`Kosten (Teile ${E.cr(mission.cost.parts)}, Treibstoff ${E.cr(mission.cost.fuel)})`, -mission.cost.total, 'bad')
+      + (P.repay ? row('Kredit getilgt', -P.repay, 'warn') : '')
+      + `<tr class="sum ${net >= 0 ? 'ok' : 'bad'}"><td>Saldo</td><td>${net >= 0 ? '+' : '−'}${E.cr(Math.abs(net))}</td></tr><tr class="sum"><td>Konto</td><td>${E.cr(P.money)}</td></tr>`;
   }
   const delivered = mission && (mission.result === 'intact' || mission.result === 'damaged');
   $('r-again').innerHTML = delivered ? 'Zur Basis <kbd>R</kbd>' : 'Nochmal <kbd>R</kbd>';
@@ -693,7 +696,8 @@ function showResult() {
   for (const c of s.crew) if (c.fainted) notes.push([`${c.name} ${c.fainted}× ohnmächtig`, 'warn']);
   for (const c of s.spec.comps) if (s.lost[c.id]) notes.push([`${c.name} verglüht`, 'bad']);
   if (s.chute === 'torn' || s.chute === 'burned') notes.push([`Fallschirm ${s.chute === 'torn' ? 'gerissen' : 'verglüht'}`, 'warn']);
-  $('r-notes').innerHTML = notes.map(([t, c]) => `<em class="${c}">${t}</em>`).join('');
+  $('r-notes').innerHTML = money + notes.map(([t, c]) => `<em class="${c}">${t}</em>`).join('');
+  $('r-money')?.addEventListener('click', () => { $('money-detail').hidden = false; });
   $('r-notes').hidden = !notes.length;
   // don't pop up: offer a button so the scene can be looked at first
   $('result-open').innerHTML = `<b style="color:${$('r-title').style.color}">${$('r-title').textContent}</b>${ok ? ` ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}` : ''} · Ergebnis ansehen`;
@@ -837,6 +841,8 @@ $('r-again').addEventListener('click', () => {
   start(planet);
 });
 $('result-open').addEventListener('click', () => { $('result').hidden = false; $('result-open').hidden = true; $('r-again').focus(); });
+$('money-close').addEventListener('click', () => { $('money-detail').hidden = true; });
+$('money-detail').addEventListener('click', (e) => { if (e.target === $('money-detail')) $('money-detail').hidden = true; });
 $('r-close').addEventListener('click', () => { $('result').hidden = true; $('result-open').hidden = false; });
 $('r-menu').addEventListener('click', showMenu);
 // flight export (replay file): download, or copy if downloads are blocked

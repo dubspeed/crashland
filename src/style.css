@@ -759,3 +759,16 @@ body.flyover #readout, body.flyover #alert, body.flyover #td, body.flyover #sas-
 .mbtn { padding: 5px 9px; font: 700 12px var(--display); color: var(--amber); }
 .base-card .best, .mlocked { display: none; }
 .icon-key { font-size: 11px; color: var(--mute); }
+
+/* result: money as one figure, the breakdown in its own window */
+.r-money { display: inline-flex; align-items: baseline; gap: 8px; padding: 4px 12px; border-radius: 999px; border: 1px solid currentColor; background: rgba(255,255,255,0.05); font: 700 15px var(--display); }
+.r-money.ok { color: var(--ok); } .r-money.bad { color: var(--bad); }
+.r-money small { font: 600 10.5px var(--mono); color: var(--mute); text-decoration: underline; text-underline-offset: 2px; }
+.r-notes { flex-direction: row; }
+#money-detail { z-index: 20; }
+.money-sheet { max-width: 360px; }
+.money-table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.money-table td { padding: 5px 2px; border-bottom: 1px solid var(--glass-edge); }
+.money-table td:last-child { text-align: right; font-weight: 700; white-space: nowrap; }
+.money-table .ok td:last-child { color: var(--ok); } .money-table .bad td:last-child { color: var(--bad); } .money-table .warn td:last-child { color: var(--warn); }
+.money-table tr.sum td { font-weight: 700; border-bottom: 0; padding-top: 7px; }
