@@ -14,6 +14,8 @@
   <pre id="debug" hidden aria-hidden="true"></pre>
   <div id="hud" hidden>
     <canvas id="orbitmap" hidden aria-label="Bahnkarte: Planet, Bahn, Apoapsis, Periapsis, Ziel"></canvas>
+    <div id="base-labels" aria-hidden="true"></div>
+    <div id="flyover" hidden></div>
     <div id="pred-mark" hidden aria-hidden="true"><svg viewBox="-16 -16 32 32"><path d="M-9 -9L9 9M9 -9L-9 9" stroke="rgba(0,0,0,0.75)" stroke-width="7" stroke-linecap="round"/><path d="M-9 -9L9 9M9 -9L-9 9" stroke="#ffb547" stroke-width="3.6" stroke-linecap="round"/><circle r="13" fill="none" stroke="#ffb547" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.8"/></svg><i class="arrow"></i></div>
     <div id="ship-mark" hidden aria-hidden="true"><svg viewBox="0 0 24 28"><path d="M3 3 L21 3 L12 24 Z" fill="rgba(143,227,255,0.25)" stroke="#8fe3ff" stroke-width="3" stroke-linejoin="round"/></svg></div>
     <header id="top">
@@ -212,6 +214,12 @@
       </section>
 
       <section>
+        <h3>Basis</h3>
+        <p>Im Modus <b>Basis</b> bringst du aus dem Orbit Fracht zu einer Basis. Jede gelandete Fracht bleibt als Modul stehen, das nächste Ziel liegt daneben: wer auf einem Modul aufsetzt, crasht. Neue Module brauchen bestimmte andere (Punkte auf der Karte: Tooltip zeigt was fehlt), intakte Module helfen den nächsten Flügen (⛽ Treibstoff, ☀ Solar, ★ Punkte) und schalten in der Karriere größere Teile im Baukasten frei. Platz <b>Nah</b> bringt mehr Prämie, <b>Weit</b> ist sicherer.</p>
+        <p class="icon-key">⚖ Masse · ⇊ verträgt höchstens · ⤓ Aufsetzen höchstens · − Kosten · + Prämie · 💰 Konto</p>
+      </section>
+
+      <section>
         <h3>Lageregler</h3>
         <dl class="help-keys">
           <dt>H · Halten</dt><dd>hält die Lage, die du eingestellt hast; das Steuerkreuz dreht den Lander</dd>
@@ -246,6 +254,12 @@
         <button id="r-menu">Planet wählen <kbd>M</kbd></button>
       </div>
       <div class="r-links"><button id="r-close" class="r-close">Szene ansehen</button><button id="r-export" class="r-close">Flug exportieren</button></div>
+    </div>
+  </div>
+  <div id="money-detail" class="overlay" hidden>
+    <div class="sheet small money-sheet" role="dialog" aria-modal="true" aria-labelledby="money-title">
+      <div class="help-top"><h2 id="money-title">Abrechnung</h2><button id="money-close" class="help-close" aria-label="Schließen">×</button></div>
+      <table class="money-table"><tbody id="money-rows"></tbody></table>
     </div>
   </div>
   <button id="result-open" class="result-open" hidden></button>

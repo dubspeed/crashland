@@ -61,11 +61,11 @@ export function cheapestCost(type, planet, fuelK, fuelPrice) {
 
 /** what a finished mission brings in: fee, aim bonus, unburnt fuel, recovered parts, base income.
  *  result: 'intact' | 'damaged' | 'far' | 'lost' (as in main.js) */
-export function payout(s, type, result, cost, econ) {
+export function payout(s, type, result, cost, econ, feeMult = 1) {
   const lines = [];
   const add = (label, v) => { if (Math.round(v)) lines.push([label, Math.round(v)]); };
   const delivered = result === 'intact' || result === 'damaged';
-  if (delivered) add(result === 'intact' ? 'Prämie' : 'Prämie (beschädigt)', FEES[type] * (result === 'intact' ? 1 : 0.4));
+  if (delivered) add(result === 'intact' ? 'Prämie' : 'Prämie (beschädigt)', FEES[type] * feeMult * (result === 'intact' ? 1 : 0.4));
   if (delivered) { const d = Math.hypot(s.x, s.z); add('Präzision', d <= 3 ? 5000 : d <= 12 ? 2000 : 0); }
   if (s.status === 'landed') {
     add('Treibstoff zurück', S.fuel(s) * econ.fuelPrice);

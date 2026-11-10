@@ -719,3 +719,56 @@ body.building #top { display: none; }
 .reset-row button small { white-space: nowrap; }
 .wind-note { margin: -6px 0 12px; font-size: 10.5px; color: var(--mute); }
 .st-desc { font-size: 11px; color: var(--ink); text-align: center; max-width: 300px; }
+
+/* base step A/B: module labels, tech-tree cards, slot choice, locked parts */
+#base-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.blabel { position: absolute; left: 0; top: 0; transform-origin: 0 0; margin: -38px 0 0 -60px; width: 120px; text-align: center; font: 600 10px var(--mono); color: var(--ink); text-shadow: 0 1px 3px #000, 0 0 6px #000; }
+.blabel b { display: block; font: 700 12px var(--display); letter-spacing: 0.03em; }
+.blabel small { color: var(--ok); font-size: 9.5px; }
+.blabel.dmg small { color: var(--warn); }
+.base-card { cursor: default; }
+.base-card:hover { transform: none; border-color: var(--glass-edge); }
+.mlist { display: flex; flex-wrap: wrap; gap: 5px; }
+.mbtn { display: grid; gap: 0; padding: 6px 9px; border-radius: 8px; border: 1px solid var(--amber); background: rgba(255,181,71,0.1); text-align: left; }
+.mbtn b { font: 700 12.5px var(--display); color: var(--amber); letter-spacing: 0.02em; }
+.mbtn small { font-size: 9.5px; }
+.mlocked { font-size: 9.5px; line-height: 1.35; }
+.mlocked i { font-style: normal; opacity: 0.75; }
+.ringsel { margin: 3px 4px 0 0; padding: 3px 8px; border-radius: 7px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,0.04); font: 700 11px var(--display); color: var(--ink); }
+.ringsel small { margin-left: 5px; font: 400 9.5px var(--mono); color: var(--mute); }
+.ringsel.on { border-color: var(--amber); background: rgba(255,181,71,0.15); color: var(--amber); }
+.ringsel:disabled { opacity: 0.4; }
+.bo.locked { opacity: 0.55; }
+.bo-b .b-lock { color: var(--mute); }
+#flyover { position: absolute; left: 50%; top: calc(18% + env(safe-area-inset-top, 0px)); transform: translateX(-50%); text-align: center; pointer-events: none; text-shadow: 0 1px 4px #000, 0 0 12px #000; }
+#flyover b { display: block; font: 700 22px var(--display); letter-spacing: 0.1em; color: var(--amber); }
+#flyover span { display: block; font: 600 12px var(--mono); color: var(--ink); margin-top: 3px; }
+#flyover small { display: block; margin-top: 8px; font-size: 10.5px; color: var(--mute); }
+body.flyover #readout, body.flyover #alert, body.flyover #td, body.flyover #sas-toast { visibility: hidden; }
+#flyover { top: calc(17% + env(safe-area-inset-top, 0px)); }
+
+/* chips with icons instead of sentences */
+.chips-row { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 2px 0; }
+.ch { display: inline-flex; align-items: center; gap: 3px; padding: 2px 7px; border-radius: 999px; background: rgba(255,255,255,0.07); font: 600 11px var(--mono); color: var(--ink); white-space: nowrap; }
+.ch i { font-style: normal; opacity: 0.85; }
+.ch.ok { color: var(--ok); } .ch.bad { color: var(--bad); background: rgba(255,93,82,0.12); } .ch.cost { color: var(--amber); }
+.bd-sub { display: grid; gap: 4px; margin-bottom: 8px; color: var(--ink); }
+.ring-seg { display: inline-flex; border: 1px solid var(--glass-edge); border-radius: 999px; overflow: hidden; margin-right: 4px; }
+.ring-seg .ringsel { margin: 0; border: 0; border-radius: 0; padding: 2px 10px; }
+.ring-seg .ringsel small { margin-left: 3px; }
+.mbtn { padding: 5px 9px; font: 700 12px var(--display); color: var(--amber); }
+.base-card .best, .mlocked { display: none; }
+.icon-key { font-size: 11px; color: var(--mute); }
+
+/* result: money as one figure, the breakdown in its own window */
+.r-money { display: inline-flex; align-items: baseline; gap: 8px; padding: 4px 12px; border-radius: 999px; border: 1px solid currentColor; background: rgba(255,255,255,0.05); font: 700 15px var(--display); }
+.r-money.ok { color: var(--ok); } .r-money.bad { color: var(--bad); }
+.r-money small { font: 600 10.5px var(--mono); color: var(--mute); text-decoration: underline; text-underline-offset: 2px; }
+.r-notes { flex-direction: row; }
+#money-detail { z-index: 20; }
+.money-sheet { max-width: 360px; }
+.money-table { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.money-table td { padding: 5px 2px; border-bottom: 1px solid var(--glass-edge); }
+.money-table td:last-child { text-align: right; font-weight: 700; white-space: nowrap; }
+.money-table .ok td:last-child { color: var(--ok); } .money-table .bad td:last-child { color: var(--bad); } .money-table .warn td:last-child { color: var(--warn); }
+.money-table tr.sum td { font-weight: 700; border-bottom: 0; padding-top: 7px; }

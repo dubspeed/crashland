@@ -10,6 +10,7 @@ import { createReentry } from './reentry.js';
 import { createBuilder } from './builder.js';
 import { cargoModel } from './cargo.js';
 import * as E from './economy.js';
+import * as B from './base.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -224,32 +225,44 @@ function missionBuildFor(type, fresh = false) {
   b = S.normalizeBuild(b); delete b.payload;
   return S.CARGO[type].crew ? { ...b, capsule: 'hab' } : { ...b, payload: type };
 }
-function openMissionBuilder(p) {
-  const base = loadBase(p.id), step = base.step, type = S.MISSIONS[step];
-  if (!type) return;
-  const c = S.CARGO[type], bon = S.baseBonus(base.modules);
-  editMission = { planet: p, step, type, fuel: bon.fuel };
+// short chips with icons instead of sentences (cards and briefing)
+const chip = (icon, txt, cls = '', title = '') => `<span class="ch ${cls}"${title ? ` title="${title}"` : ''}><i>${icon}</i>${txt}</span>`;
+const cargoChips = (c) => (c.crew ? chip('👩‍🚀', '4 Crew') : chip('⚖', `${c.mass} kg`, '', 'Masse') + chip('⇊', `${c.g} g`, '', 'verträgt höchstens') + chip('⤓', `${c.touch} m/s`, '', 'Aufsetzen höchstens'));
+const bonusChips = (bon) => [bon.fuel > 1 ? chip('⛽', `+${Math.round((bon.fuel - 1) * 100)} %`, 'ok', 'Treibstoff') : '', bon.solar > 1 ? chip('☀', `+${Math.round((bon.solar - 1) * 100)} %`, 'ok', 'Solar') : '', bon.score > 1 ? chip('★', `+${Math.round((bon.score - 1) * 100)} %`, 'ok', 'Punkte') : ''].join('');
+function openMissionBuilder(p, type, ring) {
+  const base = loadBase(p.id);
+  if (!type || base.modules.some((m) => m.type === type)) return;
+  const c = S.CARGO[type], bon = S.baseBonus(base.modules), built = builtTypes();
+  // where it goes: the beacon in the centre, everything else on the near (bonus) or far ring
+  ring = type === 'beacon' ? 'center' : ring ?? (B.freeSlot(base, 'near') !== null ? 'near' : 'far');
+  const pick = { ring }; // survives the briefing closing (Start)
+  editMission = { planet: p, type, pick, fuel: bon.fuel };
   missionBuild = missionBuildFor(type);
+  if (career()) missionBuild = B.allowedBuild(missionBuild, built); // parts the bases have not unlocked yet
   $('menu').hidden = true; cam.pitch = 0;
   parkShip();
-  const bonus = [bon.fuel > 1 ? `Treibstoff +${Math.round((bon.fuel - 1) * 100)} %` : '', bon.solar > 1 ? `Solar +${Math.round((bon.solar - 1) * 100)} %` : ''].filter(Boolean).join(' · ');
-  const sub = `${p.name.replace(' Orbit', '')} aus dem Orbit · ${c.crew ? '4 Crew im Habitat' : `${c.mass} kg · max ${c.g} g · Aufsetzen ≤ ${c.touch} m/s`}${bonus ? ` · Basis: ${bonus}` : ''}`;
+  const sub = `<span class="chips-row">${chip('🪐', p.name.replace(' Orbit', ''))}${cargoChips(c)}${bonusChips(bon)}</span>`;
+  const ringRow = () => (type === 'beacon' ? ''
+    : `<span class="ring-seg">${['near', 'far'].map((r) => { const free = B.freeSlot(base, r) !== null; return `<button class="ringsel${pick.ring === r ? ' on' : ''}" data-ring="${r}"${free ? '' : ' disabled'} title="${B.RINGS[r].note}">${B.RINGS[r].name}${free ? (r === 'near' ? ' <small>+20 %</small>' : '') : ' <small>voll</small>'}</button>`; }).join('')}</span>`);
   builder.open({
-    title: `Mission ${step + 1} · ${c.name}`,
+    title: c.name,
     sub,
     planets: [p], ref: missionBuildFor(type, true), hideSlots: ['capsule'],
-    onStart: () => start(p, { step }),
-    // career: what this lander costs, the account, Start only if affordable (or the emergency credit)
-    status: career() ? (b) => {
-      const c = loadCareer(), econ = E.baseEconomy(base.modules), fk = (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * bon.fuel;
-      const cost = E.flightCost(b, p, fk, econ.fuelPrice), ok = c.money >= cost.total;
-      const broke = c.money < E.cheapestCost(type, p, fk, econ.fuelPrice);
+    onStart: () => start(p, { type, ring: pick.ring }),
+    locked: career() ? (slot, opt) => { const m = B.unlockedBy(slot, opt); return m && !built.has(m) ? S.CARGO[m].name : null; } : null,
+    // the line under the title: limits, the slot choice, and in the career what it costs
+    status: (b) => {
+      if (!career()) return { sub: `${sub}<span class="chips-row">${ringRow()}</span>`, canStart: true, startLabel: 'Start ▶' };
+      const cc = loadCareer(), econ = E.baseEconomy(base.modules), fk = (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * bon.fuel;
+      const cost = E.flightCost(b, p, fk, econ.fuelPrice), ok = cc.money >= cost.total;
+      const broke = cc.money < E.cheapestCost(type, p, fk, econ.fuelPrice);
+      const fee = E.FEES[type] * (B.RINGS[pick.ring]?.bonus ?? 1);
       return {
-        sub: `${sub}<br><b class="${ok ? '' : 'bad'}">Kosten ${E.cr(cost.total)}</b> <small>(Teile ${E.cr(cost.parts)} · Treibstoff ${E.cr(cost.fuel)})</small> · Konto <b>${E.cr(c.money)}</b> · Prämie ${E.cr(E.FEES[type])}`
-          + (broke ? ` <button class="link loan">Notkredit +${E.cr(E.LOAN)}</button>` : ''),
+        sub: `${sub}<span class="chips-row">${ringRow()}${chip('−', E.cr(cost.total).replace(' Cr', ''), ok ? 'cost' : 'bad', `Kosten: Teile ${E.cr(cost.parts)}, Treibstoff ${E.cr(cost.fuel)}`)}${chip('+', E.cr(fee).replace(' Cr', ''), 'ok', 'Prämie bei Lieferung')}${chip('💰', E.cr(cc.money).replace(' Cr', ''), '', 'Konto')}`
+          + (broke ? `<button class="link loan">Notkredit +${E.cr(E.LOAN)}</button>` : '') + '</span>',
         canStart: ok, startLabel: ok ? 'Start ▶' : 'Zu teuer',
       };
-    } : null,
+    },
     badge: career() ? (b, alt) => { const d = E.partsPrice(alt) - E.partsPrice(b); return Math.abs(d) >= 100 ? `<em class="${d < 0 ? 'b-up' : 'b-down'}">${d > 0 ? '+' : '−'}${E.cr(Math.abs(d))}</em>` : ''; } : null,
   });
 }
@@ -293,6 +306,8 @@ $('reset-bases').addEventListener('click', () => resetGame('bases'));
 $('reset-all').addEventListener('click', () => resetGame('all'));
 // emergency credit in the briefing (only offered when even the cheapest lander is too expensive)
 $('build-sub').addEventListener('click', (e) => {
+  const rs = e.target.closest('.ringsel');
+  if (rs && editMission) { editMission.pick.ring = rs.dataset.ring; builder.refresh(); return; }
   if (!e.target.closest('.loan')) return;
   const c = loadCareer(); c.money += E.LOAN; c.debt += E.LOAN; saveCareer(c);
   builder.refresh();
@@ -317,7 +332,9 @@ $('start-select').addEventListener('click', (e) => {
 
 // ---------- base building (prototype): one base per planet, missions in a fixed order ----------
 const baseKey = (id) => `crashland.base.${id}`;
-function loadBase(id) { try { return JSON.parse(localStorage.getItem(baseKey(id))) ?? { modules: [], step: 0 }; } catch { return { modules: [], step: 0 }; } }
+function loadBase(id) { try { return B.migrate(JSON.parse(localStorage.getItem(baseKey(id)))); } catch { return { modules: [] }; } }
+/** every module type built in any base: the career's unlocked parts */
+const builtTypes = () => new Set(S.ORBIT_PLANETS.flatMap((p) => loadBase(p.id).modules.map((m) => m.type)));
 function saveBase(id, b) { try { localStorage.setItem(baseKey(id), JSON.stringify(b)); } catch { /* storage unavailable */ } }
 // career money (prototype): one account for all bases; "sandbox" = everything free
 let economy = 'career';
@@ -328,16 +345,54 @@ const career = () => economy === 'career';
 let mission = null; // the base mission being flown: { planetId, step, type, target: [x, z] }
 const baseGroup = new THREE.Group(); scene.add(baseGroup);
 /** the modules of a base around the current target (the target is the origin of the flight) */
+const slotMat = new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.35, depthWrite: false });
 function showBase(base, target) {
   baseGroup.clear();
+  $('base-labels').innerHTML = '';
   if (!base) return;
-  for (const m of base.modules) {
-    const o = cargoModel(m.type, true);
-    const x = m.x - target[0], z = m.z - target[1];
-    o.position.set(x, S.terrainHeight(x, z) + o.userData.h / 2, z);
-    o.rotation.y = m.rot ?? 0;
-    if (m.damaged) o.traverse((k) => { if (k.isMesh) { k.material = k.material.clone(); k.material.color.multiplyScalar(0.55); } });
+  const add = (o, x, z, lift, rot, label) => {
+    o.userData.sim = { x, z, lift, rot };
     baseGroup.add(o);
+    if (label) {
+      const el = document.createElement('div');
+      el.className = `blabel ${label.cls ?? ''}`; el.innerHTML = label.html;
+      $('base-labels').append(el); o.userData.label = el;
+    }
+  };
+  for (const m of base.modules) {
+    const o = cargoModel(m.type, true), c = S.CARGO[m.type];
+    if (m.damaged) o.traverse((k) => { if (k.isMesh) { k.material = k.material.clone(); k.material.color.multiplyScalar(0.55); } });
+    add(o, m.x - target[0], m.z - target[1], o.userData.h / 2, m.rot ?? 0,
+      { html: `<b>${c.name}</b><small>${m.damaged ? '⚠ beschädigt · kein Bonus' : c.bonus}</small>`, cls: m.damaged ? 'dmg' : '' });
+  }
+  // free slots: faint numbered rings where later modules can go (the target is the pad itself)
+  for (let i = 1; i < 13; i++) {
+    if (base.modules.some((m) => m.slot === i) || (mission && i === mission.slot)) continue;
+    const [sx, sz] = B.slotPos(i);
+    add(new THREE.Mesh(new THREE.RingGeometry(2.6, 3.0, 28).rotateX(-Math.PI / 2), slotMat), sx - target[0], sz - target[1], 0.12, 0, null);
+  }
+}
+const _bq = new THREE.Quaternion(), _by = new THREE.Quaternion(), _bv = new THREE.Vector3();
+const FLY_T = 5; // s of base fly-over at a mission start
+/** keep the base on the (curved, turning) planet and its labels on screen */
+function placeBase() {
+  if (!baseGroup.children.length) return;
+  camera.updateMatrixWorld();
+  for (const o of baseGroup.children) {
+    const u = o.userData.sim;
+    world.toRender(u.x, S.terrainHeight(u.x, u.z) + u.lift, u.z, o.position, _bq);
+    o.quaternion.copy(_bq).multiply(_by.setFromAxisAngle(_bv.set(0, 1, 0), u.rot));
+    const el = o.userData.label;
+    if (!el) continue;
+    _bv.copy(o.position); _bv.y += (o.userData.h ?? 2) * 0.6 + 1.5;
+    const d = _bv.distanceTo(camera.position);
+    _bv.project(camera);
+    const vis = mode !== 'menu' && _bv.z < 1 && Math.abs(_bv.x) < 1 && Math.abs(_bv.y) < 1 && d < 2500;
+    el.hidden = !vis;
+    if (vis) {
+      el.style.transform = `translate(${((_bv.x * 0.5 + 0.5) * innerWidth).toFixed(0)}px, ${((-_bv.y * 0.5 + 0.5) * innerHeight).toFixed(0)}px)`;
+      el.style.opacity = String(Math.max(0.35, Math.min(1, 1.6 - d / 600)));
+    }
   }
 }
 // difficulty: one summary button, the options fold out below it
@@ -361,8 +416,7 @@ function buildMenu() {
   if (startMode === 'base') {
     const c = loadCareer();
     $('base-info').innerHTML = `<span class="eco-row"><span class="eco-seg"><button data-eco="career" class="${career() ? 'on' : ''}">Karriere</button><button data-eco="sandbox" class="${career() ? '' : 'on'}">Sandbox</button></span>`
-      + (career() ? `<b class="money">${E.cr(c.money)}</b>${c.debt > 0 ? ` <small class="debt">Kredit ${E.cr(c.debt)}</small>` : ''}` : '<small>alles kostenlos</small>') + '</span>'
-      + 'Jede Landung bringt ein Modul zur Basis. Das nächste Ziel liegt neben den Modulen, wer daraufsetzt, crasht. Intakte Module helfen den nächsten Flügen.';
+      + (career() ? `<b class="money">💰 ${E.cr(c.money)}</b>${c.debt > 0 ? ` <small class="debt">Kredit ${E.cr(c.debt)}</small>` : ''}` : '<small>alles kostenlos</small>') + '</span>';
     $('base-info').querySelectorAll('[data-eco]').forEach((b) => b.addEventListener('click', () => { economy = b.dataset.eco; try { localStorage.setItem('crashland.economy', economy); } catch { /* storage unavailable */ } buildMenu(); }));
   }
   // base missions start from orbit (deorbit, re-entry, then down to the base)
@@ -371,18 +425,19 @@ function buildMenu() {
     b.className = 'planet';
     const rec = best(bestKey(p.id));
     if (startMode === 'base') {
-      // base card: progress, next mission, what the base gives
-      const base = loadBase(p.id), next = S.MISSIONS[base.step];
+      // base card: progress, the missions the base can fly now (tech tree), what is still locked
+      const base = loadBase(p.id), ms = B.missions(base), card = document.createElement('div');
+      card.className = 'planet base-card';
       const bon = S.baseBonus(base.modules), chips = [bon.fuel > 1 ? `Treibstoff +${Math.round((bon.fuel - 1) * 100)} %` : '', bon.solar > 1 ? `Solar +${Math.round((bon.solar - 1) * 100)} %` : '', bon.score > 1 ? `Punkte +${Math.round((bon.score - 1) * 100)} %` : ''].filter(Boolean);
       const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
-      b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
-        <span class="pname"><b>${p.name.replace(' Orbit', '')}</b><span class="g">${base.modules.length}/${S.MISSIONS.length}</span></span>
-        <span class="dots">${S.MISSIONS.map((m, i) => `<i class="${i < base.step ? (base.modules.find((x) => x.type === m)?.damaged ? 'dmg' : 'done') : i === base.step ? 'next' : ''}"></i>`).join('')}</span>
-        <p>${next ? `Mission ${base.step + 1}: <b class="mname">${S.CARGO[next].name}</b>${S.CARGO[next].crew ? '' : `<br><small>max ${S.CARGO[next].g} g · ${S.CARGO[next].touch} m/s · ${S.CARGO[next].mass} kg</small>`}` : 'Basis fertig!'}</p>
-        <span class="best">${chips.join(' · ')}</span>`;
-      if (next) b.addEventListener('click', () => openMissionBuilder(p));
-      else b.disabled = true;
-      wrap.append(b);
+      const built = new Map(base.modules.map((m) => [m.type, m]));
+      card.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
+        <span class="pname"><b>${p.name.replace(' Orbit', '')}</b><span class="g">${ms.done}/${ms.total}</span></span>
+        <span class="dots">${S.MISSIONS.map((m) => `<i class="${built.has(m) ? (built.get(m).damaged ? 'dmg' : 'done') : ms.open.some((o) => o.type === m) ? 'next' : ''}" title="${S.CARGO[m].name}${ms.locked.find((l) => l.type === m) ? ` – braucht ${ms.locked.find((l) => l.type === m).need.map((n) => S.CARGO[n].name).join(' + ')}` : ''}"></i>`).join('')}</span>
+        <span class="mlist">${ms.open.map((o) => `<button class="mbtn" data-type="${o.type}" title="${S.CARGO[o.type].crew ? '4 Crew' : `${S.CARGO[o.type].mass} kg · ${S.CARGO[o.type].g} g`}">${S.CARGO[o.type].name}</button>`).join('') || '<small>Basis fertig!</small>'}</span>
+        <span class="chips-row">${bonusChips(bon)}</span>`;
+      card.querySelectorAll('.mbtn').forEach((mb) => mb.addEventListener('click', () => openMissionBuilder(p, mb.dataset.type)));
+      wrap.append(card);
       continue;
     }
     const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
@@ -454,9 +509,10 @@ function flightRecord() {
 
 function start(p, ms) {
   // base mission: from the menu (ms) or "next mission" from the result (mission set, same planet)
-  if (ms || (mission && mission.planetId === p.id && startMode === 'base')) {
-    const base = loadBase(p.id);
-    mission = base.step < S.MISSIONS.length ? { planetId: p.id, step: base.step, type: S.MISSIONS[base.step], target: S.baseSlot(base.step) } : null;
+  if (!ms && mission && mission.planetId === p.id && startMode === 'base') ms = { type: mission.type, ring: mission.ring }; // again
+  if (ms) {
+    const base = loadBase(p.id), slot = B.freeSlot(base, ms.type === 'beacon' ? 'center' : ms.ring ?? 'near') ?? B.freeSlot(base, 'far');
+    mission = !base.modules.some((m) => m.type === ms.type) && slot !== null ? { planetId: p.id, type: ms.type, ring: ms.ring, slot, target: B.slotPos(slot) } : null;
   } else mission = null;
   if (p !== planet || !world.ready) {
     planet = p;
@@ -491,6 +547,12 @@ function start(p, ms) {
   hud.reset();
   cam.tgtD = 0; cam.intro = 0; cam.tgt = null; cam.pitch = 0;
   mode = 'flight';
+  // base mission: a short fly-over of the base and the new target before the flight (tap or key skips it)
+  cam.fly = mission ? 0 : null;
+  if (mission) {
+    const c = S.CARGO[mission.type], n = loadBase(p.id).modules.length;
+    $('flyover').innerHTML = `<b>Basis ${p.name.replace(' Orbit', '')}</b><span>${n ? `${n} Modul${n > 1 ? 'e' : ''} · ` : ''}Ziel: ${c.name}${mission.ring && mission.ring !== 'center' ? ` · ${B.RINGS[mission.ring].name}` : ''}</span><small>Tippen zum Überspringen</small>`;
+  }
   $('c-map').hidden = !p.orbit; toggleMap(false);
   $('menu').hidden = true; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = false;
   ship.helpers.visible = showCom;
@@ -545,13 +607,12 @@ function finish() {
     mission.result = !ok ? 'lost' : Math.hypot(s.x, s.z) > BASE_REACH ? 'far' : s.cargo === 'damaged' ? 'damaged' : 'intact';
     if (mission.result === 'intact' || mission.result === 'damaged') {
       const base = loadBase(mission.planetId);
-      base.modules.push({ type: mission.type, x: +(s.x + mission.target[0]).toFixed(2), z: +(s.z + mission.target[1]).toFixed(2), rot: +(((rec?.seed ?? 0) % 628) / 100).toFixed(2), damaged: mission.result === 'damaged' });
-      base.step = mission.step + 1;
+      base.modules.push({ type: mission.type, slot: mission.slot, x: +(s.x + mission.target[0]).toFixed(2), z: +(s.z + mission.target[1]).toFixed(2), rot: +(((rec?.seed ?? 0) % 628) / 100).toFixed(2), damaged: mission.result === 'damaged' });
       saveBase(mission.planetId, base);
     }
     if (mission.career) {
       // income: fee, aim, unburnt fuel, recovered lander, base income; half of it pays back a credit
-      const pay = E.payout(s, mission.type, mission.result, mission.cost, mission.econ);
+      const pay = E.payout(s, mission.type, mission.result, mission.cost, mission.econ, B.RINGS[mission.ring]?.bonus ?? 1);
       const cc = loadCareer(), repay = Math.min(cc.debt, Math.round(pay.total / 2));
       cc.money += pay.total - repay; cc.debt -= repay; saveCareer(cc);
       mission.pay = { ...pay, repay, money: cc.money };
@@ -609,27 +670,34 @@ function showResult() {
   const notes = [];
   if (mission) {
     const base = loadBase(mission.planetId), c = S.CARGO[mission.type];
-    if (mission.result === 'intact') notes.push([`${c.name} aufgebaut · ${c.bonus} · Basis ${base.modules.length}/${S.MISSIONS.length}`, 'ok']);
-    if (mission.result === 'damaged') notes.push([`${c.name} beschädigt (${s.cargoDamaged}) · kein Bonus · Basis ${base.modules.length}/${S.MISSIONS.length}`, 'warn']);
+    const unl = Object.entries(B.UNLOCKS[mission.type] ?? {}).flatMap(([sl, os]) => os.map((o) => S.BUILD_SLOTS.find((x) => x.id === sl).options.find((x) => x.id === o).name + ' ' + S.BUILD_SLOTS.find((x) => x.id === sl).short));
+    if (mission.result === 'intact') notes.push([`✓ ${c.name} · ${base.modules.length}/${S.MISSIONS.length}`, 'ok']);
+    if ((mission.result === 'intact' || mission.result === 'damaged') && career() && unl.length) notes.push([`🔓 ${unl.join(', ')}`, 'ok']);
+    if (mission.result === 'damaged') notes.push([`⚠ ${c.name} beschädigt (${s.cargoDamaged}) · ${base.modules.length}/${S.MISSIONS.length}`, 'warn']);
     if (mission.result === 'far') notes.push([`mehr als ${BASE_REACH} m vom Ziel: die Basis kann ${c.name} nicht nutzen`, 'warn']);
     if (mission.result === 'lost' && !c.crew) notes.push([`${c.name} verloren`, 'bad']);
   }
+  // money: one figure on the result, the breakdown in its own window
+  let money = '';
   if (mission?.pay) {
-    const P = mission.pay;
-    for (const [k, v] of P.lines) notes.push([`${k} +${E.cr(v)}`, 'ok']);
-    notes.push([`Kosten −${E.cr(mission.cost.total)}`, 'bad']);
-    if (P.repay) notes.push([`Kredit −${E.cr(P.repay)}`, 'warn']);
-    const net = P.total - mission.cost.total;
-    notes.push([`Saldo ${net >= 0 ? '+' : ''}${E.cr(net)} · Konto ${E.cr(P.money)}`, net >= 0 ? 'ok' : 'bad']);
+    const P = mission.pay, net = P.total - mission.cost.total;
+    money = `<button id="r-money" class="r-money ${net >= 0 ? 'ok' : 'bad'}">${net >= 0 ? '+' : '−'}${E.cr(Math.abs(net))} <small>💰 ${E.cr(P.money)} · Details</small></button>`;
+    const row = (k, v, cls) => `<tr class="${cls}"><td>${k}</td><td>${v >= 0 ? '+' : '−'}${E.cr(Math.abs(v))}</td></tr>`;
+    $('money-rows').innerHTML = P.lines.map(([k, v]) => row(k, v, 'ok')).join('')
+      + row(`Kosten (Teile ${E.cr(mission.cost.parts)}, Treibstoff ${E.cr(mission.cost.fuel)})`, -mission.cost.total, 'bad')
+      + (P.repay ? row('Kredit getilgt', -P.repay, 'warn') : '')
+      + `<tr class="sum ${net >= 0 ? 'ok' : 'bad'}"><td>Saldo</td><td>${net >= 0 ? '+' : '−'}${E.cr(Math.abs(net))}</td></tr><tr class="sum"><td>Konto</td><td>${E.cr(P.money)}</td></tr>`;
   }
-  $('r-again').innerHTML = mission && (mission.result === 'intact' || mission.result === 'damaged') && loadBase(mission.planetId).step < S.MISSIONS.length ? 'Nächste Mission <kbd>R</kbd>' : 'Nochmal <kbd>R</kbd>';
+  const delivered = mission && (mission.result === 'intact' || mission.result === 'damaged');
+  $('r-again').innerHTML = delivered ? 'Zur Basis <kbd>R</kbd>' : 'Nochmal <kbd>R</kbd>';
   if (!ok && s.crew.length) notes.push(crash.crew ? ['Crew gerettet', 'ok'] : ['Crew verloren', 'bad']);
   if (ok && s.unevenDamage) notes.push([`Boden uneben (${s.unevenDamage.toFixed(1).replace('.', ',')} m): Fahrwerk beschädigt`, 'warn']);
   if (!ok && crash.kind === 'explosion') notes.push([`${Math.round(crash.fuelBurned)} kg Treibstoff explodiert`, 'bad']);
   for (const c of s.crew) if (c.fainted) notes.push([`${c.name} ${c.fainted}× ohnmächtig`, 'warn']);
   for (const c of s.spec.comps) if (s.lost[c.id]) notes.push([`${c.name} verglüht`, 'bad']);
   if (s.chute === 'torn' || s.chute === 'burned') notes.push([`Fallschirm ${s.chute === 'torn' ? 'gerissen' : 'verglüht'}`, 'warn']);
-  $('r-notes').innerHTML = notes.map(([t, c]) => `<em class="${c}">${t}</em>`).join('');
+  $('r-notes').innerHTML = money + notes.map(([t, c]) => `<em class="${c}">${t}</em>`).join('');
+  $('r-money')?.addEventListener('click', () => { $('money-detail').hidden = false; });
   $('r-notes').hidden = !notes.length;
   // don't pop up: offer a button so the scene can be looked at first
   $('result-open').innerHTML = `<b style="color:${$('r-title').style.color}">${$('r-title').textContent}</b>${ok ? ` ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}` : ''} · Ergebnis ansehen`;
@@ -642,7 +710,7 @@ addEventListener('keydown', (e) => {
   if (e.repeat && !['Space'].includes(e.code)) return;
   keys.add(e.code);
   if (e.code === 'Space') e.preventDefault();
-  if (e.code === 'KeyR' && mode !== 'menu') start(planet);
+  if (e.code === 'KeyR' && mode !== 'menu') { if (mission && (mission.result === 'intact' || mission.result === 'damaged')) showMenu(); else start(planet); }
   if (e.code === 'Escape' && !$('help').hidden) { closeHelp(); return; }
   if ((e.code === 'KeyH' || e.code === 'F1') && mode === 'menu') { e.preventDefault(); openHelp(); }
   if ((e.code === 'KeyM' || e.code === 'Escape') && mode !== 'menu') showMenu();
@@ -661,6 +729,8 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
 
+// any tap or key skips the base fly-over
+for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => { if (cam.fly !== null && cam.fly !== undefined && cam.fly > 0.3) cam.fly = FLY_T + 1; }, true);
 // iOS: long presses would still select text or open the copy / share menu (also on the canvas)
 const editable = (e) => e.target.closest?.('input, textarea, [contenteditable]');
 addEventListener('selectstart', (e) => { if (!editable(e)) e.preventDefault(); });
@@ -766,10 +836,13 @@ setLabel($('c-com'), 'SP', 'C', 'Schwerpunkt anzeigen');
 for (const b of document.querySelectorAll('#controls .tog')) b.addEventListener('mousedown', (e) => e.preventDefault());
 $('r-again').addEventListener('click', () => {
   // base: after a delivered module the next mission starts with its briefing (the lander for that cargo)
-  if (mission && (mission.result === 'intact' || mission.result === 'damaged') && loadBase(mission.planetId).step < S.MISSIONS.length) { const p = planet; showMenu(); openMissionBuilder(p); return; }
+  // base: after a delivered module back to the base cards (choose the next one)
+  if (mission && (mission.result === 'intact' || mission.result === 'damaged')) { showMenu(); return; }
   start(planet);
 });
 $('result-open').addEventListener('click', () => { $('result').hidden = false; $('result-open').hidden = true; $('r-again').focus(); });
+$('money-close').addEventListener('click', () => { $('money-detail').hidden = true; });
+$('money-detail').addEventListener('click', (e) => { if (e.target === $('money-detail')) $('money-detail').hidden = true; });
 $('r-close').addEventListener('click', () => { $('result').hidden = true; $('result-open').hidden = false; });
 $('r-menu').addEventListener('click', showMenu);
 // flight export (replay file): download, or copy if downloads are blocked
@@ -971,8 +1044,23 @@ renderer.setAnimationLoop(() => {
     const free = tg?.height ? tg.top : innerHeight, dy = Math.round((innerHeight - free) / 2 * 0.6);
     if (camera.view?.offsetY !== dy) camera.setViewOffset(innerWidth, innerHeight, 0, dy, innerWidth, innerHeight);
   } else if (camera.view?.enabled && !builder.active) camera.clearViewOffset();
+  if (cam.fly !== null && cam.fly !== undefined && mode === 'flight') {
+    // fly-over: circle the base (the flight's origin) on the planet's local up, then hand over to the lander
+    cam.fly += dt;
+    const done = cam.fly > FLY_T;
+    $('flyover').hidden = done; document.body.classList.toggle('flyover', !done);
+    if (done) cam.fly = null;
+    else {
+      world.toRender(0, S.terrainHeight(0, 0), 0, _bv, _bq);
+      const ang = 0.7 + cam.fly * 0.32, r = 62 - cam.fly * 3;
+      const off = new THREE.Vector3(Math.cos(ang) * r, 30 + cam.fly * 2, Math.sin(ang) * r).applyQuaternion(_bq);
+      camera.position.copy(_bv).add(off);
+      camera.up.set(0, 1, 0).applyQuaternion(_bq);
+      lookAt.copy(_bv);
+    }
+  }
   camera.lookAt(lookAt);
-  placeShipMark(); placePredMark();
+  placeShipMark(); placePredMark(); placeBase();
   if (mode === 'flight') orbitMap.draw(s);
   world.update(camera, focus, time, mode === 'menu' ? { x: 0, z: 0 } : { x: s.windX, z: s.windZ }, dt);
   renderer.render(scene, camera);
