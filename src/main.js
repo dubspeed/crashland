@@ -46,12 +46,23 @@ const _hull = new THREE.Vector3();
 // aiming aids on the ground: ring right below the lander, cross where it would hit if it kept falling
 const markMat = new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.85, depthWrite: false, depthTest: false });
 const belowRing = new THREE.Mesh(new THREE.RingGeometry(2.1, 2.5, 32).rotateX(-Math.PI / 2), markMat);
+// the predicted touchdown point: one cross (dark outline, bright bars, a dashed ring) plus a thin light beam
+// standing up from it, so it can be seen from the side too; orange, green when it is on the pad
 const impact = new THREE.Group();
+const impactMat = new THREE.MeshBasicMaterial({ color: 0xffb547, transparent: true, opacity: 0.98, depthWrite: false, depthTest: false });
+const outlineMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55, depthWrite: false, depthTest: false });
 for (const r of [0, Math.PI / 2]) {
-  const bar = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.45).rotateX(-Math.PI / 2).rotateY(r + Math.PI / 4), new THREE.MeshBasicMaterial({ color: 0xffb547, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false }));
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(5.5, 1.25).rotateX(-Math.PI / 2).rotateY(r + Math.PI / 4), outlineMat);
+  shadow.renderOrder = 19.5;
+  const bar = new THREE.Mesh(new THREE.PlaneGeometry(5, 0.75).rotateX(-Math.PI / 2).rotateY(r + Math.PI / 4), impactMat);
   bar.renderOrder = 20;
-  impact.add(bar);
+  impact.add(shadow, bar);
 }
+const impactRing = new THREE.Mesh(new THREE.RingGeometry(3.3, 3.65, 40).rotateX(-Math.PI / 2), impactMat);
+impactRing.renderOrder = 20;
+const beamMat = new THREE.MeshBasicMaterial({ color: 0xffb547, transparent: true, opacity: 0.35, depthWrite: false, blending: THREE.AdditiveBlending });
+const impactBeam = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1, 6, 1, true).translate(0, 0.5, 0), beamMat);
+impact.add(impactRing, impactBeam);
 belowRing.renderOrder = 19;
 scene.add(belowRing, impact);
 function updateMarkers() {
@@ -70,7 +81,18 @@ function updateMarkers() {
   const pred = s.pred;
   impact.visible = !!pred;
   if (pred) world.toRender(pred.x, S.terrainHeight(pred.x, pred.z) + 0.2, pred.z, impact.position, impact.quaternion);
-  const k = Math.min(6, 1 + alt / 120); // grow with height so it stays visible from above
+  // size: never smaller than ~44 px on screen (far below a high lander), grows with height as before
+  let k = Math.min(6, 1 + alt / 120);
+  if (pred) {
+    const depth = impact.position.distanceTo(camera.position);
+    const minK = (44 / innerHeight) * 2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / 7.5;
+    k = Math.max(k, Math.min(minK, 400));
+    // green only when it really is on the pad
+    const onPad = Math.hypot(pred.x, pred.z) <= PAD_RADIUS;
+    impactMat.color.set(onPad ? 0x5fe0a0 : 0xffb547); beamMat.color.copy(impactMat.color);
+    // the beam reaches up to the lander's height (in the cross's own scale)
+    impactBeam.scale.set(1, Math.max(5, alt + 20) / k, 1);
+  }
   impact.scale.setScalar(k); belowRing.scale.setScalar(Math.min(4, 1 + alt / 200));
 }
 // the predicted touchdown point as a screen marker of fixed size when the 3D cross is only a few pixels
@@ -80,14 +102,13 @@ const predV = new THREE.Vector3();
 function placePredMark() {
   let show = mode === 'flight' && s.status === 'flying' && impact.visible;
   if (show) {
+    camera.updateMatrixWorld(); // this frame's camera, not the last one
     predV.copy(impact.position);
-    const depth = predV.distanceTo(camera.position);
-    const px = ((5 * impact.scale.x) / (2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)))) * innerHeight;
     predV.project(camera);
     let nx = predV.x, ny = predV.y;
     if (predV.z > 1) { nx = -nx; ny = -ny; } // behind the camera: the direction flips
     const inside = predV.z < 1 && Math.abs(nx) < 0.92 && Math.abs(ny) < 0.92;
-    show = !inside || px < 40;
+    show = !inside; // on screen the 3D cross itself is big enough now; the marker is only the edge arrow
     if (show) {
       // on screen: the cross itself; off screen: an arrow at the edge pointing to it
       let x = (nx * 0.5 + 0.5) * innerWidth, y = (-ny * 0.5 + 0.5) * innerHeight;
@@ -101,7 +122,7 @@ function placePredMark() {
       }
       predMark.classList.toggle('edge', !inside);
       predMark.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
-      predMark.classList.toggle('on-pad', Math.hypot(s.pred.x, s.pred.z) < 30);
+      predMark.classList.toggle('on-pad', Math.hypot(s.pred.x, s.pred.z) <= PAD_RADIUS);
     }
   }
   if (predMark.hidden === show) predMark.hidden = !show;
@@ -943,6 +964,13 @@ renderer.setAnimationLoop(() => {
     camera.position.add(new THREE.Vector3().randomDirection().multiplyScalar(cam.shake * 0.8));
   }
   if (builder.active) builder.placeCamera(s, cam.yaw, cam.pitch, dt, lookAt);
+  // flight on a phone: the controls cover the lower part, so the picture is centred on the free area above them
+  // (the lander and the touchdown cross are not hidden behind the buttons)
+  else if (mode !== 'menu' && innerWidth < 560) {
+    const tg = document.querySelector('#controls .toggles')?.getBoundingClientRect();
+    const free = tg?.height ? tg.top : innerHeight, dy = Math.round((innerHeight - free) / 2 * 0.6);
+    if (camera.view?.offsetY !== dy) camera.setViewOffset(innerWidth, innerHeight, 0, dy, innerWidth, innerHeight);
+  } else if (camera.view?.enabled && !builder.active) camera.clearViewOffset();
   camera.lookAt(lookAt);
   placeShipMark(); placePredMark();
   if (mode === 'flight') orbitMap.draw(s);
