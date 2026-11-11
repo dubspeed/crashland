@@ -40,3 +40,19 @@ test('unlocks: big parts need the right modules, locked choices fall back to sta
   // the standard lander is always buildable
   for (const sl of S.BUILD_SLOTS) assert.ok(B.isUnlocked(sl.id, S.DEFAULT_BUILD[sl.id], new Set()), sl.id);
 });
+
+test('career order and supply contracts', () => {
+  const full = { modules: S.MISSIONS.map((type, i) => { const [x, z] = B.slotPos(i); return { type, slot: i, x, z }; }) };
+  const store = { 'luna-orbit': full, 'mars-orbit': { modules: [] } };
+  const load = (id) => store[id] ?? { modules: [] };
+  assert.ok(B.planetOpen('luna-orbit', load) && B.planetOpen('mars-orbit', load));
+  assert.ok(!B.planetOpen('terra-orbit', load) && !B.planetOpen('brontes-orbit', load));
+  store['mars-orbit'] = full;
+  assert.ok(B.planetOpen('terra-orbit', load) && B.planetOpen('brontes-orbit', load));
+  // offers: three, clear of every module, and new ones after a delivery
+  const a = B.contracts(full), b = B.contracts({ ...full, cseed: 1 });
+  assert.equal(a.length, 3);
+  for (const o of a) for (const m of full.modules) assert.ok(Math.hypot(o.x - m.x, o.z - m.z) > (S.CARGO[m.type].r ?? 2) + 4, `${o.type} near ${m.type}`);
+  assert.notDeepEqual(a, b);
+  assert.ok(B.migrate({ ...full, supplies: 4, cseed: 4 }).supplies === 4);
+});

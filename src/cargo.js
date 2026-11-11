@@ -79,6 +79,21 @@ const BUILD = {
       add(g, box(0.06, 0.8, 0.6), dark(), Math.cos(a) * 0.65, -h / 2 + 0.45, Math.sin(a) * 0.65, 0, -a, 0);
     }
   },
+  fuel(g, h) { // three tanks in a frame
+    for (const [x, z] of [[-0.55, 0], [0.55, 0], [0, 0.6]]) { add(g, cyl(0.45, 0.45, h - 0.3, 10), hull(), x, 0.05, z); add(g, cyl(0.47, 0.47, 0.15, 10), orange(), x, 0.2, z); }
+    add(g, box(1.9, 0.15, 1.6), dark(), 0, -h / 2 + 0.08, 0.2);
+  },
+  parts(g, h) { // stacked crates
+    add(g, box(1.6, 0.7, 1.1), mat('crate', 0x7b8a4a), 0, -h / 2 + 0.35);
+    add(g, box(1.0, 0.55, 0.9), mat('crate2', 0x9aa25a), 0.15, -h / 2 + 0.98);
+    add(g, box(1.65, 0.06, 1.15), dark(), 0, -h / 2 + 0.72);
+  },
+  science(g, h) { // padded instrument case with a sensor mast
+    add(g, box(1.4, h - 0.4, 1.0), hull(), 0, -0.2);
+    add(g, box(1.45, 0.12, 1.05), orange(), 0, -0.05);
+    add(g, cyl(0.03, 0.03, 0.5, 5), metal(), 0.45, h / 2 - 0.25);
+    add(g, new THREE.SphereGeometry(0.1, 8, 6), lamp(), 0.45, h / 2);
+  },
   crew(g) { // the habitat dome the crew sets up (only stands in the base)
     add(g, new THREE.SphereGeometry(2.2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), hull(), 0, -1.1);
     add(g, cyl(2.25, 2.25, 0.25, 16), orange(), 0, -1.0);

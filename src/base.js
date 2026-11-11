@@ -57,7 +57,8 @@ export function freeSlot(base, ring) {
 }
 /** older saves: modules without a slot get the nearest one */
 export function migrate(base) {
-  const b = { modules: [...(base?.modules ?? [])] };
+  const b = { ...(base ?? {}), modules: [...(base?.modules ?? [])] };
+  delete b.step;
   b.modules = b.modules.map((m) => {
     if (m.slot !== undefined) return m;
     let best = 0, bd = Infinity;
@@ -77,4 +78,38 @@ export function missions(base) {
     (need.length ? locked : open).push({ type: t, need });
   }
   return { open, locked, done: built.size, total: S.MISSIONS.length };
+}
+
+// ---------- career across planets and supply contracts ----------
+/** career order: Luna first, then Mars, then Terra and Brontes (either) */
+export const PLANET_NEEDS = { 'luna-orbit': null, 'mars-orbit': 'luna-orbit', 'terra-orbit': 'mars-orbit', 'brontes-orbit': 'mars-orbit' };
+export const isComplete = (base) => S.MISSIONS.every((t) => base.modules.some((m) => m.type === t));
+/** may this planet's base be worked on yet (career); loadBase(id) gives a base */
+export function planetOpen(id, loadBase) {
+  const need = PLANET_NEEDS[id];
+  return !need || isComplete(loadBase(need));
+}
+
+const SUPPLY = ['fuel', 'parts', 'science', 'crewswap'];
+// deterministic small random from a seed
+const rand = (seed) => { let x = (seed * 2654435761) >>> 0; return () => { x ^= x << 13; x >>>= 0; x ^= x >> 17; x ^= x << 5; x >>>= 0; return x / 4294967296; }; };
+/** three supply offers for a finished base: a cargo and a drop point right next to one of its modules.
+ *  The offers change after every delivery (base.cseed). */
+export function contracts(base) {
+  const r = rand(1 + (base.cseed ?? 0) * 7919 + base.modules.length), out = [];
+  const mods = base.modules.filter((m) => S.CARGO[m.type] && !S.CARGO[m.type].supply);
+  for (let k = 0; k < 3 && mods.length; k++) {
+    const left = SUPPLY.filter((t) => !out.some((o) => o.type === t)); // three different cargos
+    const type = left[Math.floor(r() * left.length)];
+    // a free spot ~9 m from a module, away from all the others
+    let best = null;
+    for (let tries = 0; tries < 40 && !best; tries++) {
+      const m = mods[Math.floor(r() * mods.length)], a = r() * Math.PI * 2, d = 8.5 + r() * 2;
+      const x = Math.round((m.x + Math.cos(a) * d) * 10) / 10, z = Math.round((m.z + Math.sin(a) * d) * 10) / 10;
+      const clear = base.modules.every((o) => Math.hypot(o.x - x, o.z - z) > (S.CARGO[o.type]?.r ?? 2) + 5) && out.every((o) => Math.hypot(o.x - x, o.z - z) > 6);
+      if (clear) best = { type, x, z, near: m.type };
+    }
+    if (best) out.push(best);
+  }
+  return out;
 }

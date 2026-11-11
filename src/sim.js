@@ -320,6 +320,11 @@ export const CARGO = {
   refinery: { name: 'Raffinerie', mass: 1800, h: 2.6, r: 1.6, g: 6, touch: 6, bonus: '+25 % Treibstoff', fuel: 1.25 },
   rocket: { name: 'Rückkehrrakete', mass: 1600, h: 5.5, r: 0.8, g: 5, touch: 5, bonus: 'Crew-Mission frei' },
   crew: { name: 'Crew-Habitat', crew: true, r: 2.6, bonus: 'Basis bemannt' },
+  // supply contracts for a finished base (unloaded at the base, they don't stay as modules)
+  fuel: { name: 'Treibstoff-Nachschub', mass: 2000, h: 1.8, r: 1.4, g: 9, touch: 9, supply: true },
+  parts: { name: 'Ersatzteile', mass: 800, h: 1.3, r: 1.2, g: 6, touch: 6, supply: true },
+  science: { name: 'Messgeräte', mass: 600, h: 1.2, r: 1.1, g: 3, touch: 2.5, supply: true },
+  crewswap: { name: 'Crew-Wechsel', crew: true, r: 2.6, supply: true },
 };
 export const MISSIONS = ['beacon', 'solar', 'depot', 'lab', 'rover', 'refinery', 'rocket', 'crew'];
 /** where mission k puts its module, in base coordinates (the beacon is the centre; the rest on rings) */

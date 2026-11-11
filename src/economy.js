@@ -19,7 +19,9 @@ export const FUEL_PRICE = 10; // Cr per kg
 export const START_MONEY = 40000;
 export const LOAN = 30000; // emergency credit, paid back from half of each payout
 // what a delivered cargo pays (damaged: 40 %)
-export const FEES = { beacon: 14000, solar: 16000, depot: 18000, lab: 22000, rover: 19000, refinery: 22000, rocket: 24000, crew: 30000 };
+// later planets pay more (and are harder)
+export const PLANET_PAY = { 'luna-orbit': 1, 'mars-orbit': 1.3, 'terra-orbit': 1.6, 'brontes-orbit': 2 };
+export const FEES = { fuel: 16000, parts: 14000, science: 20000, crewswap: 26000, beacon: 14000, solar: 16000, depot: 18000, lab: 22000, rover: 19000, refinery: 22000, rocket: 24000, crew: 30000 };
 export const RECOVER = { landed: 0.4, hard: 0.25 }; // share of the part value a landed descent stage brings back
 
 /** what the base's intact modules do for money: cheaper fuel, income per later mission */

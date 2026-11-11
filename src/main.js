@@ -229,26 +229,27 @@ function missionBuildFor(type, fresh = false) {
 const chip = (icon, txt, cls = '', title = '') => `<span class="ch ${cls}"${title ? ` title="${title}"` : ''}><i>${icon}</i>${txt}</span>`;
 const cargoChips = (c) => (c.crew ? chip('👩‍🚀', '4 Crew') : chip('⚖', `${c.mass} kg`, '', 'Masse') + chip('⇊', `${c.g} g`, '', 'verträgt höchstens') + chip('⤓', `${c.touch} m/s`, '', 'Aufsetzen höchstens'));
 const bonusChips = (bon) => [bon.fuel > 1 ? chip('⛽', `+${Math.round((bon.fuel - 1) * 100)} %`, 'ok', 'Treibstoff') : '', bon.solar > 1 ? chip('☀', `+${Math.round((bon.solar - 1) * 100)} %`, 'ok', 'Solar') : '', bon.score > 1 ? chip('★', `+${Math.round((bon.score - 1) * 100)} %`, 'ok', 'Punkte') : ''].join('');
-function openMissionBuilder(p, type, ring) {
+function openMissionBuilder(p, type, ring, contract = null) {
   const base = loadBase(p.id);
-  if (!type || base.modules.some((m) => m.type === type)) return;
+  if (!type || (!contract && base.modules.some((m) => m.type === type))) return;
   const c = S.CARGO[type], bon = S.baseBonus(base.modules), built = builtTypes();
   // where it goes: the beacon in the centre, everything else on the near (bonus) or far ring
-  ring = type === 'beacon' ? 'center' : ring ?? (B.freeSlot(base, 'near') !== null ? 'near' : 'far');
+  ring = contract ? null : type === 'beacon' ? 'center' : ring ?? (B.freeSlot(base, 'near') !== null ? 'near' : 'far');
+  const pay = E.PLANET_PAY[p.id] ?? 1;
   const pick = { ring }; // survives the briefing closing (Start)
   editMission = { planet: p, type, pick, fuel: bon.fuel };
   missionBuild = missionBuildFor(type);
   if (career()) missionBuild = B.allowedBuild(missionBuild, built); // parts the bases have not unlocked yet
   $('menu').hidden = true; cam.pitch = 0;
   parkShip();
-  const sub = `<span class="chips-row">${chip('🪐', p.name.replace(' Orbit', ''))}${cargoChips(c)}${bonusChips(bon)}</span>`;
-  const ringRow = () => (type === 'beacon' ? ''
+  const sub = `<span class="chips-row">${chip('🪐', p.name.replace(' Orbit', ''))}${cargoChips(c)}${bonusChips(bon)}${contract ? chip('📍', `neben ${S.CARGO[contract.near].name}`) : ''}</span>`;
+  const ringRow = () => (type === 'beacon' || contract ? ''
     : `<span class="ring-seg">${['near', 'far'].map((r) => { const free = B.freeSlot(base, r) !== null; return `<button class="ringsel${pick.ring === r ? ' on' : ''}" data-ring="${r}"${free ? '' : ' disabled'} title="${B.RINGS[r].note}">${B.RINGS[r].name}${free ? (r === 'near' ? ' <small>+20 %</small>' : '') : ' <small>voll</small>'}</button>`; }).join('')}</span>`);
   builder.open({
-    title: c.name,
+    title: contract ? `Versorgung · ${c.name}` : c.name,
     sub,
     planets: [p], ref: missionBuildFor(type, true), hideSlots: ['capsule'],
-    onStart: () => start(p, { type, ring: pick.ring }),
+    onStart: () => start(p, { type, ring: pick.ring, contract }),
     locked: career() ? (slot, opt) => { const m = B.unlockedBy(slot, opt); return m && !built.has(m) ? S.CARGO[m].name : null; } : null,
     // the line under the title: limits, the slot choice, and in the career what it costs
     status: (b) => {
@@ -256,7 +257,7 @@ function openMissionBuilder(p, type, ring) {
       const cc = loadCareer(), econ = E.baseEconomy(base.modules), fk = (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * bon.fuel;
       const cost = E.flightCost(b, p, fk, econ.fuelPrice), ok = cc.money >= cost.total;
       const broke = cc.money < E.cheapestCost(type, p, fk, econ.fuelPrice);
-      const fee = E.FEES[type] * (B.RINGS[pick.ring]?.bonus ?? 1);
+      const fee = E.FEES[type] * (B.RINGS[pick.ring]?.bonus ?? 1) * pay;
       return {
         sub: `${sub}<span class="chips-row">${ringRow()}${chip('−', E.cr(cost.total).replace(' Cr', ''), ok ? 'cost' : 'bad', `Kosten: Teile ${E.cr(cost.parts)}, Treibstoff ${E.cr(cost.fuel)}`)}${chip('+', E.cr(fee).replace(' Cr', ''), 'ok', 'Prämie bei Lieferung')}${chip('💰', E.cr(cc.money).replace(' Cr', ''), '', 'Konto')}`
           + (broke ? `<button class="link loan">Notkredit +${E.cr(E.LOAN)}</button>` : '') + '</span>',
@@ -428,15 +429,21 @@ function buildMenu() {
       // base card: progress, the missions the base can fly now (tech tree), what is still locked
       const base = loadBase(p.id), ms = B.missions(base), card = document.createElement('div');
       card.className = 'planet base-card';
+      const locked = career() && !B.planetOpen(p.id, loadBase), complete = B.isComplete(base);
+      const offers = complete ? B.contracts(base) : [], pay = E.PLANET_PAY[p.id] ?? 1;
       const bon = S.baseBonus(base.modules), chips = [bon.fuel > 1 ? `Treibstoff +${Math.round((bon.fuel - 1) * 100)} %` : '', bon.solar > 1 ? `Solar +${Math.round((bon.solar - 1) * 100)} %` : '', bon.score > 1 ? `Punkte +${Math.round((bon.score - 1) * 100)} %` : ''].filter(Boolean);
       const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
       const built = new Map(base.modules.map((m) => [m.type, m]));
       card.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
         <span class="pname"><b>${p.name.replace(' Orbit', '')}</b><span class="g">${ms.done}/${ms.total}</span></span>
         <span class="dots">${S.MISSIONS.map((m) => `<i class="${built.has(m) ? (built.get(m).damaged ? 'dmg' : 'done') : ms.open.some((o) => o.type === m) ? 'next' : ''}" title="${S.CARGO[m].name}${ms.locked.find((l) => l.type === m) ? ` – braucht ${ms.locked.find((l) => l.type === m).need.map((n) => S.CARGO[n].name).join(' + ')}` : ''}"></i>`).join('')}</span>
-        <span class="mlist">${ms.open.map((o) => `<button class="mbtn" data-type="${o.type}" title="${S.CARGO[o.type].crew ? '4 Crew' : `${S.CARGO[o.type].mass} kg · ${S.CARGO[o.type].g} g`}">${S.CARGO[o.type].name}</button>`).join('') || '<small>Basis fertig!</small>'}</span>
+        <span class="mlist">${locked ? `<small class="plock">🔒 erst ${S.ORBIT_PLANETS.find((x) => x.id === B.PLANET_NEEDS[p.id]).name.replace(' Orbit', '')}-Basis fertig bauen</small>`
+          : complete ? offers.map((o, i) => `<button class="mbtn sup" data-c="${i}" title="neben ${S.CARGO[o.near].name}">${S.CARGO[o.type].name}<small>+${E.cr(E.FEES[o.type] * pay).replace(' Cr', '')}</small></button>`).join('')
+          : ms.open.map((o) => `<button class="mbtn" data-type="${o.type}" title="${S.CARGO[o.type].crew ? '4 Crew' : `${S.CARGO[o.type].mass} kg · ${S.CARGO[o.type].g} g`}">${S.CARGO[o.type].name}</button>`).join('')}</span>
+        ${complete ? `<span class="chips-row">${chip('📦', `${base.supplies ?? 0} geliefert`, '', 'Versorgungsflüge')}${pay > 1 ? chip('×', pay.toLocaleString('de-DE'), 'ok', 'Prämien auf diesem Planeten') : ''}</span>` : pay > 1 && !locked ? `<span class="chips-row">${chip('×', pay.toLocaleString('de-DE'), 'ok', 'Prämien auf diesem Planeten')}</span>` : ''}
         <span class="chips-row">${bonusChips(bon)}</span>`;
-      card.querySelectorAll('.mbtn').forEach((mb) => mb.addEventListener('click', () => openMissionBuilder(p, mb.dataset.type)));
+      if (locked) card.classList.add('locked');
+      card.querySelectorAll('.mbtn').forEach((mb) => mb.addEventListener('click', () => (mb.dataset.c !== undefined ? openMissionBuilder(p, offers[+mb.dataset.c].type, null, offers[+mb.dataset.c]) : openMissionBuilder(p, mb.dataset.type))));
       wrap.append(card);
       continue;
     }
@@ -509,8 +516,11 @@ function flightRecord() {
 
 function start(p, ms) {
   // base mission: from the menu (ms) or "next mission" from the result (mission set, same planet)
-  if (!ms && mission && mission.planetId === p.id && startMode === 'base') ms = { type: mission.type, ring: mission.ring }; // again
-  if (ms) {
+  if (!ms && mission && mission.planetId === p.id && startMode === 'base') ms = { type: mission.type, ring: mission.ring, contract: mission.contract }; // again
+  if (ms?.contract) {
+    // supply contract: the drop point next to a module (nothing stays there)
+    mission = { planetId: p.id, type: ms.type, contract: ms.contract, slot: null, target: [ms.contract.x, ms.contract.z] };
+  } else if (ms) {
     const base = loadBase(p.id), slot = B.freeSlot(base, ms.type === 'beacon' ? 'center' : ms.ring ?? 'near') ?? B.freeSlot(base, 'far');
     mission = !base.modules.some((m) => m.type === ms.type) && slot !== null ? { planetId: p.id, type: ms.type, ring: ms.ring, slot, target: B.slotPos(slot) } : null;
   } else mission = null;
@@ -551,7 +561,7 @@ function start(p, ms) {
   cam.fly = mission ? 0 : null;
   if (mission) {
     const c = S.CARGO[mission.type], n = loadBase(p.id).modules.length;
-    $('flyover').innerHTML = `<b>Basis ${p.name.replace(' Orbit', '')}</b><span>${n ? `${n} Modul${n > 1 ? 'e' : ''} · ` : ''}Ziel: ${c.name}${mission.ring && mission.ring !== 'center' ? ` · ${B.RINGS[mission.ring].name}` : ''}</span><small>Tippen zum Überspringen</small>`;
+    $('flyover').innerHTML = `<b>Basis ${p.name.replace(' Orbit', '')}</b><span>${n ? `${n} Modul${n > 1 ? 'e' : ''} · ` : ''}Ziel: ${c.name}${mission.contract ? ` · neben ${S.CARGO[mission.contract.near].name}` : mission.ring && mission.ring !== 'center' ? ` · ${B.RINGS[mission.ring].name}` : ''}</span><small>Tippen zum Überspringen</small>`;
   }
   $('c-map').hidden = !p.orbit; toggleMap(false);
   $('menu').hidden = true; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = false;
@@ -559,6 +569,7 @@ function start(p, ms) {
 }
 
 const PAD_RADIUS = 12;
+const CONTRACT_REACH = 25; // m: a supply drop has to land next to its module
 const BASE_REACH = 60; // m from the target: closer, the base can use the cargo
 function precision(st) {
   const d = Math.hypot(st.x, st.z);
@@ -604,15 +615,19 @@ function finish() {
   const ok = s.status === 'landed';
   // base: a landed cargo close enough to the target becomes a module (damaged ones give no bonus)
   if (mission) {
-    mission.result = !ok ? 'lost' : Math.hypot(s.x, s.z) > BASE_REACH ? 'far' : s.cargo === 'damaged' ? 'damaged' : 'intact';
-    if (mission.result === 'intact' || mission.result === 'damaged') {
+    mission.result = !ok ? 'lost' : Math.hypot(s.x, s.z) > (mission.contract ? CONTRACT_REACH : BASE_REACH) ? 'far' : s.cargo === 'damaged' ? 'damaged' : 'intact';
+    if (mission.contract && (mission.result === 'intact' || mission.result === 'damaged')) {
+      const base = loadBase(mission.planetId);
+      base.supplies = (base.supplies ?? 0) + 1; base.cseed = (base.cseed ?? 0) + 1; // new offers
+      saveBase(mission.planetId, base);
+    } else if (mission.result === 'intact' || mission.result === 'damaged') {
       const base = loadBase(mission.planetId);
       base.modules.push({ type: mission.type, slot: mission.slot, x: +(s.x + mission.target[0]).toFixed(2), z: +(s.z + mission.target[1]).toFixed(2), rot: +(((rec?.seed ?? 0) % 628) / 100).toFixed(2), damaged: mission.result === 'damaged' });
       saveBase(mission.planetId, base);
     }
     if (mission.career) {
       // income: fee, aim, unburnt fuel, recovered lander, base income; half of it pays back a credit
-      const pay = E.payout(s, mission.type, mission.result, mission.cost, mission.econ, B.RINGS[mission.ring]?.bonus ?? 1);
+      const pay = E.payout(s, mission.type, mission.result, mission.cost, mission.econ, (B.RINGS[mission.ring]?.bonus ?? 1) * (E.PLANET_PAY[mission.planetId] ?? 1));
       const cc = loadCareer(), repay = Math.min(cc.debt, Math.round(pay.total / 2));
       cc.money += pay.total - repay; cc.debt -= repay; saveCareer(cc);
       mission.pay = { ...pay, repay, money: cc.money };
@@ -671,10 +686,10 @@ function showResult() {
   if (mission) {
     const base = loadBase(mission.planetId), c = S.CARGO[mission.type];
     const unl = Object.entries(B.UNLOCKS[mission.type] ?? {}).flatMap(([sl, os]) => os.map((o) => S.BUILD_SLOTS.find((x) => x.id === sl).options.find((x) => x.id === o).name + ' ' + S.BUILD_SLOTS.find((x) => x.id === sl).short));
-    if (mission.result === 'intact') notes.push([`✓ ${c.name} · ${base.modules.length}/${S.MISSIONS.length}`, 'ok']);
+    if (mission.result === 'intact') notes.push([mission.contract ? `✓ ${c.name} geliefert · 📦 ${base.supplies ?? 0}` : `✓ ${c.name} · ${base.modules.length}/${S.MISSIONS.length}`, 'ok']);
     if ((mission.result === 'intact' || mission.result === 'damaged') && career() && unl.length) notes.push([`🔓 ${unl.join(', ')}`, 'ok']);
     if (mission.result === 'damaged') notes.push([`⚠ ${c.name} beschädigt (${s.cargoDamaged}) · ${base.modules.length}/${S.MISSIONS.length}`, 'warn']);
-    if (mission.result === 'far') notes.push([`mehr als ${BASE_REACH} m vom Ziel: die Basis kann ${c.name} nicht nutzen`, 'warn']);
+    if (mission.result === 'far') notes.push([`⚠ mehr als ${mission.contract ? CONTRACT_REACH : BASE_REACH} m vom Ziel – nicht geliefert`, 'warn']);
     if (mission.result === 'lost' && !c.crew) notes.push([`${c.name} verloren`, 'bad']);
   }
   // money: one figure on the result, the breakdown in its own window
