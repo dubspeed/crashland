@@ -158,8 +158,10 @@ export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) 
   const rnd = seededRandom(seed);
   setupTerrain(planet);
   const set = { ...DEFAULT_SETTINGS, ...settings };
+  // rescue missions: another orbit (height, distance to the pad, speed factor), part of the settings for replays
+  if (set.orbit && planet.orbit) planet = { ...planet, ...set.orbit };
   setSite(set.site ?? 'plain'); // landing site (part of the settings, so replays get it)
-  const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: (FUEL_LEVELS[set.fuel]?.k ?? 1) * (set.base?.fuel ?? 1), build });
+  const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: (FUEL_LEVELS[set.fuel]?.k ?? 1) * (set.base?.fuel ?? 1) * (set.fuelMult ?? 1), build });
   s.settings = set;
   // base flights: the modules already there (obstacles) and what they give
   if (set.base) { s.obstacles = set.base.obstacles ?? []; s.spec.solarK *= set.base.solar ?? 1; }
@@ -587,7 +589,7 @@ export function createState(planet, opts = {}) {
       const m = spec.comps.reduce((a, c) => a + c.mass, 0) + s.fuel0;
       limit0 = Math.min(limit0, Math.floor(((spec.payload.g * CARGO_MARGIN * G0 * m) / spec.fMax) * 20) / 20);
     }
-    return Object.assign(s, { planet, x: -planet.downrange, z: 0, y: planet.alt, vx: v, vy: 0, vz: 0,
+    return Object.assign(s, { planet, x: -planet.downrange, z: 0, y: planet.alt, vx: v * (planet.vK ?? 1), vy: 0, vz: 0,
       a: Math.PI / 2, holdA: Math.PI / 2, b: 0, holdB: 0, sas: 'retro', limit: limit0, limit0 });
   }
   return {

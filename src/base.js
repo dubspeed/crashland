@@ -80,6 +80,9 @@ export function missions(base) {
   return { open, locked, done: built.size, total: S.MISSIONS.length };
 }
 
+/** every base sits on its own kind of landing site */
+export const BASE_SITES = { 'luna-orbit': 'crater', 'mars-orbit': 'canyon', 'terra-orbit': 'mesa', 'brontes-orbit': 'crater' };
+
 // ---------- career across planets and supply contracts ----------
 /** career order: Luna first, then Mars, then Terra and Brontes (either) */
 export const PLANET_NEEDS = { 'luna-orbit': null, 'mars-orbit': 'luna-orbit', 'terra-orbit': 'mars-orbit', 'brontes-orbit': 'mars-orbit' };

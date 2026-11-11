@@ -524,7 +524,7 @@ body.building #top { display: none; }
 .r-parts em.neg { color: var(--bad); } .r-parts em.mult { color: var(--cyan); }
 
 /* start menu: start mode, four planets, difficulty and lander as two tool buttons (difficulty folds out) */
-.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 0 0 12px; border: 1px solid var(--glass-edge); border-radius: 12px; overflow: hidden; background: var(--glass); }
+.seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin: 0 0 12px; border: 1px solid var(--glass-edge); border-radius: 12px; overflow: hidden; background: var(--glass); }
 .seg button { display: grid; gap: 1px; padding: 9px 8px; border: 0; background: none; text-align: center; font: 700 14px var(--display); letter-spacing: 0.04em; color: var(--mute); }
 .seg button small { font: 400 10px var(--mono); letter-spacing: 0; color: var(--mute); }
 .seg button.on { color: #1a1206; background: var(--amber); }
@@ -785,3 +785,11 @@ body.flyover #readout, body.flyover #alert, body.flyover #td, body.flyover #sas-
 .help-tabs button.on { border-color: var(--amber); color: var(--amber); background: rgba(255,181,71,0.1); }
 .help-lead { margin: 0 0 10px; }
 .help-pane .help-keys { margin-bottom: 12px; }
+
+/* rescue missions */
+.rescue-card { cursor: pointer; }
+.rescue-card .g.ok { color: var(--ok); } .rescue-card .g.warn { color: var(--warn); } .rescue-card .g.bad { color: var(--bad); }
+.ch.reroll { border: 0; cursor: pointer; margin-left: auto; font-size: 13px; }
+#flyover span.story { max-width: min(560px, 86vw); margin: 6px auto 4px; font: 500 13px/1.4 system-ui, sans-serif; white-space: normal; }
+#flyover.rescue { background: rgba(6, 9, 16, 0.78); border: 1px solid var(--glass-edge); border-radius: 14px; padding: 12px 14px; width: min(560px, 90vw); z-index: 5; }
+#flyover.rescue b { font-size: 19px; }

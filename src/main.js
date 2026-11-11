@@ -11,6 +11,7 @@ import { createBuilder } from './builder.js';
 import { cargoModel } from './cargo.js';
 import * as E from './economy.js';
 import * as B from './base.js';
+import * as RS from './rescue.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -346,6 +347,13 @@ function loadCareer() { try { return { money: E.START_MONEY, debt: 0, ...JSON.pa
 function saveCareer(c) { try { localStorage.setItem('crashland.career', JSON.stringify(c)); } catch { /* storage unavailable */ } }
 const career = () => economy === 'career';
 let mission = null; // the base mission being flown: { planetId, step, type, target: [x, z] }
+// rescue mission: { sc (scenario), planetId, target, result, pay }; each planet has a scenario counter
+let rescue = null;
+const rescueKey = (id) => `crashland.rescue.${id}`;
+function rescueN(id) { try { return +(localStorage.getItem(rescueKey(id)) ?? 0) || 0; } catch { return 0; } }
+function nextRescue(id) { try { localStorage.setItem(rescueKey(id), String(rescueN(id) + 1)); } catch { /* storage unavailable */ } }
+const RESCUE_FEE = 15000;
+const rescueFee = (p, sc) => Math.round((RESCUE_FEE * sc.pay * (E.PLANET_PAY[p.id] ?? 1)) / 500) * 500;
 const baseGroup = new THREE.Group(); scene.add(baseGroup);
 /** the modules of a base around the current target (the target is the origin of the flight) */
 const slotMat = new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.35, depthWrite: false });
@@ -415,8 +423,9 @@ function buildMenu() {
   const diff = [windLevel ? `Wind ${S.WIND_LEVELS[windLevel].name.toLowerCase()}` : '', settings.fuel !== 1 ? `Treibstoff ${S.FUEL_LEVELS[settings.fuel].name.toLowerCase()}` : '',
     settings.hints ? '' : 'ohne Hinweise', settings.autoFine ? 'Computer an' : ''].filter(Boolean);
   $('diff-btn').innerHTML = `Schwierigkeit${Math.abs(bonus - 1) > 0.001 ? ` <em>×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}</em>` : ''}<small>${diff.length ? diff.join(' · ') : 'Standard'}</small>`;
-  $('base-info').hidden = startMode !== 'base';
-  if (startMode === 'base') {
+  $('base-info').hidden = startMode !== 'base' && startMode !== 'rescue';
+  $('build-btn').hidden = startMode === 'rescue'; // the lander is given
+  if (startMode === 'base' || startMode === 'rescue') {
     const c = loadCareer();
     $('base-info').innerHTML = `<span class="eco-row"><span class="eco-seg"><button data-eco="career" class="${career() ? 'on' : ''}">Karriere</button><button data-eco="sandbox" class="${career() ? '' : 'on'}">Sandbox</button></span>`
       + (career() ? `<b class="money">💰 ${E.cr(c.money)}</b>${c.debt > 0 ? ` <small class="debt">Kredit ${E.cr(c.debt)}</small>` : ''}` : '<small>alles kostenlos</small>') + '</span>';
@@ -427,6 +436,22 @@ function buildMenu() {
     const b = document.createElement('button');
     b.className = 'planet';
     const rec = best(bestKey(p.id));
+    if (startMode === 'rescue') {
+      // rescue card: who needs help, in what lander, from which orbit; 🎲 swaps the call
+      const sc = RS.scenario(p, rescueN(p.id)), lv = RS.LEVELS[sc.level];
+      const sky = '#' + new THREE.Color(p.ground).getHexString(), sky2 = '#' + new THREE.Color(p.ground2).getHexString();
+      const card = document.createElement('div');
+      card.className = 'planet rescue-card'; card.tabIndex = 0; card.setAttribute('role', 'button');
+      card.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
+        <span class="pname"><b>${p.name.replace(' Orbit', '')}</b><span class="g ${lv.cls}">${lv.name}</span></span>
+        <p><b>🆘 ${sc.title}</b>${sc.L.agency ? ` · ${sc.L.agency}` : ''}</p>
+        <span class="chips-row">${chip(sc.L.icon, sc.L.name, '', sc.L.note)}${chip('◎', sc.where, '', 'Start')}${sc.fuelK < 1 ? chip('⛽', `${Math.round(sc.fuelK * 100)} %`, 'warn', 'Treibstoff') : ''}${career() ? chip('💰', E.cr(rescueFee(p, sc)), 'ok', 'Rettungsprämie') : ''}<button class="ch reroll" title="anderer Notruf" aria-label="anderer Notruf">🎲</button></span>`;
+      card.querySelector('.reroll').addEventListener('click', (e) => { e.stopPropagation(); nextRescue(p.id); buildMenu(); });
+      card.addEventListener('click', () => start(p));
+      card.addEventListener('keydown', (e) => { if (e.key === 'Enter') start(p); });
+      wrap.append(card);
+      continue;
+    }
     if (startMode === 'base') {
       // base card: progress, the missions the base can fly now (tech tree), what is still locked
       const base = loadBase(p.id), ms = B.missions(base), card = document.createElement('div');
@@ -488,7 +513,7 @@ function showMenu() {
   $('menu').hidden = false; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = true;
   buildMenu();
   debris.clear();
-  showBase(null); mission = null;
+  showBase(null); mission = null; rescue = null;
   S.setSite('plain'); world.setSite(0);
   parkShip();
 }
@@ -534,6 +559,12 @@ function start(p, ms) {
     const base = loadBase(p.id), slot = B.freeSlot(base, ms.type === 'beacon' ? 'center' : ms.ring ?? 'near') ?? B.freeSlot(base, 'far');
     mission = !base.modules.some((m) => m.type === ms.type) && slot !== null ? { planetId: p.id, type: ms.type, ring: ms.ring, slot, target: B.slotPos(slot) } : null;
   } else mission = null;
+  // rescue: the planet's current scenario; it lands next to the base (a free far slot), or on the empty pad
+  rescue = null;
+  if (!ms && startMode === 'rescue' && p.orbit) {
+    const base = loadBase(p.id), slot = B.freeSlot(base, 'far') ?? B.freeSlot(base, 'near');
+    rescue = { sc: RS.scenario(p, rescueN(p.id)), planetId: p.id, target: base.modules.length ? (slot !== null ? B.slotPos(slot) : [44, 0]) : [0, 0] };
+  }
   if (p !== planet || !world.ready) {
     planet = p;
     const sr = S.surfaceR(p); // every planet is drawn as a sphere now; only orbit levels fly on a curved planet
@@ -559,9 +590,16 @@ function start(p, ms) {
       Object.assign(mission, { career: true, cost, econ });
     }
     showBase(base, mission.target);
+  } else if (rescue) {
+    // someone else's lander, someone else's orbit: no base bonus, the base modules are obstacles
+    const base = loadBase(p.id), sc = rescue.sc;
+    flightBuild = sc.build;
+    const obstacles = base.modules.map((m) => ({ x: +(m.x - rescue.target[0]).toFixed(2), z: +(m.z - rescue.target[1]).toFixed(2), r: S.CARGO[m.type].r, name: S.CARGO[m.type].name }));
+    flightSettings = { ...settings, orbit: sc.orbitSet, fuelMult: sc.fuelK, base: { obstacles } };
+    showBase(base, rescue.target);
   } else showBase(null);
   // landing site: a base keeps its own, free flights get one from the seed (it is in the settings, so replays have it)
-  const site = mission ? BASE_SITES[p.id] ?? 'plain' : S.SITE_IDS[seed % S.SITE_IDS.length];
+  const site = mission || rescue ? B.BASE_SITES[p.id] ?? 'plain' : S.SITE_IDS[seed % S.SITE_IDS.length];
   flightSettings = { ...flightSettings, site };
   s = S.newRound(planet, windLevel, seed, flightSettings, flightBuild);
   world.setSite(S.SITE_IDS.indexOf(site));
@@ -572,10 +610,16 @@ function start(p, ms) {
   cam.tgtD = 0; cam.intro = 0; cam.tgt = null; cam.pitch = 0;
   mode = 'flight';
   // base mission: a short fly-over of the base and the new target before the flight (tap or key skips it)
-  cam.fly = mission ? 0 : null;
+  cam.fly = mission ? 0 : rescue ? -2 : null;
+  $('flyover').classList.remove('rescue'); // a rescue call: a little longer, to read it
   if (mission) {
     const c = S.CARGO[mission.type], n = loadBase(p.id).modules.length;
     $('flyover').innerHTML = `<b>Basis ${p.name.replace(' Orbit', '')}</b><span>${n ? `${n} Modul${n > 1 ? 'e' : ''} · ` : ''}Ziel: ${c.name}${mission.contract ? ` · neben ${S.CARGO[mission.contract.near].name}` : mission.ring && mission.ring !== 'center' ? ` · ${B.RINGS[mission.ring].name}` : ''}</span><small>Tippen zum Überspringen</small>`;
+  }
+  if (rescue) {
+    const sc = rescue.sc, lv = RS.LEVELS[sc.level];
+    $('flyover').classList.add('rescue');
+    $('flyover').innerHTML = `<b>🆘 ${sc.title}</b><span class="story">${sc.story}</span><span>${sc.L.icon} ${sc.L.name} · ${sc.L.note} · ${lv.name}</span><small>Tippen zum Überspringen</small>`;
   }
   $('c-map').hidden = !p.orbit; toggleMap(false);
   $('menu').hidden = true; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = false;
@@ -583,8 +627,6 @@ function start(p, ms) {
 }
 
 const PAD_RADIUS = 12;
-// every base sits on its own kind of landing site
-const BASE_SITES = { 'luna-orbit': 'crater', 'mars-orbit': 'canyon', 'terra-orbit': 'mesa', 'brontes-orbit': 'crater' };
 const CONTRACT_REACH = 25; // m: a supply drop has to land next to its module
 const BASE_REACH = 60; // m from the target: closer, the base can use the cargo
 function precision(st) {
@@ -621,6 +663,7 @@ function rate(st) {
     ['Planet', st.planet.g * 20],
     ['Schäden', -lost * 120],
     ['Fracht', st.spec.payload ? (st.cargo === 'intact' ? 500 : 150) : 0],
+    ['Rettung', rescue?.result === 'saved' ? 300 + rescue.sc.d * 200 : 0],
   ];
   const base = parts.reduce((a, p) => a + p[1], 0);
   const score = Math.max(0, Math.round(base * mult));
@@ -650,6 +693,17 @@ function finish() {
       mission.pay = { ...pay, repay, money: cc.money };
     }
   }
+  if (rescue) {
+    rescue.result = !ok ? 'lost' : Math.hypot(s.x, s.z) > BASE_REACH ? 'far' : 'saved';
+    if (rescue.result === 'saved') {
+      nextRescue(rescue.planetId); // the next call
+      if (career()) {
+        const fee = rescueFee(planet, rescue.sc), cc = loadCareer(), repay = Math.min(cc.debt, Math.round(fee / 2));
+        cc.money += fee - repay; cc.debt -= repay; saveCareer(cc);
+        rescue.pay = { fee, repay, money: cc.money };
+      }
+    }
+  }
   if (!ok) { debris.explode(ship, s); cam.shake = s.touch.crash.kind === 'wreck' ? 0.4 : 0.5 + s.touch.energy; }
   else if (s.touch.grade >= 1) { debris.puff(ship, s, s.touch.grade); cam.shake = 0.15 * s.touch.grade; }
   if (ok && s.touch.grade === 2) ship.damageLegs();
@@ -665,15 +719,16 @@ function showResult() {
   const siteInfo = S.SITES[s.settings?.site ?? 'plain'];
   $('r-kicker').textContent = `${planet.name} · ${siteInfo.icon} ${siteInfo.name}${s.wind.speed && planet.rho > 0 ? ` · Wind ${s.wind.name}` : ''}${Math.abs(bonus - 1) > 0.001 ? ` · Bonus ×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}` : ''}`;
   const g = s.touch.grade, crash = s.touch.crash;
-  $('r-title').textContent = mission && !S.CARGO[mission.type].crew
+  $('r-title').textContent = rescue && ok ? (rescue.result === 'saved' ? (rescue.sc.L.agency ? 'Lander geborgen' : 'Crew gerettet') : 'Basis verfehlt')
+    : mission && !S.CARGO[mission.type].crew
     ? { intact: 'Fracht abgesetzt', damaged: 'Fracht beschädigt', far: 'Zu weit weg', lost: 'Fracht verloren' }[mission.result]
     : ok ? ['Butterweich gelandet', 'Gelandet', 'Harte Landung'][g]
       : !crash.crew ? 'Totalverlust' : crash.kind === 'wreck' ? 'Bruchlandung' : 'Explosion';
   $('r-title').style.color = ok ? S.GRADES[g].color : crash.kind === 'wreck' && crash.crew ? 'var(--amber)' : 'var(--bad)';
   // stars and points, with the best so far
   // (base flights carry cargo: their scores don't mix with the free levels)
-  const prev = mission ? null : best(bestKey(planet.id));
-  const record = !mission && score > 0 && (!prev || score > prev.score);
+  const prev = mission || rescue ? null : best(bestKey(planet.id));
+  const record = !mission && !rescue && score > 0 && (!prev || score > prev.score);
   $('r-score').innerHTML = `<span class="r-stars">${'<i class="on">★</i>'.repeat(stars)}${'<i>★</i>'.repeat(3 - stars)}</span>`
     + `<span class="r-pts"><b id="r-pts">0</b>Punkte</span>`
     + (record ? (prev ? '<em class="r-best new">Neuer Bestwert</em>' : '') : prev ? `<em class="r-best">Bestwert ${prev.score.toLocaleString('de-DE')}</em>` : '')
@@ -714,6 +769,12 @@ function showResult() {
     if (mission.result === 'far') notes.push([`⚠ mehr als ${mission.contract ? CONTRACT_REACH : BASE_REACH} m vom Ziel – nicht geliefert`, 'warn']);
     if (mission.result === 'lost' && !c.crew) notes.push([`${c.name} verloren`, 'bad']);
   }
+  if (rescue) {
+    const sc = rescue.sc;
+    if (rescue.result === 'saved') notes.push([`✓ ${sc.title} · ${RS.LEVELS[sc.level].name}`, 'ok']);
+    if (rescue.pay) notes.push([`💰 +${E.cr(rescue.pay.fee)} Rettungsprämie${rescue.pay.repay ? ` (−${E.cr(rescue.pay.repay)} Kredit)` : ''} · ${E.cr(rescue.pay.money)}`, 'ok']);
+    if (rescue.result === 'far') notes.push([`⚠ mehr als ${BASE_REACH} m von der Basis`, 'warn']);
+  }
   // money: one figure on the result, the breakdown in its own window
   let money = '';
   if (mission?.pay) {
@@ -726,7 +787,7 @@ function showResult() {
       + `<tr class="sum ${net >= 0 ? 'ok' : 'bad'}"><td>Saldo</td><td>${net >= 0 ? '+' : '−'}${E.cr(Math.abs(net))}</td></tr><tr class="sum"><td>Konto</td><td>${E.cr(P.money)}</td></tr>`;
   }
   const delivered = mission && (mission.result === 'intact' || mission.result === 'damaged');
-  $('r-again').innerHTML = delivered ? 'Zur Basis <kbd>R</kbd>' : 'Nochmal <kbd>R</kbd>';
+  $('r-again').innerHTML = delivered ? 'Zur Basis <kbd>R</kbd>' : rescue?.result === 'saved' ? 'Nächster Notruf <kbd>R</kbd>' : 'Nochmal <kbd>R</kbd>';
   if (!ok && s.crew.length) notes.push(crash.crew ? ['Crew gerettet', 'ok'] : ['Crew verloren', 'bad']);
   if (ok && s.unevenDamage) notes.push([`Boden uneben (${s.unevenDamage.toFixed(1).replace('.', ',')} m): Fahrwerk beschädigt`, 'warn']);
   if (!ok && crash.kind === 'explosion') notes.push([`${Math.round(crash.fuelBurned)} kg Treibstoff explodiert`, 'bad']);
@@ -960,7 +1021,8 @@ renderer.setAnimationLoop(() => {
 
   if (mode === 'flight') {
     readInput(dt);
-    acc += (timeScale > 1 ? Math.min(raw, 0.25) : dt) * timeScale; // fast-forward (tests): more steps per frame
+    // the flight waits while the base fly-over / rescue briefing runs
+    if (cam.fly === null || cam.fly === undefined) acc += (timeScale > 1 ? Math.min(raw, 0.25) : dt) * timeScale; // fast-forward (tests): more steps per frame
     var stepsThisFrame = 0; // eslint-disable-line no-var
     while (acc >= STEP && s.status === 'flying') {
       stepsThisFrame++;
