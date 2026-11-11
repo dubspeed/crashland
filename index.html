@@ -126,12 +126,12 @@
         <button id="build-btn" class="tool-btn build-btn"></button>
       </div>
       <div id="diff" class="diff-panel" hidden>
-        <div class="wind-row"><span class="wind-label">Wind</span><div id="wind-select" role="radiogroup" aria-label="Windstärke (nur mit Atmosphäre)"></div></div>
-        <p class="wind-note">Wind gibt es nur mit Atmosphäre (Mars, Terra, Brontes). Auf Luna ist es immer windstill.</p>
-        <div class="wind-row"><span class="wind-label">Treibstoff</span><div id="fuel-select" class="opt-select" role="radiogroup" aria-label="Treibstoffvorrat"></div></div>
-        <div class="wind-row"><span class="wind-label">Hinweise</span><div id="hint-select" class="opt-select" role="radiogroup" aria-label="Hinweise im HUD"></div></div>
-        <div class="wind-row"><span class="wind-label">Computer</span><div id="auto-select" class="opt-select" role="radiogroup" aria-label="Automatische Feinregelung beim Deorbit"></div></div>
-        <div class="wind-row"><span class="wind-label">Spielstand</span><div class="opt-select reset-row"><button id="reset-money">Geld<small>Karriere neu</small></button><button id="reset-bases">Basen<small>alle Module weg</small></button><button id="reset-all">Alles<small>Geld, Basen, Lander</small></button></div></div>
+        <div class="wind-row"><span class="wind-label">🌬 Wind</span><div id="wind-select" role="radiogroup" aria-label="Windstärke (nur mit Atmosphäre)"></div></div>
+        <p class="wind-note">nur mit Atmosphäre – auf Luna immer windstill</p>
+        <div class="wind-row"><span class="wind-label">⛽ Treibstoff</span><div id="fuel-select" class="opt-select" role="radiogroup" aria-label="Treibstoffvorrat"></div></div>
+        <div class="wind-row"><span class="wind-label">💡 Hinweise</span><div id="hint-select" class="opt-select" role="radiogroup" aria-label="Hinweise im HUD"></div></div>
+        <div class="wind-row"><span class="wind-label" title="Feinregelung nach dem Bremsmanöver auf Terra und Brontes aus dem Orbit">🎯 Feinregelung</span><div id="auto-select" class="opt-select" role="radiogroup" aria-label="Feinregelung nach dem Deorbit"></div></div>
+        <div class="wind-row"><span class="wind-label">⟲ Spielstand</span><button id="reset-toggle" class="link">zurücksetzen …</button><div id="reset-row" class="opt-select reset-row" hidden><button id="reset-money">Geld<small>Karriere neu</small></button><button id="reset-bases">Basen<small>alle Module weg</small></button><button id="reset-all">Alles<small>Geld, Basen, Lander</small></button></div></div>
       </div>
     </div>
   </div>
@@ -154,90 +154,66 @@
   <div id="help" class="overlay" hidden>
     <div class="sheet help-sheet" role="dialog" aria-modal="true" aria-labelledby="help-title">
       <div class="help-top"><h2 id="help-title">So landest du</h2><button id="help-close" class="help-close" aria-label="Hilfe schließen">×</button></div>
+      <div class="help-tabs" role="tablist">
+        <button role="tab" data-tab="ctl" class="on">Steuerung</button><button role="tab" data-tab="hud">Anzeigen</button><button role="tab" data-tab="land">Landen</button><button role="tab" data-tab="base">Basis</button>
+      </div>
 
-      <section>
-        <h3>Ziel</h3>
-        <p>Dein Lander fällt antriebslos auf den Planeten. Zünde das Triebwerk so spät wie möglich und so kurz wie nötig: der <b>Suicide Burn</b>. Der Bordcomputer zeigt dir am Burn-Streifen, wann es so weit ist. Setz auf dem Landeplatz auf, langsam, gerade und ohne Seitendrift.</p>
-        <p><b>Lander bauen</b> im Startmenü: Triebwerk, Tanks, Energie, Fallschirm, Hitzeschild und Landebeine wählen. Jede Wahl ändert Masse, Schwerpunkt und Verhalten, die Tabelle zeigt Δv und Schub/Gewicht pro Planet.</p>
-        <p><b>Schwierigkeit</b> im Startmenü: Wind, <b>Treibstoff</b> (knapp / normal / reichlich), <b>Hinweise</b> (Tipps wie „Bremsen in …“, „Fallschirm möglich“, empfohlener Schub; Warnungen bleiben immer an) und <b>Computer</b> (automatische Feinregelung beim Deorbit, sonst regelst du selbst nach dem Hinweis). Schwerer gibt mehr Punkte.</p>
-        <p><b>Luna Orbit</b> (neu, Prototyp): du startest im Orbit mit rund 119 m/s. Der Lageregler steht auf <b>Bremsen</b> und richtet das Triebwerk gegen die Flugrichtung. Warte auf <b>JETZT BREMSEN</b>, gib Schub, bis das orange Kreuz auf dem Landeplatz liegt, dann fallen lassen und wie gewohnt landen. Zu spät bremsen heißt: übers Ziel hinaus. <b>Mars Orbit</b> ist dasselbe mit dünner Luft: sie bremst mit, wärmt den Lander (Paneele einklappen) und der Schirm spart etwas Treibstoff. <b>Terra Orbit</b> und <b>Brontes Orbit</b> sind Wiedereintritte: nur kurz bremsen (der Bordcomputer regelt fein, bis das Kreuz auf dem Landeplatz liegt), Lageregler auf Bremsen lassen, dann schützt das Triebwerk vorn den Rest vor der Hitze. Wenn das Kreuz nah am Ziel ist, mit wenig Schub fein nachregeln (der Hinweis sagt, wie viel) und danach die Schubgrenze wieder hochsetzen. Danach Schirm, auf Brontes vorher mit Schub für den Schirm abbremsen.</p>
-      </section>
-
-      <section>
-        <h3>Steuerung</h3>
+      <section class="help-pane" data-pane="ctl">
+        <p class="help-lead">Bremse <b>so spät wie möglich, so kurz wie nötig</b> (Suicide Burn) und setz langsam, gerade und ohne Drift auf dem Pad auf.</p>
         <dl class="help-keys touch-hint">
-          <dt>Schubhebel rechts</dt><dd>gedrückt halten = Schub, Höhe des Fingers = Stärke</dd>
-          <dt>Steuerkreuz links</dt><dd>in die Richtung drücken, in die du kippen willst; oben = vom Bildschirm weg</dd>
-          <dt>Titel 3× tippen</dt><dd>Technik-Anzeige (FPS, Draw Calls) ein/aus</dd>
-          <dt>Wischen</dt><dd>Kamera um das Schiff drehen: seitlich = rundherum, hoch/runter = von oben oder unten; Doppeltipp = zurück</dd>
+          <dt>Schubhebel rechts</dt><dd>halten = Schub, Fingerhöhe = Stärke</dd>
+          <dt>Steuerkreuz links</dt><dd>neigen; oben = vom Bildschirm weg</dd>
+          <dt>Wischen</dt><dd>Kamera drehen · Doppeltipp = zurück</dd>
         </dl>
-        <dl class="icon-legend" id="icon-legend"></dl>
         <dl class="help-keys key-hint">
           <dt><kbd>Leertaste</kbd></dt><dd>Schub</dd>
           <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / Pfeile</dt><dd>neigen (oben = vom Bildschirm weg)</dd>
-          <dt><kbd>+</kbd> <kbd>−</kbd> · <kbd>1</kbd>–<kbd>0</kbd></dt><dd>Schubbegrenzer</dd>
-          <dt><kbd>P</kbd> · <kbd>E</kbd></dt><dd>Fallschirm · Paneele ein/aus</dd>
-          <dt><kbd>T</kbd> · <kbd>V</kbd></dt><dd>Lageregler · Kamera (Lander, Ziel)</dd>
+          <dt><kbd>+</kbd> <kbd>−</kbd> · <kbd>1</kbd>–<kbd>0</kbd></dt><dd>Schubgrenze</dd>
           <dt><kbd>R</kbd> · <kbd>M</kbd></dt><dd>Neustart · Menü</dd>
-          <dt><kbd>K</kbd></dt><dd>Bahnkarte (Orbit-Level)</dd>
-          <dt><kbd>F3</kbd></dt><dd>Technik-Anzeige (FPS, Draw Calls), am Handy: Titel dreimal antippen</dd>
-          <dt>Maus ziehen</dt><dd>Kamera um das Schiff drehen (auch hoch/runter), Doppelklick = zurück, Rad = Zoom</dd>
+          <dt>Maus</dt><dd>ziehen = Kamera, Rad = Zoom, Doppelklick = zurück</dd>
+        </dl>
+        <dl class="icon-legend" id="icon-legend"></dl>
+        <dl class="help-keys">
+          <dt>H · Halten</dt><dd>hält die Lage; das Steuerkreuz dreht</dd>
+          <dt>B · Bremsen</dt><dd>Triebwerk gegen die Flugrichtung: Bremsmanöver aus dem Orbit, Wiedereintritt</dd>
+          <dt>L · Landen</dt><dd>stoppt Drift von selbst (Seitendüsen, bis 20° Neigung); Steuerkreuz = wohin fliegen, loslassen = stehen</dd>
+          <dt>– · Aus</dt><dd>keine Hilfe, die Düsen zünden direkt</dd>
         </dl>
       </section>
 
-      <section>
-        <h3>Landefenster</h3>
+      <section class="help-pane" data-pane="hud" hidden>
+        <ul class="help-list">
+          <li><b>Landekreuz</b> mit Lichtsäule: hier schlägst du ohne Schub auf. Grün = auf dem Pad. Außerhalb des Bilds zeigt ein Pfeil am Rand dorthin.</li>
+          <li><b>Oben links:</b> ↓ Sinkrate · ↔ Drift · ∠ Neigung in den Farben des Landefensters, darunter ⚡ Batterie (Streifen: lädt ▲ / entlädt ▼).</li>
+          <li><b>Mitte:</b> Höhe über Grund und beide Geschwindigkeiten; unter 80 m der Aufsetzbalken.</li>
+          <li><b>Kompass:</b> gelb das Pad, blau der Wind, weiß wohin du treibst, graue Quadrate = Basis-Module.</li>
+          <li><b>Linker Rand:</b> Burn-Streifen, rot der Bremsweg, blau die Höhe. Treffen sie sich: zünden.</li>
+          <li><b>Gesichter:</b> die Crew und ihre G-Last. Bei Fracht stattdessen die Fracht-Karte.</li>
+        </ul>
+      </section>
+
+      <section class="help-pane" data-pane="land" hidden>
+        <ul class="help-list">
+          <li><b>Aus dem Orbit:</b> Lageregler auf <b>B</b>, bei „JETZT BREMSEN“ Schub, bis das Kreuz auf dem Pad liegt. Danach auf <b>L</b> und landen. Mit Luft (Terra, Brontes): Wiedereintritt mit dem Triebwerk vorn, dann Schirm.</li>
+          <li><b>Treibstoff</b> ist knapp: wer früh bremst oder lange schwebt, steht am Ende ohne da.</li>
+          <li><b>Fallschirm</b> nur, wenn der Knopf orange leuchtet, sonst reißt er. Am Schirm lenkt das Steuerkreuz.</li>
+          <li><b>Hitze:</b> beim Eintritt glühen die Paneele, rechtzeitig einklappen. Mit Hitzeschild ihn danach abwerfen (spart Masse).</li>
+          <li><b>Crew:</b> jede verträgt eine andere G-Last (Kira 3,2 g, Bo 2,9, Ines 2,6, im Habitat auch Juno 3,0). Wird die Pilotin ohnmächtig, steuert niemand.</li>
+          <li><b>Landeplatz:</b> Ebene, Krater (Wände rundum), Plateau (Klippe dahinter) oder Schlucht (hinter dem Pad). Neben dem Pad ist der Boden uneben.</li>
+          <li><b>Wind</b> (nur mit Luft) treibt dich ab; <b>L</b> hält dagegen.</li>
+        </ul>
         <div id="window-info"></div>
       </section>
 
-      <section>
-        <h3>Worauf du achten musst</h3>
+      <section class="help-pane" data-pane="base" hidden>
         <ul class="help-list">
-          <li><b>Treibstoff</b> ist knapp bemessen. Wer zu früh bremst oder lange schwebt, steht am Ende ohne da.</li>
-          <li><b>Crew:</b> Kira (3,2 g), Bo (2,9 g) und Ines (2,6 g) vertragen unterschiedlich viel G-Last. Wird Kira ohnmächtig, steuert niemand.</li>
-          <li><b>Hitze:</b> Beim Eintritt in dichte Luft glühen die Solarpaneele. Klapp sie ein, bevor sie verglühen.</li>
-          <li><b>Fallschirm</b> nur, wenn der Button orange leuchtet. Zu schnell gezogen, reißt er.</li>
-          <li><b>Wind</b> treibt dich vom Pad weg. Neig dich beim Bremsen dagegen.</li>
+          <li>Im Modus <b>Basis</b> bringst du aus dem Orbit Fracht zu einer Basis. Jede Fracht bleibt als Modul stehen; wer auf einem Modul aufsetzt, crasht.</li>
+          <li>Module bauen aufeinander auf (Punkte auf der Karte zeigen, was fehlt). Intakte Module helfen den nächsten Flügen und schalten in der Karriere größere Teile frei.</li>
+          <li>Platz <b>Nah</b> bringt +20 % Prämie, <b>Weit</b> ist sicherer.</li>
+          <li><b>Karriere:</b> Luna zuerst, dann Mars, danach Terra oder Brontes; spätere Planeten zahlen mehr. Eine fertige Basis braucht <b>Versorgung</b>: Absetzpunkt höchstens 25 m neben dem genannten Modul.</li>
+          <li>In der Basis zählt <b>Geld</b>, nicht Punkte: Kosten beim Start, Prämie, Präzision, übriger Treibstoff und der geborgene Lander bei der Landung. Ein Crash kostet den Lander.</li>
         </ul>
-      </section>
-
-      <section>
-        <h3>Zielgenau landen</h3>
-        <ul class="help-list">
-          <li>Das <b>orange Kreuz</b> (am Boden und im Kompass) zeigt, wo du ohne Schub aufschlagen würdest. Bring es aufs Pad.</li>
-          <li><b>Am Fallschirm</b> lenkt das Steuerkreuz den Schirm: er gleitet in die gedrückte Richtung.</li>
-          <li><b>Ohne Luft</b> (Luna): hoch oben in Richtung der Abweichung neigen und kurz Schub geben, das Kreuz wandert mit.</li>
-          <li>Mit dem Lageregler <b>Landen</b> gibt das Steuerkreuz die Flugrichtung vor; loslassen stoppt die Drift von selbst.</li>
-          <li>Unter 3 m vom Pad-Zentrum gibt es einen Volltreffer-Bonus.</li>
-          <li><b>Batterie:</b> Ohne Strom fallen Bordcomputer und Lageregler aus. Eingeklappte Paneele laden nicht.</li>
-        </ul>
-      </section>
-
-      <section>
-        <h3>Basis</h3>
-        <p>Im Modus <b>Basis</b> bringst du aus dem Orbit Fracht zu einer Basis. Jede gelandete Fracht bleibt als Modul stehen, das nächste Ziel liegt daneben: wer auf einem Modul aufsetzt, crasht. Neue Module brauchen bestimmte andere (Punkte auf der Karte: Tooltip zeigt was fehlt), intakte Module helfen den nächsten Flügen (⛽ Treibstoff, ☀ Solar, ★ Punkte) und schalten in der Karriere größere Teile im Baukasten frei. Platz <b>Nah</b> bringt mehr Prämie, <b>Weit</b> ist sicherer.</p>
-        <p>In der <b>Karriere</b> beginnst du auf Luna. Eine fertige Luna-Basis öffnet Mars, eine fertige Mars-Basis Terra und Brontes (frei wählbar). Spätere Planeten zahlen mehr (×1,3 bis ×2). Eine fertige Basis braucht <b>Versorgung</b>: drei Aufträge (Treibstoff, Ersatzteile, empfindliche Messgeräte, Crew-Wechsel), jeweils mit Absetzpunkt neben einem Modul (höchstens 25 m daneben).</p>
-        <p class="icon-key">⚖ Masse · ⇊ verträgt höchstens · ⤓ Aufsetzen höchstens · − Kosten · + Prämie · 💰 Konto</p>
-      </section>
-
-      <section>
-        <h3>Lageregler</h3>
-        <dl class="help-keys">
-          <dt>H · Halten</dt><dd>hält die Lage, die du eingestellt hast; das Steuerkreuz dreht den Lander</dd>
-          <dt>B · Bremsen</dt><dd>Triebwerk gegen die Flugrichtung: für das Bremsmanöver aus dem Orbit und den Wiedereintritt; langsam und tief steht der Lander fast gerade und lehnt sich beim Schub bis 10° gegen die Drift</dd>
-          <dt>L · Landen</dt><dd>für den Endanflug: stoppt seitliche Drift und hält gegen Wind, mit den Seitendüsen (auch ohne Schub) und beim Bremsen mit bis 20° Neigung; das Steuerkreuz sagt, wohin und wie schnell du fliegen willst (bis 8 m/s), loslassen = stehen bleiben. Kostet etwas Strom.</dd>
-          <dt>– · Aus</dt><dd>keine Hilfe: das Steuerkreuz zündet die Düsen direkt, nichts bremst die Drehung</dd>
-        </dl>
-      </section>
-
-      <section>
-        <h3>Anzeigen</h3>
-        <ul class="help-list">
-          <li><b>Kompass:</b> gelb das Pad, blau woher der Wind kommt, weiß wohin du treibst.</li>
-          <li><b>Burn-Streifen:</b> rot der Bremsweg, blau deine Höhe. Treffen sie sich, zünden.</li>
-          <li><b>Aufsetzbalken</b> unter 80 m: Sinkrate mit den Grenzen 2,5 · 5 · 8 · 15 m/s.</li>
-          <li><b>Am Boden:</b> Ring direkt unter dir, oranges Kreuz dort, wo du ohne Schub aufschlagen würdest.</li>
-        </ul>
+        <p class="icon-key">⚖ Masse · ⇊ verträgt höchstens · ⤓ Aufsetzen höchstens · 📍 Absetzpunkt · − Kosten · + Prämie · 💰 Konto · ⛽ Treibstoff · ☀ Solar · ★ Punkte</p>
       </section>
     </div>
   </div>

@@ -77,20 +77,20 @@ export function grade(value, limits) {
 export const ORBIT = { R: 10000, alt: 1500, downrange: 6000, edge: 1250 };
 export const ORBIT_PLANETS = [
   { id: 'luna-orbit', name: 'Luna Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 1.62, alt: ORBIT.alt, downrange: ORBIT.downrange, vy: 0, vx: 0, tilt: 0, solar: 1.0, fuel: 430,
-    rho: 0, H: 1, atmo: 'keine', drift: 0, text: 'Start im Orbit: erst die Bahngeschwindigkeit abbauen, dann landen.',
+    rho: 0, H: 1, atmo: 'keine', drift: 0, text: 'Bahngeschwindigkeit abbauen, dann landen.',
     sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true },
   // Mars: the thin air is squeezed into a short scale height so it fits the small planet. High up the
   // orbit barely decays; lower down the air brakes (and warms) the lander and the chute helps a bit.
   { id: 'mars-orbit', name: 'Mars Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 3.71, alt: 2500, downrange: 9000, cueLead: 2, vy: 0, vx: 0, tilt: 0, solar: 0.45, fuel: 650,
-    rho: 0.02, H: 1100, atmo: 'sehr dünn', drift: 4, text: 'Orbit in dünner Luft: bremsen, Luftwiderstand nutzen, Schirm, landen.',
+    rho: 0.02, H: 1100, atmo: 'sehr dünn', drift: 4, text: 'Dünne Luft bremst mit, Schirm hilft etwas.',
     sky: 0xd4a27c, fog: 0xc89670, ground: 0xb4552f, ground2: 0x7d3a22, sun: 0xffe2c4 },
   // Terra and Brontes: thick air squeezed into a thin shell so the orbit sits above it. Only a short
   // deorbit burn is needed (until the cross is on the pad), then the air brakes: heat, then parachute.
   { id: 'terra-orbit', name: 'Terra Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 9.81, alt: 8000, downrange: 20000, deorbitAt: 13000, vy: 0, vx: 0, tilt: 0, solar: 0.75, fuel: 330,
-    rho: 1.225, H: 1000, heatK: 0.6, atmo: 'normal', drift: 17, text: 'Wiedereintritt: kurz bremsen, Hitze überstehen, Schirm, landen.',
+    rho: 1.225, H: 1000, heatK: 0.6, atmo: 'normal', drift: 17, text: 'Wiedereintritt: Hitze, dann Schirm.',
     sky: 0x8ec5ff, fog: 0xa9d2ff, ground: 0x5f9a4c, ground2: 0x7a6145, sun: 0xffffff },
   { id: 'brontes-orbit', name: 'Brontes Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 15.2, alt: 9000, downrange: 26000, deorbitAt: 18500, limit0: 0.75, vy: 0, vx: 0, tilt: 0, solar: 0.3, fuel: 420,
-    rho: 2.8, H: 1000, heatK: 0.6, atmo: 'dicht', drift: 20, text: 'Schwer und dicht: Eintritt glüht, Schirm erst spät.',
+    rho: 2.8, H: 1000, heatK: 0.6, atmo: 'dicht', drift: 20, text: 'Glühender Eintritt, Schirm erst spät.',
     sky: 0x3b2f5c, fog: 0x463868, ground: 0x2f6e6a, ground2: 0x1f4442, sun: 0xd8c8ff },
 ];
 export const ORBIT_PLANET = ORBIT_PLANETS[0];
@@ -158,6 +158,7 @@ export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) 
   const rnd = seededRandom(seed);
   setupTerrain(planet);
   const set = { ...DEFAULT_SETTINGS, ...settings };
+  setSite(set.site ?? 'plain'); // landing site (part of the settings, so replays get it)
   const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: (FUEL_LEVELS[set.fuel]?.k ?? 1) * (set.base?.fuel ?? 1), build });
   s.settings = set;
   // base flights: the modules already there (obstacles) and what they give
@@ -231,13 +232,13 @@ export function orbitGuide(s) {
 
 export const PLANETS = [
   { id: 'luna', surface: 'luna-orbit', name: 'Luna', g: 1.62, alt: 900, vy: -60, vx: 3, tilt: 2, solar: 1.0, fuel: 175, rho: 0, H: 1, atmo: 'keine', drift: 0,
-    text: 'Wenig Schwerkraft, keine Luft. Zum Üben.',
+    text: 'Wenig Schwerkraft. Zum Üben.',
     sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true },
   { id: 'mars', surface: 'mars-orbit', name: 'Mars', g: 3.71, alt: 1500, vy: -110, vx: -4, tilt: -3, solar: 0.45, fuel: 305, rho: 0.02, H: 11000, atmo: 'sehr dünn', drift: 4,
-    text: 'Dünne Luft, schwache Sonne.',
+    text: 'Schwache Sonne, Schirm hilft wenig.',
     sky: 0xd4a27c, fog: 0xc89670, ground: 0xb4552f, ground2: 0x7d3a22, sun: 0xffe2c4 },
   { id: 'terra', surface: 'terra-orbit', name: 'Terra', g: 9.81, alt: 1800, vy: -165, vx: 5, tilt: 4, solar: 0.75, fuel: 200, rho: 1.225, H: 8500, atmo: 'normal', drift: 17,
-    text: 'Hitze beim Eintritt, Fallschirm hilft.',
+    text: 'Hitze beim Eintritt, Schirm hilft.',
     sky: 0x8ec5ff, fog: 0xa9d2ff, ground: 0x5f9a4c, ground2: 0x7a6145, sun: 0xffffff },
   { id: 'brontes', surface: 'brontes-orbit', name: 'Brontes', g: 15.2, alt: 1800, vy: -90, vx: -3, tilt: -2, solar: 0.3, fuel: 230, rho: 2.8, H: 7000, atmo: 'dicht', drift: 20,
     text: 'Supererde. Erst bremsen, dann Schirm.',
@@ -532,6 +533,25 @@ function noise(x, z) {
 let terrainEdge = null, terrainR = 0, terrainId = '';
 /** orbit level: landing-zone relief fades out at `r`, the planet's own relief (radius R, layout `id`) takes over */
 export function setTerrainEdge(r, R = 0, id = 'luna-orbit') { terrainEdge = r; terrainR = R; terrainId = id; }
+// ---------- landing sites: the shape of the land around the pad (the pad itself stays flat) ----------
+export const SITES = {
+  plain: { name: 'Ebene', icon: '▬' },
+  crater: { name: 'Krater', icon: '◡' }, // pad on a crater floor, walls ~95 m high around it
+  mesa: { name: 'Plateau', icon: '⏏' }, // pad on a mesa, a 65 m cliff beyond 150 m
+  canyon: { name: 'Schlucht', icon: '⋁' }, // a 55 m deep gorge 110 m past the pad (overshoot)
+};
+export const SITE_IDS = Object.keys(SITES);
+let terrainSite = 0;
+export function setSite(id) { terrainSite = Math.max(0, SITE_IDS.indexOf(id)); }
+export const currentSite = () => SITE_IDS[terrainSite];
+const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+/** height the site adds at (x, z), r = distance from the pad (mirrored in moon.js GLSL siteHeight) */
+function siteHeight(x, z, r) {
+  if (terrainSite === 1) return r < 330 ? 95 * sstep(140, 330, r) : 95 * Math.exp(-(((r - 330) / 180) ** 2));
+  if (terrainSite === 2) return -65 * sstep(150, 185, r);
+  if (terrainSite === 3) { const d = (x - 110) / 28; return -55 * Math.exp(-d * d) * (1 - sstep(500, 700, Math.abs(z))); }
+  return 0;
+}
 export function terrainHeight(x, z = 0) {
   const r = Math.hypot(x, z);
   if (terrainEdge && r > terrainEdge - 250) {
@@ -539,11 +559,11 @@ export function terrainHeight(x, z = 0) {
     const outer = terrainR ? moonRelief(x, z, terrainR, terrainEdge, terrainId) : 0;
     if (e >= 1) return outer;
     const t = Math.min(1, Math.max(0, (r - PAD_R) / 60)), blend = t * t * (3 - 2 * t);
-    return (noise(x, z) + 6) * blend * (1 - e * e * (3 - 2 * e)) + outer;
+    return ((noise(x, z) + 6) * blend + siteHeight(x, z, r)) * (1 - e * e * (3 - 2 * e)) + outer;
   }
   const t = Math.min(1, Math.max(0, (r - PAD_R) / 60));
   const blend = t * t * (3 - 2 * t);
-  return (noise(x, z) + 6) * blend;
+  return (noise(x, z) + 6) * blend + siteHeight(x, z, r);
 }
 
 // ---------- state ----------

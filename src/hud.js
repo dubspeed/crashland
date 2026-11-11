@@ -518,6 +518,7 @@ export function createHud() {
     // name the cause: only the engine can be throttled; air drag or the canopy's jerk can't
     else if (s.gNow > S.G_LIMIT) msg = s.throttle > 0 ? 'G-LAST ZU HOCH – SCHUB DROSSELN' : s.chute === 'open' ? 'G-LAST ZU HOCH – SCHIRM REISST AN' : 'G-LAST ZU HOCH – LUFTWIDERSTAND';
     else if (sasMsg.until > s.t) { msg = sasMsg.text; color = 'var(--cyan)'; pulse = false; }
+    else if (s.t < 4 && s.settings?.site && s.settings.site !== 'plain') { const si = S.SITES[s.settings.site]; msg = `${si.icon} LANDEPLATZ: ${si.name.toUpperCase()}`; color = 'var(--cyan)'; pulse = false; }
     else if (s.cargoDamaged && s.t - (cargoAt ??= s.t) < 3) msg = `FRACHT BESCHÄDIGT (${s.cargoDamaged.toUpperCase()})`;
     else if (s.gNow > minLimit && s.throttle > 0) { msg = s.crew.length ? 'G-LAST: CREW LEIDET' : 'G-LAST: FRACHT IN GEFAHR – DROSSELN'; color = s.crew.length ? 'var(--warn)' : 'var(--bad)'; pulse = !s.crew.length; }
     else if (recentLoss(s)) msg = `${recentLoss(s).toUpperCase()} VERGLÜHT`;

@@ -776,3 +776,12 @@ body.flyover #readout, body.flyover #alert, body.flyover #td, body.flyover #sas-
 .plock { font-size: 11px; color: var(--mute); }
 .mbtn.sup { border-color: var(--cyan); background: rgba(143,227,255,0.08); color: var(--cyan); display: grid; }
 .mbtn.sup small { font: 600 10px var(--mono); color: var(--ok); }
+.r-money.big { font-size: 26px; padding: 6px 16px; }
+.r-money.big small { font-size: 11px; }
+
+/* help in tabs */
+.help-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 0 0 12px; position: sticky; top: 38px; z-index: 2; background: rgba(9,13,22,0.96); padding-bottom: 6px; }
+.help-tabs button { padding: 7px 4px; border-radius: 8px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,0.04); font: 700 12px var(--display); color: var(--mute); }
+.help-tabs button.on { border-color: var(--amber); color: var(--amber); background: rgba(255,181,71,0.1); }
+.help-lead { margin: 0 0 10px; }
+.help-pane .help-keys { margin-bottom: 12px; }

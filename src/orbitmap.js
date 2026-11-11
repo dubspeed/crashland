@@ -129,11 +129,11 @@ export function createOrbitMap(canvas) {
     ctx.restore();
 
     // orbit computer readout under the map
+    // one line: Ap/Pe are on the map already; time to touchdown and how far the cross is off the pad
     const lines = [];
-    lines.push(o.escape ? 'Fluchtbahn' : `Ap ${fmtAlt(o.ap)} · Pe ${o.pe < 0 ? 'unter der Oberfläche' : fmtAlt(o.pe)}`);
-    lines.push(`v ${fmtNum(o.speed)} m/s · ${isFinite(o.period) && o.pe > 0 ? `Umlauf ${fmtTime(o.period)}` : `e ${fmtNum(o.e, 3)}`}`);
-    if (s.pred) lines.push(`Aufschlag in ${fmtTime(s.pred.t)} · ${fmtAlt(Math.abs(Math.hypot(s.pred.x, s.pred.z)))} ${s.pred.x < 0 ? 'vor' : 'hinter'} dem Ziel`);
-    else lines.push(p.rho > 0 ? 'kein Aufschlag in Sicht (Luft bremst langsam)' : 'kein Aufschlag: stabiler Orbit');
+    if (o.escape) lines.push('Fluchtbahn');
+    else if (s.pred) lines.push(`⏱ ${fmtTime(s.pred.t)} · 🎯 ${s.pred.x < 0 ? '−' : '+'}${fmtAlt(Math.abs(Math.hypot(s.pred.x, s.pred.z)))}`);
+    else lines.push(p.rho > 0 ? '⏱ – · Luft bremst langsam' : '⏱ – · stabiler Orbit');
     ctx.textAlign = 'center'; ctx.font = '600 12px "IBM Plex Mono", monospace';
     const by = A.bottom - 6 - (lines.length - 1) * 16;
     lines.forEach((l, i) => {

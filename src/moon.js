@@ -189,6 +189,7 @@ export function moonRelief(x, z, R, edge, id = 'luna-orbit') {
 export const MOON_GLSL = /* glsl */ `
 uniform float uR;
 uniform float uEdge;
+uniform float uSite;
 uniform vec3 uC1;
 uniform vec3 uC2;
 uniform float uStyle;
@@ -245,6 +246,14 @@ void moonCraters(vec3 p, float C, float prob, float dk, float wob, inout vec2 ac
     acc.y += bowl * 0.6 + rim * 0.4 + ej;
   }
 }
+float sstep(float a, float b, float x) { return smoothstep(a, b, x); }
+// landing site around the pad (same as sim.js siteHeight)
+float siteHeight(vec2 xz, float d) {
+  if (uSite > 0.5 && uSite < 1.5) return d < 330.0 ? 95.0 * sstep(140.0, 330.0, d) : 95.0 * exp(-pow((d - 330.0) / 180.0, 2.0));
+  if (uSite > 1.5 && uSite < 2.5) return -65.0 * sstep(150.0, 185.0, d);
+  if (uSite > 2.5) { float q = (xz.x - 110.0) / 28.0; return -55.0 * exp(-q * q) * (1.0 - sstep(500.0, 700.0, abs(xz.y))); }
+  return 0.0;
+}
 float zoneNoise(float x, float z) {
   return sin(x * 0.021 + 1.3) * cos(z * 0.017) * 14.0 + sin(x * 0.067 + z * 0.041) * 5.0 + sin(x * 0.13 - z * 0.11 + 2.1) * 2.0;
 }
@@ -256,7 +265,7 @@ float moonHeight(vec3 dir, float spacing, bool wantCol, out vec3 col) {
   float t = clamp((d - 70.0) / 60.0, 0.0, 1.0);
   float blend = t * t * (3.0 - 2.0 * t);
   float e = clamp((d - (uEdge - 250.0)) / 250.0, 0.0, 1.0);
-  float zone = (zoneNoise(xz.x, xz.y) + 6.0) * blend * (1.0 - e * e * (3.0 - 2.0 * e));
+  float zone = ((zoneNoise(xz.x, xz.y) + 6.0) * blend + siteHeight(xz, d)) * (1.0 - e * e * (3.0 - 2.0 * e));
   float w = smoothstep(uEdge - 300.0, uEdge + 200.0, d);
   vec3 p = dir * uR;
   float hh = 60.0 * (vn(p / 4200.0 + vec3(3.0, 0.0, 1.0)) - 0.5) + 24.0 * (vn(p / 1500.0 + vec3(7.0, 0.0, 0.0)) - 0.5);
@@ -499,7 +508,7 @@ export function createMoonTerrain(THREE, R, edge, c1, c2, id) {
   geo.instanceCount = 0;
 
   const uniforms = {
-    uCam: { value: new THREE.Vector3() }, uR: { value: R }, uEdge: { value: edge },
+    uCam: { value: new THREE.Vector3() }, uR: { value: R }, uEdge: { value: edge }, uSite: { value: 0 },
     uC1: { value: new THREE.Color(c1) }, uC2: { value: new THREE.Color(c2) },
     uStyle: { value: F.style }, uMount: { value: F.mount }, uCraterK: { value: F.craterK },
     uArcN: { value: [0, 1, 2, 3].map((i) => F.arcs[i] ? new THREE.Vector4(...F.arcs[i].n, F.arcs[i].W) : new THREE.Vector4(0, 1, 0, 1)) },
@@ -630,5 +639,5 @@ vec4 detailAt(float scale, vec3 N, vec3 w, vec3 sg) {
     geo.instanceCount = n;
     tileA.needsUpdate = true; metreA.needsUpdate = true;
   }
-  return { mesh: group, update, tiles: () => n };
+  return { mesh: group, update, tiles: () => n, setSite: (i) => { uniforms.uSite.value = i; } };
 }

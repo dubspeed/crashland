@@ -206,7 +206,7 @@ function buildSettings() {
   const x = (k) => `×${k.toLocaleString('de-DE')}`;
   row('fuel-select', S.FUEL_LEVELS.map((f, i) => [i, f.name, `${Math.round(f.k * 100)} % · ${x(f.bonus)}`]), settings.fuel, 'fuel');
   row('hint-select', [[true, 'An', 'Tipps im HUD'], [false, 'Aus', `nur Warnungen · ${x(S.HINTS_OFF_BONUS)}`]], settings.hints, 'hints');
-  row('auto-select', [[false, 'Aus', 'Feinregelung von Hand'], [true, 'An', `Computer regelt · ${x(S.AUTO_FINE_BONUS)}`]], settings.autoFine, 'autoFine');
+  row('auto-select', [[false, 'Von Hand', 'nach dem Hinweis'], [true, 'Automatisch', `Computer · ${x(S.AUTO_FINE_BONUS)}`]], settings.autoFine, 'autoFine');
 }
 // ---------- lander builder ----------
 let build = { ...S.DEFAULT_BUILD };
@@ -290,7 +290,8 @@ const builder = createBuilder({
   getFuelK: () => (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * (editMission?.fuel ?? 1),
   onClose: (starting) => { editMission = null; if (!starting) { $('menu').hidden = false; buildMenu(); } },
 });
-$('build-btn').addEventListener('click', () => { $('menu').hidden = true; cam.pitch = 0; builder.open(); });
+// free building: only the planets of the chosen start mode in the figures
+$('build-btn').addEventListener('click', () => { $('menu').hidden = true; cam.pitch = 0; builder.open({ planets: startMode === '0' ? S.PLANETS : S.ORBIT_PLANETS }); });
 // settings: reset the game state while testing (money, bases, or everything incl. mission landers and best scores)
 function resetGame(what) {
   const label = { money: 'Geld und Kredit zurücksetzen?', bases: 'Alle Basen zurücksetzen?', all: 'Alles zurücksetzen (Geld, Basen, Missions-Lander, Bestwerte)?' }[what];
@@ -302,6 +303,7 @@ function resetGame(what) {
   } catch { /* storage unavailable */ }
   buildMenu();
 }
+$('reset-toggle').addEventListener('click', () => { const r = $('reset-row'); r.hidden = !r.hidden; });
 $('reset-money').addEventListener('click', () => resetGame('money'));
 $('reset-bases').addEventListener('click', () => resetGame('bases'));
 $('reset-all').addEventListener('click', () => resetGame('all'));
@@ -451,7 +453,7 @@ function buildMenu() {
     b.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
       <span class="pname"><b>${p.name.replace(' Orbit', '')}</b><span class="g">${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span></span>
       <p>${p.text}</p>
-      <span class="best">${rec ? `<i>${'★'.repeat(rec.stars)}${'☆'.repeat(3 - rec.stars)}</i> ${rec.score.toLocaleString('de-DE')}` : `<span class="air">${p.rho > 0 ? `Luft: ${p.atmo}` : 'keine Luft'}</span>`}</span>`;
+      <span class="chips-row">${chip('🌫', p.rho > 0 ? p.atmo : 'keine Luft', '', 'Atmosphäre')}${rec ? chip('★', `${rec.stars} · ${rec.score.toLocaleString('de-DE')}`, 'ok', 'Bestwert') : ''}</span>`;
     b.addEventListener('click', () => start(p));
     wrap.append(b);
   }
@@ -459,17 +461,24 @@ function buildMenu() {
 
 function buildWindowInfo() {
   const L = S.LAND, f = (n) => n.toLocaleString('de-DE');
-  $('window-info').innerHTML = `<h3>Landefenster (gilt auf allen Planeten)</h3>
-    <span><b class="ok">Sanft</b> ≤ ${f(L.vy[0])} m/s · Drift ≤ ${f(L.vx[0])} · ≤ ${L.tilt[0]}°</span>
-    <span><b class="warn">Hart</b> ≤ ${f(L.vy[1])} m/s · Drift ≤ ${f(L.vx[1])} · ≤ ${L.tilt[1]}°</span>
-    <span><b style="color: var(--amber)">Fahrwerk beschädigt</b> ≤ ${f(L.vy[2])} m/s · Drift ≤ ${f(L.vx[2])} · ≤ ${L.tilt[2]}°</span>
-    <span><b class="bad">Bruchlandung</b> ≤ ${f(S.WRECK_V)} m/s: Lander kaputt, kein Feuer, Crew überlebt</span>
-    <span><b class="bad">Explosion</b> darüber, wenn noch Treibstoff in den Tanks ist</span>`;
+  $('window-info').innerHTML = `<h3>Landefenster (Standardbeine, ↓ · ↔ · ∠)</h3>
+    <span><b class="ok">Sanft</b> ${f(L.vy[0])} m/s · ${f(L.vx[0])} m/s · ${L.tilt[0]}°</span>
+    <span><b class="warn">Hart</b> ${f(L.vy[1])} · ${f(L.vx[1])} · ${L.tilt[1]}°</span>
+    <span><b style="color: var(--amber)">Fahrwerk</b> ${f(L.vy[2])} · ${f(L.vx[2])} · ${L.tilt[2]}° <small>(breite / gefederte Beine mehr)</small></span>
+    <span><b class="bad">Bruchlandung</b> darüber: Lander Schrott, Crew überlebt bis ${S.CAPSULE_V} m/s</span>
+    <span><b class="bad">Explosion</b> ab ${f(S.WRECK_V)} m/s mit Treibstoff im Tank</span>`;
 }
 
 function openHelp() { $('help').hidden = false; $('help-close').focus(); }
 function closeHelp() { $('help').hidden = true; }
 $('help-btn').addEventListener('click', openHelp);
+// help tabs
+$('help').querySelector('.help-tabs').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-tab]'); if (!b) return;
+  for (const x of $('help').querySelectorAll('[data-tab]')) x.classList.toggle('on', x === b);
+  for (const p of $('help').querySelectorAll('.help-pane')) p.hidden = p.dataset.pane !== b.dataset.tab;
+  $('help').querySelector('.help-sheet').scrollTop = 0;
+});
 $('help-close').addEventListener('click', closeHelp);
 $('help').addEventListener('click', (e) => { if (e.target === $('help')) closeHelp(); });
 
@@ -480,6 +489,7 @@ function showMenu() {
   buildMenu();
   debris.clear();
   showBase(null); mission = null;
+  S.setSite('plain'); world.setSite(0);
   parkShip();
 }
 /** ship parked on the pad as a backdrop (menu and builder) */
@@ -550,7 +560,11 @@ function start(p, ms) {
     }
     showBase(base, mission.target);
   } else showBase(null);
+  // landing site: a base keeps its own, free flights get one from the seed (it is in the settings, so replays have it)
+  const site = mission ? BASE_SITES[p.id] ?? 'plain' : S.SITE_IDS[seed % S.SITE_IDS.length];
+  flightSettings = { ...flightSettings, site };
   s = S.newRound(planet, windLevel, seed, flightSettings, flightBuild);
+  world.setSite(S.SITE_IDS.indexOf(site));
   ship.reset(s.spec);
   rec = { v: 1, planet: planet.id, wind: windLevel, seed, settings: { ...flightSettings }, build: { ...flightBuild }, ev: [] };
   lastRec = { thrust: false, rcs: 0, rcsZ: 0, limit: s.limit };
@@ -569,6 +583,8 @@ function start(p, ms) {
 }
 
 const PAD_RADIUS = 12;
+// every base sits on its own kind of landing site
+const BASE_SITES = { 'luna-orbit': 'crater', 'mars-orbit': 'canyon', 'terra-orbit': 'mesa', 'brontes-orbit': 'crater' };
 const CONTRACT_REACH = 25; // m: a supply drop has to land next to its module
 const BASE_REACH = 60; // m from the target: closer, the base can use the cargo
 function precision(st) {
@@ -585,7 +601,8 @@ function rate(st) {
   if (st.status !== 'landed' && st.spec.payload) return { stars: 0, score: 0, parts: [], mult: 1 }; // cargo lost
   if (st.status !== 'landed') {
     // crashed, but the crew got out: no stars, but the crew, the aim and the planet still count
-    if (!st.touch?.crash?.crew) return { stars: 0, score: 0, parts: [], mult: 1 };
+    // only a wreck without fire still counts (crew, aim, planet); an explosion scores nothing
+    if (!st.touch?.crash?.crew || st.touch.crash.kind !== 'wreck') return { stars: 0, score: 0, parts: [], mult: 1 };
     const parts = [['Crew', st.crew.length * 70], ['Ziel', precisionBonus(st)], ['Planet', st.planet.g * 20]];
     return { stars: 0, score: Math.round(parts.reduce((a, p) => a + p[1], 0) * mult), parts: parts.filter((p) => Math.round(p[1]) !== 0), mult };
   }
@@ -645,7 +662,8 @@ function showResult() {
   const f1 = (n) => n.toLocaleString('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
   // kicker: where, and the difficulty bonus as one figure
   const bonus = (s.wind.speed && planet.rho > 0 ? s.wind.bonus : 1) * settingsBonus(s.settings);
-  $('r-kicker').textContent = `${planet.name}${s.wind.speed && planet.rho > 0 ? ` · Wind ${s.wind.name}` : ''}${Math.abs(bonus - 1) > 0.001 ? ` · Bonus ×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}` : ''}`;
+  const siteInfo = S.SITES[s.settings?.site ?? 'plain'];
+  $('r-kicker').textContent = `${planet.name} · ${siteInfo.icon} ${siteInfo.name}${s.wind.speed && planet.rho > 0 ? ` · Wind ${s.wind.name}` : ''}${Math.abs(bonus - 1) > 0.001 ? ` · Bonus ×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}` : ''}`;
   const g = s.touch.grade, crash = s.touch.crash;
   $('r-title').textContent = mission && !S.CARGO[mission.type].crew
     ? { intact: 'Fracht abgesetzt', damaged: 'Fracht beschädigt', far: 'Zu weit weg', lost: 'Fracht verloren' }[mission.result]
@@ -667,6 +685,10 @@ function showResult() {
   const pts = $('r-pts'), t0 = performance.now();
   const tick = () => { const k = Math.min(1, (performance.now() - t0) / 900); pts.textContent = Math.round(score * (1 - (1 - k) ** 3)).toLocaleString('de-DE'); if (k < 1) requestAnimationFrame(tick); };
   if (score) tick();
+  if (mission) {
+    // base mode counts money, not points: the result shows the balance (career) or just what was built (sandbox)
+    $('r-score').innerHTML = mission.pay ? '<span id="r-money-slot"></span>' : `<span class="r-stars">${'<i class="on">★</i>'.repeat(stars)}${'<i>★</i>'.repeat(3 - stars)}</span>`;
+  }
   $('r-reason').hidden = ok;
   if (!ok) $('r-reason').textContent = `Aufschlag: ${s.reason}.`;
   // six tiles: the touchdown window (coloured by grade) and how the flight went
@@ -711,6 +733,7 @@ function showResult() {
   for (const c of s.crew) if (c.fainted) notes.push([`${c.name} ${c.fainted}× ohnmächtig`, 'warn']);
   for (const c of s.spec.comps) if (s.lost[c.id]) notes.push([`${c.name} verglüht`, 'bad']);
   if (s.chute === 'torn' || s.chute === 'burned') notes.push([`Fallschirm ${s.chute === 'torn' ? 'gerissen' : 'verglüht'}`, 'warn']);
+  if ($('r-money-slot')) { $('r-money-slot').outerHTML = money.replace('class="r-money', 'class="r-money big'); money = ''; }
   $('r-notes').innerHTML = money + notes.map(([t, c]) => `<em class="${c}">${t}</em>`).join('');
   $('r-money')?.addEventListener('click', () => { $('money-detail').hidden = false; });
   $('r-notes').hidden = !notes.length;
@@ -842,7 +865,7 @@ $('icon-legend').innerHTML = [
   ['chute', '<b>Fallschirm</b> öffnen, offen: abwerfen · leuchtet orange, wenn er jetzt geht', 'P'],
   ['panels', '<b>Solarpaneele</b> ein-/ausklappen · rot, wenn sie zu heiß werden', 'E'],
   ['shield', '<b>Hitzeschild</b> abwerfen (nur wenn verbaut) · leuchtet, wenn die Hitze vorbei ist', 'J'],
-  ['sas', '<b>Lageregler</b> wechseln: H Halten · B Bremsen (Orbit) · L Landen (stoppt Drift) · – Aus', 'T'],
+  ['sas', '<b>Lageregler</b> wechseln (Modi siehe unten)', 'T'],
   ['view', '<b>Kamera</b>: hinter dem Lander oder Ziel-Ansicht', 'V'],
   ['map', '<b>Bahnkarte</b> (nur aus dem Orbit)', 'K'],
 ].map(([ic, txt, key]) => `<dt><svg viewBox="0 0 24 24">${ICONS[ic]}</svg></dt><dd>${txt} <kbd class="key-only">${key}</kbd></dd>`).join('');

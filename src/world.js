@@ -293,5 +293,7 @@ export function createWorld(scene, models) {
     }
   }
 
-  return { setPlanet, update, align, toRender, setAir, stats: () => ({ tiles: moon ? moon.tiles() : 0 }) };
+  /** landing site: the GPU relief follows the flight model's (S.setSite) */
+  function setSite(i) { moon?.setSite(i); }
+  return { setPlanet, setSite, update, align, toRender, setAir, stats: () => ({ tiles: moon ? moon.tiles() : 0 }) };
 }

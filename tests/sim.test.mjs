@@ -107,3 +107,16 @@ test('uneven ground: a bit too rough damages the gear, far too rough tips over',
     if (name === 'mid') assert.equal(s.touch.grade, 2);
   }
 });
+
+test('landing sites shape the land around the pad, never the pad itself', () => {
+  const h = (site, x, z) => { S.setSite(site); return S.terrainHeight(x, z); };
+  for (const site of S.SITE_IDS) for (const [x, z] of [[0, 0], [10, -8], [-12, 5]]) assert.ok(Math.abs(h(site, x, z) - h('plain', x, z)) < 1e-3, `${site} pad`);
+  assert.ok(h('crater', 300, 0) > h('plain', 300, 0) + 60);   // crater wall
+  assert.ok(h('mesa', 250, 0) < h('plain', 250, 0) - 50);     // off the plateau
+  assert.ok(h('canyon', 110, 0) < h('plain', 110, 0) - 40);   // the gorge past the pad
+  S.setSite('plain');
+  // the site comes with the round's settings, so a replay gets the same ground
+  const s = S.newRound(S.PLANETS[0], 0, 1, { site: 'mesa' });
+  assert.equal(S.currentSite(), 'mesa');
+  S.newRound(S.PLANETS[0], 0, 1, {}); assert.equal(S.currentSite(), 'plain');
+});

@@ -337,7 +337,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     $('build-title').textContent = ctx?.title ?? 'Lander bauen';
     $('build-sub').hidden = !ctx?.sub; $('build-sub').innerHTML = ctx?.sub ?? '';
     $('build-done').innerHTML = ctx?.onStart ? 'Start ▶' : 'Fertig';
-    root.classList.toggle('mission', !!ctx);
+    root.classList.toggle('mission', !!ctx?.onStart);
     document.body.classList.add('building');
     refresh();
   }
