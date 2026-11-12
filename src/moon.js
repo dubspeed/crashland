@@ -99,9 +99,10 @@ const LAYOUTS = {
   },
 };
 
+// flat coords -> direction: x = R·longitude, z = R·latitude around the pad (the flight model's frame)
 function flatDir(x, z, R) {
-  const d = Math.hypot(x, z), phi = d / R, sn = d > 1e-6 ? Math.sin(phi) / d : 0;
-  return [x * sn, Math.cos(phi), z * sn];
+  const l = x / R, b = z / R, cb = Math.cos(b);
+  return [cb * Math.sin(l), cb * Math.cos(l), Math.sin(b)];
 }
 const norm = (v) => { const l = Math.hypot(...v); return v.map((c) => c / l); };
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -259,8 +260,8 @@ float zoneNoise(float x, float z) {
 }
 // returns height; writes the colour of the ground there. spacing = grid cell size there (level of detail)
 float moonHeight(vec3 dir, float spacing, bool wantCol, out vec3 col) {
-  float d = uR * atan(length(dir.xz), dir.y);
-  vec2 xz = length(dir.xz) > 1e-7 ? normalize(dir.xz) * d : vec2(0.0);
+  vec2 xz = uR * vec2(atan(dir.x, dir.y), asin(clamp(dir.z, -1.0, 1.0))); // longitude / latitude (sim frame)
+  float d = length(xz);
   // landing zone relief (same as sim.js terrainHeight), fading out towards the edge
   float t = clamp((d - 70.0) / 60.0, 0.0, 1.0);
   float blend = t * t * (3.0 - 2.0 * t);

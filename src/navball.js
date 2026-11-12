@@ -90,6 +90,13 @@ export function createNavball(host) {
       ctx.globalAlpha = a; ctx.strokeStyle = TGT; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(x, y, R0 * 0.8 * a, 0, Math.PI * 2);
       ctx.moveTo(x, y - R0 * 1.4 * a); ctx.lineTo(x, y + R0 * 1.4 * a); ctx.moveTo(x - R0 * 1.4 * a, y); ctx.lineTo(x + R0 * 1.4 * a, y); ctx.stroke();
     });
+    // the side burn that swings the orbit over the base (cyan diamond): nose there + thrust
+    const tm = S.trackMiss(s);
+    if (tm && Math.abs(tm.miss) >= 40 && tm.dvMag > S.SIDE_DONE && tm.ahead * s.planet.R > 2500) mark(v3(tm.dv.x, tm.dv.y, tm.dv.z), (x, y, a) => {
+      ctx.globalAlpha = a; ctx.strokeStyle = '#8fe3ff'; ctx.lineWidth = lw; const k = R0 * 1.1 * a;
+      ctx.beginPath(); ctx.moveTo(x, y - k); ctx.lineTo(x + k, y); ctx.lineTo(x, y + k); ctx.lineTo(x - k, y); ctx.closePath(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, lw, 0, Math.PI * 2); ctx.fillStyle = '#8fe3ff'; ctx.fill();
+    });
     ctx.globalAlpha = 1;
     // the nose: fixed orange chevron in the middle
     ctx.strokeStyle = '#ffb547'; ctx.lineWidth = lw * 1.3; ctx.beginPath();

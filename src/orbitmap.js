@@ -134,6 +134,8 @@ export function createOrbitMap(canvas) {
     if (o.escape) lines.push('Fluchtbahn');
     else if (s.pred) lines.push(`⏱ ${fmtTime(s.pred.t)} · 🎯 ${s.pred.x < 0 ? '−' : '+'}${fmtAlt(Math.abs(Math.hypot(s.pred.x, s.pred.z)))}`);
     else lines.push(p.rho > 0 ? '⏱ – · Luft bremst langsam' : '⏱ – · stabiler Orbit');
+    const tm = S.trackMiss(s);
+    if (tm && Math.abs(tm.miss) >= 40) lines[lines.length - 1] += ` · ↔ ${fmtAlt(Math.abs(tm.miss))} neben der Basis`;
     ctx.textAlign = 'center'; ctx.font = '600 12px "IBM Plex Mono", monospace';
     const by = A.bottom - 6 - (lines.length - 1) * 16;
     lines.forEach((l, i) => {

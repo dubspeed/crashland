@@ -59,3 +59,19 @@ test('settings: plenty of fuel scales the tanks', () => {
   assert.equal(s.fuel0, S.PLANETS[0].fuel * 1.25);
   assert.equal(s.fuelL + s.fuelR, s.fuel0);
 });
+
+// base missions start on an orbit that runs past the base: a sideways burn (Seite) at the cheapest point,
+// then the usual braking; the pilot lands on the pad from both sides
+for (const P of S.ORBIT_PLANETS) {
+  test(`missed orbit on ${P.id}: Seite swings the plane over the base, then it lands`, () => {
+    for (const sign of [1, -1]) {
+      const set = { orbit: S.missOrbit(P, sign) }, PP = { ...P, ...set.orbit };
+      const s0 = S.newRound(P, 0, 5, set, {});
+      const tm = S.trackMiss(s0);
+      assert.ok(Math.abs(Math.abs(tm.miss) - Math.abs(set.orbit.miss)) < 5, `miss ${tm.miss}`);
+      assert.ok(tm.best > 5, 'the cheapest point is still ahead');
+      const s = recordPilot(PP, 0, 5, makePilot(S, PP, { dropShield: 'hint' }), 1500, set, {}).s;
+      landedClean(s, P.id === 'brontes-orbit' ? 40 : 30, `${P.id} ${sign}`);
+    }
+  });
+}

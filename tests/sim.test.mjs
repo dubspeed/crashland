@@ -70,8 +70,8 @@ test('attitude modes: cycling through quickly only applies the mode it rests on'
   for (let i = 0; i < 240; i++) S.advance(s, { thrust: false }); // 2 s in, Retro
   assert.equal(s.sas, 'retro');
   const seen = new Set();
-  for (const k of [0, 1]) { S.act(s, 'sas'); for (let i = 0; i < 30; i++) { S.advance(s, { thrust: false }); seen.add(s.sas); } } // two taps, 0.25 s apart
-  assert.deepEqual([...seen], ['retro']); // never Landen (retro2) on the way
+  for (const k of [0, 1, 2]) { S.act(s, 'sas'); for (let i = 0; i < 30; i++) { S.advance(s, { thrust: false }); seen.add(s.sas); } } // three taps, 0.25 s apart (orbit: Seite, Landen, Aus)
+  assert.deepEqual([...seen], ['retro']); // never Seite or Landen on the way
   for (let i = 0; i < Math.ceil(S.SAS_DELAY / S.STEP) + 2; i++) S.advance(s, { thrust: false });
   assert.equal(s.sas, false); // rests on "Aus"
 });

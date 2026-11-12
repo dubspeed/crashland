@@ -52,6 +52,18 @@ export function makePilot(S, P, opt = {}) {
     const chute = opt.chute !== false && s.spec.ids.has('chute'); // a lander built without one
     let thrust = false;
     // when to brake: the HUD cue (vacuum / thin air) or the deorbit point (thick air)
+    // the orbit misses the base: at the cheapest point (a quarter orbit before it) switch to Seite and burn
+    // until the plane runs over the base; Seite then hands back to Bremsen by itself
+    const tm = opt.fixPlane === false ? null : S.trackMiss(s);
+    if (mem.phase === 'wait' && tm && !mem.sideDone && (mem.side || (Math.abs(tm.miss) > 40 && tm.best < 0.5 && tm.best > -20))) {
+      if (!mem.side) { mem.side = true; mem.lim0 ??= s.limit; act('sas'); } // Bremsen -> Seite
+      if (s.sas === 'side') {
+        const u = S.upVector(s), l = tm.dvMag || 1, align = (u.x * tm.dv.x + u.y * tm.dv.y + u.z * tm.dv.z) / l;
+        return { thrust: tm.dvMag > S.SIDE_DONE && align > 0.985, rcs: 0, rcsZ: 0 };
+      }
+      if (s.sasPending === 'side') return { thrust: false, rcs: 0, rcsZ: 0 };
+      mem.side = false; mem.sideDone = true; // back on Bremsen
+    }
     // aerobraking orbit: let the air take the speed off over a few passes until the high point is low enough
     if (mem.phase === 'wait' && opt.apMax && S.orbitInfo(s).ap > opt.apMax) return { thrust: false, rcs: 0, rcsZ: 0 };
     if (mem.phase === 'wait') {

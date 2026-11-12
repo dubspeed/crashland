@@ -108,7 +108,7 @@ export function orbitInfo(s) {
   const p = s.planet;
   if (!p.R) return null;
   const R = p.R, mu = p.g * R * R, r = R + s.y;
-  const vt = s.vx, vr = s.vy, v2 = vt * vt + vr * vr;
+  const vt = Math.sign(s.vx || 1) * Math.hypot(s.vx, s.vz || 0), vr = s.vy, v2 = vt * vt + vr * vr; // (an inclined orbit: the whole horizontal speed)
   const h = r * vt, H = Math.abs(h) || 1e-9;
   const energy = v2 / 2 - mu / r;
   const e = Math.sqrt(Math.max(0, 1 + (2 * energy * H * H) / (mu * mu)));
@@ -169,6 +169,7 @@ export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) 
 }
 export const STEP = 1 / 120;
 export const SAS_DELAY = 1.5;
+export const SIDE_DONE = 0.3; // m/s: the orbit plane runs over the base (Seite is done)
 export const UNEVEN_TIP = 2.5; // ground height difference under the feet (in units of the legs' range) that tips the lander over
 /** how uneven the ground is under the feet if the lander stood upright at (x, z): height spread of the four feet */
 export function groundSpread(s, x, z) {
@@ -185,7 +186,8 @@ export function act(s, name) {
     // "Aus" must not flip the lander); before the flight really starts it switches at once
     const from = s.sasPending !== undefined ? s.sasPending : s.sas;
     // Halten → Bremsen (retro) → Landen (retro2) → Aus → Halten ('up', vertical, is no longer offered)
-    const next = { hold: 'retro', retro: 'retro2', retro2: false, up: false }[from] ?? 'hold';
+    // orbit levels: Bremsen → Seite (swing the orbit plane over the base) → Landen
+    const next = (s.planet.orbit ? { hold: 'retro', retro: 'side', side: 'retro2', retro2: false, up: false } : { hold: 'retro', retro: 'retro2', retro2: false, up: false })[from] ?? 'hold';
     if (s.t < 0.5) { s.sas = next; s.sasPending = undefined; s.holdA = s.a; s.holdB = s.b; }
     else { s.sasPending = next; s.sasAt = s.t + SAS_DELAY; }
   }
@@ -225,10 +227,60 @@ export function aeroState(s) {
 export function orbitSpeed(p, y) { const r = p.R + y; return Math.sqrt((p.g * p.R * p.R) / r); }
 /** curvature terms for the flat sim frame (x, z = arc length on the surface, y = height): gravity falls off
  *  with height, horizontal speed gives centrifugal lift, and the arc rate shrinks with height. */
-function curvature(p, y, vx, vy, vz) {
+// The frame is longitude / latitude on the sphere around the pad: x = R·longitude along the pad's "equator"
+// (the normal ground track), z = R·latitude, y = height; vx, vz, vy = east, north, up. These are the exact
+// equations of motion in that frame (non-rotating planet); on the track (z = 0) the latitude terms vanish.
+function curvature(p, y, vx, vy, vz, z = 0) {
   if (!p.orbit || !p.R) return null;
-  const r = p.R + y;
-  return { gy: p.g * (p.R / r) ** 2 - (vx * vx + vz * vz) / r, ax: (-vx * vy) / r, az: (-vz * vy) / r, k: p.R / r };
+  const r = p.R + y, tb = Math.tan(z / p.R), k = p.R / r;
+  return { gy: p.g * (p.R / r) ** 2 - (vx * vx + vz * vz) / r, ax: (-vx * vy + vx * vz * tb) / r, az: (-vz * vy - vx * vx * tb) / r, k, kx: k / Math.cos(z / p.R) };
+}
+/** an orbit that misses the base (base and rescue missions): the sideways miss that costs about `dv` m/s to
+ *  fix at the cheapest point, and a start far enough back that this point (a quarter orbit before the pad)
+ *  is still ahead. sign: +1 / -1 (north / south). Returned as an orbit override (settings.orbit). */
+export function missOrbit(planet, sign = 1, dv = 18) {
+  const v = orbitSpeed(planet, planet.alt), miss = Math.round(((dv / v) * planet.R) / 10) * 10;
+  return { miss: sign * miss, downrange: Math.round(Math.max(planet.R * Math.PI * 0.62, (planet.deorbitAt ?? 0) + 6000)) };
+}
+/** orbit levels: does the orbit pass over the base? miss = distance of the pad from the orbit plane (m, signed:
+ *  + = the pad lies north, +z), dv = the sideways speed change (local east / up / north) that turns the plane
+ *  through the pad here, ahead = angle along the orbit to the pad, best = seconds to the cheapest point to do it
+ *  (a quarter orbit before the pad), dvBest = what it costs there. null if not an orbit level or no real orbit. */
+export function trackMiss(s) {
+  const p = s.planet;
+  if (!p.orbit || !p.R || s.status !== 'flying') return null;
+  const { r, v, U, E, N } = inertial(s), dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const unit = (a) => { const l = Math.hypot(...a); return l > 1e-9 ? a.map((c) => c / l) : null; };
+  const h = unit(cross(r, v)), vr = dot(v, U), vh = v.map((c, i) => c - vr * U[i]), vhl = Math.hypot(...vh);
+  if (!h || vhl < 20) return null;
+  const P = [0, 1, 0], sinMiss = dot(h, P);
+  // pad projected into the orbit plane, and how far ahead along the orbit it lies
+  const Pp = unit(P.map((c, i) => c - sinMiss * h[i]));
+  let ahead = Pp ? Math.atan2(dot(cross(U, Pp), h), dot(U, Pp)) : 0;
+  if (ahead < 0) ahead += 2 * Math.PI;
+  // the plane through here and the pad: turn the horizontal velocity into it (same speed)
+  let nt = unit(cross(U, P));
+  let dv = [0, 0, 0];
+  if (nt) {
+    if (dot(nt, h) < 0) nt = nt.map((c) => -c);
+    const tdir = cross(nt, U); // along the new track, in the sense of motion
+    dv = vh.map((c, i) => vhl * tdir[i] - c);
+  }
+  const om = vhl / (p.R + s.y), miss = Math.asin(Math.max(-1, Math.min(1, sinMiss)));
+  // cheapest a quarter orbit before the pad; with a deorbit point further out (thick air), just before that
+  const at = Math.max(Math.PI / 2, p.deorbitAt ? (p.deorbitAt + 2500) / p.R : 0);
+  let best = (ahead - at) / om;
+  if (best < -8) best += (2 * Math.PI) / om;
+  const tilt = Math.asin(Math.min(1, Math.abs(sinMiss) / Math.max(1e-6, Math.sin(Math.min(at, Math.PI - 1e-3)))));
+  return { miss: -miss * p.R, ahead, best, dvBest: 2 * vhl * Math.sin(tilt / 2),
+    dv: { x: dot(dv, E), y: dot(dv, U), z: dot(dv, N) }, dvMag: Math.hypot(...dv) };
+}
+/** orbit levels: position and velocity in the planet's frame (centre at the origin, pad at +y, track along +x) */
+export function inertial(s, x = s.x, y = s.y, z = s.z, vx = s.vx, vy = s.vy, vz = s.vz) {
+  const R = s.planet.R, l = x / R, b = z / R, cl = Math.cos(l), sl = Math.sin(l), cb = Math.cos(b), sb = Math.sin(b);
+  const U = [cb * sl, cb * cl, sb], E = [cl, -sl, 0], N = [-sb * sl, -sb * cl, cb], r = R + y;
+  return { r: U.map((c) => c * r), v: [0, 1, 2].map((i) => vx * E[i] + vz * N[i] + vy * U[i]), U, E, N };
 }
 
 /** orbit level: when to start the braking burn so the lander stops (horizontally) about over the pad.
@@ -610,7 +662,14 @@ export function createState(planet, opts = {}) {
       const m = spec.comps.reduce((a, c) => a + c.mass, 0) + s.fuel0;
       limit0 = Math.min(limit0, Math.floor(((spec.payload.g * CARGO_MARGIN * G0 * m) / spec.fMax) * 20) / 20);
     }
-    return Object.assign(s, { planet, x: -planet.downrange, z: 0, y: planet.alt, vx: v * (planet.vK ?? 1), vy: 0, vz: 0,
+    // miss: the orbit is a great circle that passes this far to the side of the pad (+ = north of it, +z)
+    let z0 = 0, vx0 = v * (planet.vK ?? 1), vz0 = 0;
+    if (planet.miss) {
+      const td = Math.tan(planet.miss / planet.R), l0 = -planet.downrange / planet.R, b0 = Math.atan(td * Math.cos(l0));
+      const dbdl = (-td * Math.sin(l0)) / (1 + td * td * Math.cos(l0) ** 2), psi = Math.atan2(dbdl / Math.cos(b0), 1);
+      z0 = b0 * planet.R; vz0 = vx0 * Math.sin(psi); vx0 *= Math.cos(psi);
+    }
+    return Object.assign(s, { planet, x: -planet.downrange, z: z0, y: planet.alt, vx: vx0, vy: 0, vz: vz0,
       a: Math.PI / 2, holdA: Math.PI / 2, b: 0, holdB: 0, sas: 'retro', limit: limit0, limit0 });
   }
   return {
@@ -680,10 +739,9 @@ export function predictImpact(s, path = null) {
     const brake = planChute && mustBrake && chuteK === 0 && vy < -10 && alt < CHUTE_MAX_ALT(s.planet)
       ? Math.max(0.05 * s.spec.fMax / m, Math.min(s.spec.fMax / m, gSafe - Fd / m)) : 0; // not the current limiter
     const k = v > 0.01 ? -Fd / v / m - brake / v : 0;
-    const cv = curvature(s.planet, y, vx, vy, vz);
+    const cv = curvature(s.planet, y, vx, vy, vz, z);
     vx += (k * rx + (cv ? cv.ax : 0)) * h; vy += (k * vy - (cv ? cv.gy : s.planet.g)) * h; vz += (k * rz + (cv ? cv.az : 0)) * h;
-    const kk = cv ? cv.k : 1;
-    x += vx * kk * h; y += vy * h; z += vz * kk * h; t += h;
+    x += vx * (cv ? cv.kx : 1) * h; y += vy * h; z += vz * (cv ? cv.k : 1) * h; t += h;
   }
   return null;
 }
@@ -970,6 +1028,16 @@ export function step(s, input, dt) {
       if (v > 25 || Math.hypot(rA - s.a, rB - s.b) < 0.6) { tA = rA; tB = rB; }
     }
   }
+  if (s.sas === 'side' && p.orbit) {
+    // Seite: the nose (thrust) along the sideways speed change that swings the orbit plane over the base
+    const tm = trackMiss(s);
+    if (tm && tm.dvMag > SIDE_DONE) {
+      const l = tm.dvMag, D = { x: tm.dv.x / l, y: tm.dv.y / l, z: tm.dv.z / l };
+      tA = Math.asin(Math.max(-1, Math.min(1, -D.x))); tB = Math.atan2(D.z, D.y);
+    } else { tA = s.a; tB = s.b; }
+    // done (the orbit runs over the base) and the engine off: back to Bremsen by itself
+    if ((!tm || tm.dvMag <= SIDE_DONE) && thr === 0 && s.sasPending === undefined) { s.sas = 'retro'; s.events.push({ type: 'sideDone', t: s.t }); }
+  }
   let cmdA = input.rcs || 0, cmdB = input.rcsZ || 0;
   // under an open canopy the pad steers the parachute (pulls the risers) instead of tilting the lander
   const chuteSteer = s.chute === 'open' && s.planet.rho > 0 && s.chuteInflate > 0.5;
@@ -1048,7 +1116,7 @@ export function step(s, input, dt) {
   }
 
   // --- translation ---
-  const cv = curvature(p, s.y, s.vx, s.vy, s.vz);
+  const cv = curvature(p, s.y, s.vx, s.vy, s.vz, s.z);
   s.vx += ((F * u.x + dx) / m + (cv ? cv.ax : 0)) * dt;
   s.vy += ((F * u.y + dy) / m - (cv ? cv.gy : p.g)) * dt;
   s.vz += ((F * u.z + dz) / m + (cv ? cv.az : 0)) * dt;
@@ -1060,7 +1128,7 @@ export function step(s, input, dt) {
     const want = CHUTE_GLIDE * Math.min(1, sl);
     if (along < want) { const acc = Math.min(1.5, (want - along) * 1.2); s.vx += ex * acc * dt; s.vz += ez * acc * dt; }
   }
-  s.x += s.vx * (cv ? cv.k : 1) * dt;
+  s.x += s.vx * (cv ? cv.kx : 1) * dt;
   s.y += s.vy * dt;
   s.z += s.vz * (cv ? cv.k : 1) * dt;
   // all the way around the planet: x is the arc from the pad, so it wraps at the far side (antipode)

@@ -70,19 +70,19 @@ export function createWorld(scene, models) {
   // flat sim coordinates (x, z = arc length from the pad, h = height) -> point in the ground group.
   // azimuthal equidistant mapping onto a sphere whose top touches the pad; flat world: identity
   const UP = new THREE.Vector3(0, 1, 0);
+  // the flight model's frame: x = R·longitude, z = R·latitude around the pad (see curvature() in sim.js)
   function curveDir(x, z, out) {
-    const d = Math.hypot(x, z);
-    if (!curveR || d < 1e-6) return out.set(0, 1, 0);
-    const phi = d / curveR, sn = Math.sin(phi);
-    return out.set((x / d) * sn, Math.cos(phi), (z / d) * sn);
+    if (!curveR) return out.set(0, 1, 0);
+    const l = x / curveR, b = z / curveR, cb = Math.cos(b);
+    return out.set(cb * Math.sin(l), cb * Math.cos(l), Math.sin(b));
   }
-  /** rotation that takes "up" at the pad to "up" at (x, z): about the axis across the arc, by the arc's angle
-   *  (well defined all the way round, also at and beyond the far side) */
-  const _ax = new THREE.Vector3();
+  /** rotation that takes the pad's frame (east = +x, up = +y, north = +z) to the local frame at (x, z):
+   *  first the latitude (about +x), then the longitude (about the pole, -z); defined all the way round */
+  const _ax = new THREE.Vector3(), _qb = new THREE.Quaternion();
   function curveQuat(x, z, out) {
-    const d = Math.hypot(x, z);
-    if (!curveR || d < 1e-6) return out.identity();
-    return out.setFromAxisAngle(_ax.set(z / d, 0, -x / d), d / curveR);
+    if (!curveR) return out.identity();
+    out.setFromAxisAngle(_ax.set(0, 0, -1), x / curveR);
+    return out.multiply(_qb.setFromAxisAngle(_ax.set(1, 0, 0), z / curveR));
   }
   function curvePoint(x, h, z, out) {
     if (!curveR) return out.set(x, h, z);

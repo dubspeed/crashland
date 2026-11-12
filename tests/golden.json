@@ -59,17 +59,17 @@
   "status": "landed",
   "t": 117.55,
   "x": -58.63,
-  "z": -12.599,
+  "z": -11.78,
   "vy": -1.606,
-  "fuel": 140.243
+  "fuel": 140.244
  },
  "terra-orbit orbit wind1 seed1": {
   "status": "landed",
-  "t": 211.042,
-  "x": -36.153,
-  "z": -35.578,
+  "t": 211.1,
+  "x": -36.235,
+  "z": -35.873,
   "vy": -1.554,
-  "fuel": 79.747
+  "fuel": 79.557
  },
  "brontes-orbit orbit wind0 seed1": {
   "status": "landed",

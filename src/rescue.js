@@ -17,9 +17,10 @@ export const LANDERS = {
 };
 /** where it starts: factors on the planet's own orbit. vK < 1: slower than circular, the orbit already falls */
 export const ORBITS = {
-  low: { name: 'Parkbahn', d: 0, alt: 1, dr: 1 },
-  station: { name: 'Station', d: 1, alt: 1.5, dr: 1.2, station: true },
-  high: { name: 'Hoher Orbit', d: 1, alt: 2.2, dr: 1.6 },
+  // miss: the orbit runs past the base (a sideways burn, Seite, swings it over)
+  low: { name: 'Parkbahn', d: 0, alt: 1, dr: 1, miss: true },
+  station: { name: 'Station', d: 1, alt: 1.5, dr: 1.2, station: true, miss: true },
+  high: { name: 'Hoher Orbit', d: 1, alt: 2.2, dr: 1.6, miss: true },
   late: { name: 'Spät abgedockt', d: 2, alt: 1, dr: 0.65 },
   falling: { name: 'Absturzbahn', d: 2, alt: 1.3, dr: 0.9, vK: 0.97 },
   // planets with air: arriving on a long ellipse whose low point grazes the air; each pass brakes a little
@@ -32,12 +33,14 @@ const STATIONS = ['Kepler', 'Halley', 'Vega', 'Tycho'];
 export const LEVELS = [{ name: 'Leicht', cls: 'ok' }, { name: 'Mittel', cls: 'warn' }, { name: 'Schwer', cls: 'bad' }];
 
 /** the orbit override (settings.orbit) for a planet */
-export function orbitFor(planet, id) {
+export function orbitFor(planet, id, sign = 1) {
   const o = ORBITS[id];
   if (o.aero) return { alt: AERO[planet.id][0], pe: AERO[planet.id][1], downrange: planet.downrange, ...(planet.deorbitAt ? { deorbitAt: planet.deorbitAt } : {}) };
   const out = { alt: Math.round(planet.alt * o.alt), downrange: Math.round(planet.downrange * o.dr) };
   if (planet.deorbitAt) out.deorbitAt = Math.round(planet.deorbitAt * Math.min(o.dr, 1 + (o.alt - 1) * 0.5));
   if (o.vK) out.vK = o.vK;
+  // (not where the deorbit point is so far out that there is no room for the side burn before it: Brontes, high)
+  if (o.miss && (out.deorbitAt ?? 0) + 6000 < 0.9 * Math.PI * planet.R) Object.assign(out, S.missOrbit({ ...planet, alt: out.alt, deorbitAt: out.deorbitAt }, sign, 12));
   return out;
 }
 
@@ -65,5 +68,5 @@ export function scenario(planet, n) {
     : O.station ? `Die Crew der ${where} muss evakuiert werden. Die ${L.name} dockt ab, bring sie zur Basis.`
       : `Eine Crew sitzt im ${O.name} fest. Hol sie mit der ${L.name} runter zur Basis.`;
   return { n, lander: lid, orbit: oid, L, O, d, level, where, story, title: L.agency ? `${L.name} bergen` : O.station ? 'Station evakuieren' : 'Crew abholen',
-    build: S.normalizeBuild(L.build), fuelK: L.fuelK, orbitSet: orbitFor(planet, oid), pay: 1 + d * 0.35 };
+    build: S.normalizeBuild(L.build), fuelK: L.fuelK, orbitSet: orbitFor(planet, oid, r() < 0.5 ? 1 : -1), pay: 1 + d * 0.35 };
 }

@@ -583,7 +583,8 @@ function start(p, ms) {
     const base = loadBase(p.id), bon = S.baseBonus(base.modules), c = S.CARGO[mission.type];
     flightBuild = missionBuildFor(mission.type); // the lander set up in the mission briefing
     const obstacles = base.modules.map((m) => ({ x: +(m.x - mission.target[0]).toFixed(2), z: +(m.z - mission.target[1]).toFixed(2), r: S.CARGO[m.type].r, name: S.CARGO[m.type].name }));
-    flightSettings = { ...settings, base: { fuel: bon.fuel, solar: bon.solar, score: bon.score, obstacles } };
+    // the orbit runs past the base: a sideways burn (Seite) first
+    flightSettings = { ...settings, orbit: S.missOrbit(p, seed % 2 ? 1 : -1, 14), base: { fuel: bon.fuel, solar: bon.solar, score: bon.score, obstacles } };
     // career: the lander and its fuel are paid at the start
     if (career()) {
       const econ = E.baseEconomy(base.modules), cost = E.flightCost(flightBuild, p, (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * bon.fuel, econ.fuelPrice);
@@ -616,12 +617,12 @@ function start(p, ms) {
   $('flyover').classList.remove('rescue');
   if (mission) {
     const c = S.CARGO[mission.type], n = loadBase(p.id).modules.length;
-    $('flyover').innerHTML = `<b>Basis ${p.name.replace(' Orbit', '')}</b><span>${n ? `${n} Modul${n > 1 ? 'e' : ''} · ` : ''}Ziel: ${c.name}${mission.contract ? ` · neben ${S.CARGO[mission.contract.near].name}` : mission.ring && mission.ring !== 'center' ? ` · ${B.RINGS[mission.ring].name}` : ''}</span><button id="fly-go" class="fly-go">Start <kbd>⏎</kbd></button>`;
+    $('flyover').innerHTML = `<b>Basis ${p.name.replace(' Orbit', '')}</b><span>${n ? `${n} Modul${n > 1 ? 'e' : ''} · ` : ''}Ziel: ${c.name}${mission.contract ? ` · neben ${S.CARGO[mission.contract.near].name}` : mission.ring && mission.ring !== 'center' ? ` · ${B.RINGS[mission.ring].name}` : ''}</span><span>↔ Bahn ${(Math.abs(flightSettings.orbit.miss) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} km neben der Basis – erst Seite (S), dann Bremsen</span><button id="fly-go" class="fly-go">Start <kbd>⏎</kbd></button>`;
   }
   if (rescue) {
     const sc = rescue.sc, lv = RS.LEVELS[sc.level];
     $('flyover').classList.add('rescue');
-    $('flyover').innerHTML = `<b>🆘 ${sc.title}</b><span class="story">${sc.story}</span><span>${sc.L.icon} ${sc.L.name} · ${sc.L.note} · ${lv.name}</span><button id="fly-go" class="fly-go">Start <kbd>⏎</kbd></button>`;
+    $('flyover').innerHTML = `<b>🆘 ${sc.title}</b><span class="story">${sc.story}</span><span>${sc.L.icon} ${sc.L.name} · ${sc.L.note} · ${lv.name}</span>${sc.orbitSet.miss ? `<span>↔ Bahn ${(Math.abs(sc.orbitSet.miss) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} km neben der Basis – erst Seite (S)</span>` : ''}<button id="fly-go" class="fly-go">Start <kbd>⏎</kbd></button>`;
   }
   $('c-map').hidden = !p.orbit; toggleMap(false);
   $('menu').hidden = true; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = false;
@@ -880,6 +881,9 @@ let warp = 1;
 /** a reason to leave the time warp, or null */
 function warpStop(w = warp) {
   if (input.thrust || keys.has('Space')) return 'Schub';
+  const tm = S.trackMiss(s);
+  if (tm && Math.abs(tm.miss) > 40 && tm.ahead * s.planet.R > 2500 && tm.best < 6 * w && tm.best > -10) return 'Seitenmanöver';
+  if (s.sas === 'side') return 'Seite';
   const og = S.aeroState(s) ? null : S.orbitGuide(s); // aerobraking: the pad passes every lap, no reason to stop
   if (og && og.brakeIn < 6 * w) return og.deorbit ? 'Deorbit-Punkt' : 'Bremspunkt';
   if (s.pred && s.pred.t < 8 * w) return 'Bodennähe';
@@ -1085,6 +1089,7 @@ renderer.setAnimationLoop(() => {
         const pos = ship.blowOff(ev.id, s);
         if (pos) { debris.burst(pos); cam.shake = Math.max(cam.shake, 0.35); }
       }
+      if (ev.type === 'sideDone') s.uiMsg = { text: 'BAHN ÜBER DER BASIS · LAGEREGLER: BREMSEN', until: s.t + 3 };
       if (ev.type === 'drop') { ship.drop(ev.id, s); cam.shake = Math.max(cam.shake, 0.12); } // pyro bolts: a short jolt
     }
     if (s.status !== 'flying') finish();

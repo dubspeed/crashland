@@ -12,6 +12,7 @@ const cls = (el, c) => { el.className = c || ''; };
 export const SAS_MODES = {
   hold: { name: 'Halten', badge: 'H', what: 'hält die Lage – das Steuerkreuz dreht den Lander' },
   retro: { name: 'Bremsen', badge: 'B', what: 'Triebwerk gegen die Flugrichtung – zum Bremsen aus dem Orbit' },
+  side: { name: 'Seite', badge: 'S', what: 'Nase quer zur Bahn – Schub schwenkt die Bahn über die Basis, danach zurück auf Bremsen' },
   retro2: { name: 'Landen', badge: 'L', what: 'stoppt seitliche Drift von selbst – Steuerkreuz = wohin fliegen' },
   up: { name: 'Senkrecht', badge: '↑', what: 'hält den Lander gerade' },
   off: { name: 'Aus', badge: '–', what: 'keine Hilfe – du steuerst die Düsen direkt' },
@@ -36,6 +37,18 @@ export function setLabel(el, text, key, title, badge) {
   el.innerHTML = `${ic ? `<svg viewBox="0 0 24 24" aria-hidden="true">${ic}</svg>` : ''}${ic ? '' : `<span class="t">${text}</span>`}${badge ? `<b class="badge">${badge}</b>` : ''}${key ? `<kbd>${key}</kbd>` : ''}`;
   el.title = title ?? text;
   el.setAttribute('aria-label', title ?? text);
+}
+
+/** the orbit misses the base: what to do about it (null when it runs over the base, or it is too late) */
+function sideHint(s) {
+  const tm = S.trackMiss(s);
+  if (!tm || Math.abs(tm.miss) < 40 || tm.ahead * s.planet.R < 2500 || S.aeroState(s)) return null;
+  if (s.sas === 'retro' && s.throttle > 0) return null; // braking anyway: the braking hints
+  const km = (v) => fmt(Math.abs(v) / 1000, 1), mps = (v) => fmt(v, 1);
+  const side = tm.miss > 0 ? 'LINKS' : 'RECHTS';
+  if (s.sas === 'side') return s.throttle > 0 ? { msg: `SEITE · NOCH ${mps(tm.dvMag)} m/s`, color: 'var(--amber)' } : { msg: `SEITE: SCHUB, BIS DIE BAHN ÜBER DER BASIS LIEGT (${mps(tm.dvMag)} m/s)`, color: 'var(--cyan)' };
+  if (tm.best > 3) return { msg: `BAHN ${km(tm.miss)} KM NEBEN DER BASIS · SEITE IN ${fmt(tm.best)} s (${mps(tm.dvBest)} m/s)`, color: 'var(--cyan)' };
+  return { msg: `JETZT: LAGEREGLER AUF SEITE (S) · ${mps(tm.dvMag)} m/s`, color: 'var(--amber)' };
 }
 
 export function createHud() {
@@ -485,7 +498,7 @@ export function createHud() {
       const toast = $('sas-toast');
       toast.hidden = !pend;
       if (pend) {
-        const order = ['hold', 'retro', 'retro2', 'off'];
+        const order = s.planet.orbit ? ['hold', 'retro', 'side', 'retro2', 'off'] : ['hold', 'retro', 'retro2', 'off'];
         const html = order.map((k) => `<span class="${k === mode ? 'on' : ''}">${SAS_MODES[k].name}</span>`).join('');
         if (toast.dataset.m !== mode) { toast.dataset.m = mode; $('st-modes').innerHTML = html; $('st-desc').textContent = SAS_MODES[mode].what; }
         $('st-fill').style.width = `${Math.min(100, (1 - (s.sasAt - s.t) / S.SAS_DELAY) * 100)}%`;
@@ -549,6 +562,7 @@ export function createHud() {
       msg = (s.throttle > 0 ? 'BREMSEN … BIS DER SCHIRM GEHT' : 'FÜR DEN SCHIRM BREMSEN') + how;
       color = 'var(--amber)'; pulse = s.throttle === 0;
     }
+    else if (hints && sideHint(s)) { const h = sideHint(s); msg = h.msg; color = h.color; pulse = false; }
     else if (hints && S.aeroState(s)) {
       // too high to land from: lower the low point into the air and let it brake over a few laps (time warp)
       const ae = S.aeroState(s), km = (v) => fmt(v / 1000, 1);
