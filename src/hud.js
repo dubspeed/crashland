@@ -24,6 +24,7 @@ export const ICONS = {
   view: '<path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/>',
   com: '<circle cx="12" cy="12" r="7"/><path d="M12 5v14M5 12h14"/>',
   map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
+  warp: '<path d="M4 6l7 6-7 6zM13 6l7 6-7 6z"/>',
 };
 /** button label: icon (from data-icon), a short word, the keyboard shortcut (desktop); title = what it does */
 export function setLabel(el, text, key, title, badge) {
@@ -518,6 +519,7 @@ export function createHud() {
     // name the cause: only the engine can be throttled; air drag or the canopy's jerk can't
     else if (s.gNow > S.G_LIMIT) msg = s.throttle > 0 ? 'G-LAST ZU HOCH – SCHUB DROSSELN' : s.chute === 'open' ? 'G-LAST ZU HOCH – SCHIRM REISST AN' : 'G-LAST ZU HOCH – LUFTWIDERSTAND';
     else if (sasMsg.until > s.t) { msg = sasMsg.text; color = 'var(--cyan)'; pulse = false; }
+    else if (s.uiMsg?.until > s.t) { msg = s.uiMsg.text; color = 'var(--cyan)'; pulse = false; }
     else if (s.t < 4 && s.settings?.site && s.settings.site !== 'plain') { const si = S.SITES[s.settings.site]; msg = `${si.icon} LANDEPLATZ: ${si.name.toUpperCase()}`; color = 'var(--cyan)'; pulse = false; }
     else if (s.cargoDamaged && s.t - (cargoAt ??= s.t) < 3) msg = `FRACHT BESCHÄDIGT (${s.cargoDamaged.toUpperCase()})`;
     else if (s.gNow > minLimit && s.throttle > 0) { msg = s.crew.length ? 'G-LAST: CREW LEIDET' : 'G-LAST: FRACHT IN GEFAHR – DROSSELN'; color = s.crew.length ? 'var(--warn)' : 'var(--bad)'; pulse = !s.crew.length; }

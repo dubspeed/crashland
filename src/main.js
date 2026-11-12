@@ -384,7 +384,7 @@ function showBase(base, target) {
   }
 }
 const _bq = new THREE.Quaternion(), _by = new THREE.Quaternion(), _bv = new THREE.Vector3();
-const FLY_T = 5; // s of base fly-over at a mission start
+const FLY_T = 7; // s per shot of the briefing (base, then lander)
 /** keep the base on the (curved, turning) planet and its labels on screen */
 function placeBase() {
   if (!baseGroup.children.length) return;
@@ -610,16 +610,17 @@ function start(p, ms) {
   cam.tgtD = 0; cam.intro = 0; cam.tgt = null; cam.pitch = 0;
   mode = 'flight';
   // base mission: a short fly-over of the base and the new target before the flight (tap or key skips it)
-  cam.fly = mission ? 0 : rescue ? -2 : null;
-  $('flyover').classList.remove('rescue'); // a rescue call: a little longer, to read it
+  cam.fly = mission || rescue ? 0 : null; cam.flyGo = false; // the briefing waits for its start button
+  setWarp(1);
+  $('flyover').classList.remove('rescue');
   if (mission) {
     const c = S.CARGO[mission.type], n = loadBase(p.id).modules.length;
-    $('flyover').innerHTML = `<b>Basis ${p.name.replace(' Orbit', '')}</b><span>${n ? `${n} Modul${n > 1 ? 'e' : ''} · ` : ''}Ziel: ${c.name}${mission.contract ? ` · neben ${S.CARGO[mission.contract.near].name}` : mission.ring && mission.ring !== 'center' ? ` · ${B.RINGS[mission.ring].name}` : ''}</span><small>Tippen zum Überspringen</small>`;
+    $('flyover').innerHTML = `<b>Basis ${p.name.replace(' Orbit', '')}</b><span>${n ? `${n} Modul${n > 1 ? 'e' : ''} · ` : ''}Ziel: ${c.name}${mission.contract ? ` · neben ${S.CARGO[mission.contract.near].name}` : mission.ring && mission.ring !== 'center' ? ` · ${B.RINGS[mission.ring].name}` : ''}</span><button id="fly-go" class="fly-go">Start <kbd>⏎</kbd></button>`;
   }
   if (rescue) {
     const sc = rescue.sc, lv = RS.LEVELS[sc.level];
     $('flyover').classList.add('rescue');
-    $('flyover').innerHTML = `<b>🆘 ${sc.title}</b><span class="story">${sc.story}</span><span>${sc.L.icon} ${sc.L.name} · ${sc.L.note} · ${lv.name}</span><small>Tippen zum Überspringen</small>`;
+    $('flyover').innerHTML = `<b>🆘 ${sc.title}</b><span class="story">${sc.story}</span><span>${sc.L.icon} ${sc.L.name} · ${sc.L.note} · ${lv.name}</span><button id="fly-go" class="fly-go">Start <kbd>⏎</kbd></button>`;
   }
   $('c-map').hidden = !p.orbit; toggleMap(false);
   $('menu').hidden = true; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = false;
@@ -824,12 +825,15 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyE') doAct('panels');
   if (e.code === 'KeyJ') doAct('shield');
   if (e.code === 'KeyC') toggleCom();
+  if (e.code === 'Period' || e.code === 'Comma') stepWarp(e.code === 'Period' ? (warp === 10 ? 0 : 1) : -1);
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => keys.clear());
 
 // any tap or key skips the base fly-over
-for (const ev of ['pointerdown', 'keydown']) addEventListener(ev, () => { if (cam.fly !== null && cam.fly !== undefined && cam.fly > 0.3) cam.fly = FLY_T + 1; }, true);
+// the briefing ends with its start button (or Enter / Space)
+for (const ev of ['pointerdown', 'click']) $('flyover').addEventListener(ev, (e) => { if (e.target.closest('#fly-go')) { e.preventDefault(); e.stopPropagation(); cam.flyGo = true; } });
+addEventListener('keydown', (e) => { if (cam.fly !== null && cam.fly !== undefined && cam.fly > 0.3 && (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space')) cam.flyGo = true; }, true);
 // iOS: long presses would still select text or open the copy / share menu (also on the canvas)
 const editable = (e) => e.target.closest?.('input, textarea, [contenteditable]');
 addEventListener('selectstart', (e) => { if (!editable(e)) e.preventDefault(); });
@@ -868,6 +872,37 @@ bindPointer($('c-rcs'), (e, r) => {
   touch.py = shape(((r.top + r.height / 2) - e.clientY) / (r.height / 2));
 }, () => { touch.px = 0; touch.py = 0; });
 function cycleSas() { doAct('sas'); }
+// ---------- time warp (2×, 3×, 10×): only while nothing needs the pilot ----------
+const WARPS = [1, 2, 3, 10];
+let warp = 1;
+/** a reason to leave the time warp, or null */
+function warpStop(w = warp) {
+  if (input.thrust || keys.has('Space')) return 'Schub';
+  const og = S.orbitGuide(s);
+  if (og && og.brakeIn < 6 * w) return og.deorbit ? 'Deorbit-Punkt' : 'Bremspunkt';
+  if (s.pred && s.pred.t < 8 * w) return 'Bodennähe';
+  if (s.planet.rho > 0 && s.chute === 'stowed' && S.hasPart(s, 'chute') && S.chuteSafe(s) && S.altitude(s) < S.CHUTE_MAX_ALT(s.planet)) return 'Fallschirm';
+  if (s.heatFlux > 15) return 'Hitze';
+  if (s.crew.some((c) => c.fainted > 0) || !s.powered) return 'Notfall';
+  return null;
+}
+function setWarp(k, why = '') {
+  warp = k;
+  const b = $('c-warp');
+  setLabel(b, `${k}×`, '.', `Zeitraffer ${k}× (antippen: schneller)`);
+  b.classList.toggle('on', k > 1);
+  if (why && s) s.uiMsg = { text: `ZEITRAFFER ${k > 1 ? `${k}×` : 'AUS'}: ${why.toUpperCase()}`, until: s.t + 2 }; // shown by the HUD (not part of the flight model)
+}
+/** the fastest warp up to k that nothing objects to */
+function safeWarp(k) { let w = k; while (w > 1 && warpStop(w)) w = WARPS[WARPS.indexOf(w) - 1]; return w; }
+/** next warp step; refused (stays 1×, with the reason) when something needs the pilot */
+function stepWarp(dir) {
+  if (mode !== 'flight' || s.status !== 'flying' || (cam.fly !== null && cam.fly !== undefined)) return;
+  const i = WARPS.indexOf(warp) + dir, k = dir > 0 ? WARPS[i % WARPS.length] : WARPS[Math.max(0, i)];
+  const ok = safeWarp(k);
+  setWarp(ok, ok < k ? warpStop(k) : '');
+}
+tap($('c-warp'), () => stepWarp(1));
 function toggleCom() { showCom = !showCom; ship.helpers.visible = showCom; $('c-com').classList.toggle('on', showCom); try { localStorage.setItem('crashland.com', showCom ? '1' : '0'); } catch { /* storage unavailable */ } }
 // switches fire on touch-down (iOS: the HUD swallows touches so nothing gets selected, see below);
 // a click without a pointer (keyboard: Enter / Space on a focused button) still works
@@ -929,6 +964,7 @@ $('icon-legend').innerHTML = [
   ['sas', '<b>Lageregler</b> wechseln (Modi siehe unten)', 'T'],
   ['view', '<b>Kamera</b>: hinter dem Lander oder Ziel-Ansicht', 'V'],
   ['map', '<b>Bahnkarte</b> (nur aus dem Orbit)', 'K'],
+  ['warp', '<b>Zeitraffer</b> 1× → 2× → 3× → 10×; geht von selbst zurück vor Bremspunkt, Boden, Hitze und Schirm', '. ,'],
 ].map(([ic, txt, key]) => `<dt><svg viewBox="0 0 24 24">${ICONS[ic]}</svg></dt><dd>${txt} <kbd class="key-only">${key}</kbd></dd>`).join('');
 setLabel($('c-com'), 'SP', 'C', 'Schwerpunkt anzeigen');
 // buttons never take keyboard focus: otherwise Space (thrust) or Enter would also "press" the last clicked button
@@ -1022,7 +1058,10 @@ renderer.setAnimationLoop(() => {
   if (mode === 'flight') {
     readInput(dt);
     // the flight waits while the base fly-over / rescue briefing runs
-    if (cam.fly === null || cam.fly === undefined) acc += (timeScale > 1 ? Math.min(raw, 0.25) : dt) * timeScale; // fast-forward (tests): more steps per frame
+    // time warp: more fixed steps per frame (the physics stays the same); it drops back to 1× by itself
+    if (warp > 1 && s.status === 'flying') { const why = warpStop(); if (why) setWarp(safeWarp(warp), why); }
+    const k = timeScale * warp;
+    if (cam.fly === null || cam.fly === undefined) acc += (k > 1 ? Math.min(raw, 0.25) : dt) * k; // fast-forward (tests): more steps per frame
     var stepsThisFrame = 0; // eslint-disable-line no-var
     while (acc >= STEP && s.status === 'flying') {
       stepsThisFrame++;
@@ -1145,15 +1184,16 @@ renderer.setAnimationLoop(() => {
     if (camera.view?.offsetY !== dy) camera.setViewOffset(innerWidth, innerHeight, 0, dy, innerWidth, innerHeight);
   } else if (camera.view?.enabled && !builder.active) camera.clearViewOffset();
   if (cam.fly !== null && cam.fly !== undefined && mode === 'flight') {
-    // fly-over: circle the base (the flight's origin) on the planet's local up, then hand over to the lander
+    // briefing: the camera circles the base, then the lander up in its orbit, and again, until Start
     cam.fly += dt;
-    const done = cam.fly > FLY_T;
+    const done = cam.flyGo;
     $('flyover').hidden = done; document.body.classList.toggle('flyover', !done);
     if (done) cam.fly = null;
     else {
-      world.toRender(0, S.terrainHeight(0, 0), 0, _bv, _bq);
-      const ang = 0.7 + cam.fly * 0.32, r = 62 - cam.fly * 3;
-      const off = new THREE.Vector3(Math.cos(ang) * r, 30 + cam.fly * 2, Math.sin(ang) * r).applyQuaternion(_bq);
+      const ph = cam.fly % (2 * FLY_T), onShip = ph >= FLY_T, u = onShip ? ph - FLY_T : ph;
+      if (onShip) world.toRender(s.x, s.y + 2.5, s.z, _bv, _bq); else world.toRender(0, S.terrainHeight(0, 0), 0, _bv, _bq);
+      const ang = 0.7 + u * 0.32 + (onShip ? 2 : 0), r = onShip ? 24 - u : 62 - u * 3;
+      const off = new THREE.Vector3(Math.cos(ang) * r, onShip ? 4 + u * 0.5 : 30 + u * 2, Math.sin(ang) * r).applyQuaternion(_bq);
       camera.position.copy(_bv).add(off);
       camera.up.set(0, 1, 0).applyQuaternion(_bq);
       lookAt.copy(_bv);
@@ -1172,4 +1212,5 @@ showMenu();
 
 // handle for automated tests
 window.__crashland = { renderer, camera, cam, get state() { return s; }, exportFlight: flightRecord, act: doAct,
+  go() { cam.flyGo = true; }, setWarp(k) { setWarp(k); }, get warp() { return warp; },
   setTimeScale(k) { timeScale = Math.max(1, Math.min(50, k)); }, setWind(i) { setWind(i); }, setSettings(o) { Object.assign(settings, o); }, get record() { return rec; }, startSeed(p, seed) { forceSeed = seed; start(p); }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANETS[0] : typeof i === 'string' ? S.ORBIT_PLANETS.find((p) => p.id === i) : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; }, get world() { return world; }, builder, ship };

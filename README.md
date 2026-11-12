@@ -253,3 +253,8 @@ A fourth start mode. Each planet has an emergency call: a lander that is not you
 - The orbit override and the fuel go into the round's settings (`settings.orbit`, `settings.fuelMult`), so replays stay exact. `tests/rescue.test.mjs` flies every offered combination with the test pilot; the few that run dry are in `SKIP`.
 - A successful rescue moves to the next call; 🎲 swaps the call. Points and stars plus a "Rettung" bonus; in the career a rescue premium (by difficulty and planet) goes to the account.
 - The flight now waits while the base fly-over or the rescue briefing runs (it used to eat orbit time).
+
+## Time warp and the mission briefing
+
+- **Time warp** (button under the switches, keys `.` / `,`): 1× → 2× → 3× → 10×. It only runs more of the same fixed 1/120 s steps per frame, so the physics and replays don't change. It steps down by itself to the fastest safe speed before the brake / deorbit point, near the ground (time to impact), when the chute can open, in heat, with thrust or in an emergency, and the HUD says why ("ZEITRAFFER 3×: BREMSPUNKT").
+- **Briefing waits for Start:** base and rescue missions open with the briefing at the bottom of the screen; the camera alternates between circling the base and circling the lander in its orbit until the Start button (or Enter / Space). The flight clock and the controls wait meanwhile.
