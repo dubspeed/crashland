@@ -94,6 +94,28 @@ const BUILD = {
     add(g, cyl(0.03, 0.03, 0.5, 5), metal(), 0.45, h / 2 - 0.25);
     add(g, new THREE.SphereGeometry(0.1, 8, 6), lamp(), 0.45, h / 2);
   },
+  module(g, h) { // supply module in orbit: pressurised can, docking ring on top, two small panels
+    add(g, cyl(0.9, 0.9, h - 0.6, 14), hull(), 0, -0.1);
+    add(g, cyl(0.92, 0.92, 0.25, 14), orange(), 0, 0.4);
+    add(g, cyl(0.45, 0.55, 0.35, 12), metal(), 0, h / 2 - 0.2);
+    add(g, cyl(0.6, 0.6, 0.12, 14), dark(), 0, -h / 2 + 0.3);
+    for (const s of [-1, 1]) add(g, box(2.2, 0.05, 0.9), cells(), s * 2.1, 0, 0, 0, 0, 0);
+    add(g, new THREE.SphereGeometry(0.1, 8, 6), lamp(), 0.7, h / 2 - 0.3, 0.5);
+  },
+  station(g) { // orbital station: core, habitat ring, docking node, four big solar wings
+    add(g, cyl(1.6, 1.6, 9, 16), hull(), 0, 0, 0, 0, 0, Math.PI / 2);
+    add(g, cyl(1.62, 1.62, 0.4, 16), orange(), 2.5, 0, 0, 0, 0, Math.PI / 2);
+    add(g, cyl(1.62, 1.62, 0.4, 16), orange(), -2.5, 0, 0, 0, 0, Math.PI / 2);
+    add(g, new THREE.TorusGeometry(5, 0.55, 8, 24), hull(), 0, 0, 0, 0, Math.PI / 2, 0);
+    for (let i = 0; i < 4; i++) add(g, cyl(0.12, 0.12, 5, 6), metal(), 0, Math.cos((i * Math.PI) / 2) * 2.5, Math.sin((i * Math.PI) / 2) * 2.5, (i * Math.PI) / 2, 0, 0);
+    add(g, new THREE.SphereGeometry(1.3, 12, 10), metal(), 5.2, 0, 0);
+    add(g, cyl(0.6, 0.6, 1.2, 12), dark(), 6.6, 0, 0, 0, 0, Math.PI / 2);
+    for (const s of [-1, 1]) {
+      add(g, cyl(0.1, 0.1, 6, 6), metal(), -3.5, 0, s * 3);
+      for (const k of [-1, 1]) add(g, box(3.6, 0.06, 9), cells(), -3.5 + k * 2, 0, s * 9);
+    }
+    add(g, new THREE.SphereGeometry(0.18, 8, 6), lamp(), 7.3, 0.6, 0);
+  },
   crew(g) { // the habitat dome the crew sets up (only stands in the base)
     add(g, new THREE.SphereGeometry(2.2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), hull(), 0, -1.1);
     add(g, cyl(2.25, 2.25, 0.25, 16), orange(), 0, -1.0);
@@ -105,7 +127,7 @@ const BUILD = {
 /** a cargo / module model; its origin is the centre of its height (h) */
 export function cargoModel(type, deployed = false) {
   const g = new THREE.Group();
-  const h = CARGO[type]?.h ?? 2.2;
+  const h = CARGO[type]?.h ?? { module: 3, station: 4 }[type] ?? 2.2;
   (BUILD[type] ?? BUILD.beacon)(g, h, deployed);
   g.userData.h = h;
   return g;

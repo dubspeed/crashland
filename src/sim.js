@@ -20,6 +20,9 @@ export const CREW = [
 ];
 export const WAKE = 0.55;
 export const BAT_CAP = 100;       // %
+// orbit levels: the sun's direction in the planet's frame (pad at +y, track along +x): the pad in morning light
+// (~53° high), the approach lit, the far side of the orbit in the night
+export const SUN = (() => { const v = [-0.45, 0.75, 0.35], l = Math.hypot(...v); return v.map((c) => c / l); })();
 export const FUEL_MAX = 600;     // kg capacity per tank (each mission loads planet.fuel in total)
 export const FOOT_X = 2.0;        // m, half span of landing legs
 // Touchdown window: upper bounds for grade 0 (sanft), 1 (hart), 2 (Fahrwerk beschädigt); above = crash.
@@ -163,13 +166,14 @@ export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) 
   setSite(set.site ?? 'plain'); // landing site (part of the settings, so replays get it)
   const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: (FUEL_LEVELS[set.fuel]?.k ?? 1) * (set.base?.fuel ?? 1) * (set.fuelMult ?? 1), build });
   s.settings = set;
+  if (set.target && planet.orbit) s.target = makeTarget(s, set.target);
   // base flights: the modules already there (obstacles) and what they give
   if (set.base) { s.obstacles = set.base.obstacles ?? []; s.spec.solarK *= set.base.solar ?? 1; }
   return s;
 }
 export const STEP = 1 / 120;
 export const SAS_DELAY = 1.5;
-export const SIDE_DONE = 0.3; // m/s: the orbit plane runs over the base (Seite is done)
+export const SIDE_DONE = 0.1; // m/s: the orbit plane runs over the base (Seite is done)
 export const UNEVEN_TIP = 2.5; // ground height difference under the feet (in units of the legs' range) that tips the lander over
 /** how uneven the ground is under the feet if the lander stood upright at (x, z): height spread of the four feet */
 export function groundSpread(s, x, z) {
@@ -187,7 +191,8 @@ export function act(s, name) {
     const from = s.sasPending !== undefined ? s.sasPending : s.sas;
     // Halten → Bremsen (retro) → Landen (retro2) → Aus → Halten ('up', vertical, is no longer offered)
     // orbit levels: Bremsen → Seite (swing the orbit plane over the base) → Landen
-    const next = (s.planet.orbit ? { hold: 'retro', retro: 'side', side: 'retro2', retro2: false, up: false } : { hold: 'retro', retro: 'retro2', retro2: false, up: false })[from] ?? 'hold';
+    const tgt = s.target?.dock && !s.target.docked; // a module to fetch: Bremsen → Ziel → Seite
+    const next = (s.planet.orbit ? { hold: 'retro', retro: tgt ? 'target' : 'side', target: 'side', side: 'retro2', retro2: false, up: false } : { hold: 'retro', retro: 'retro2', retro2: false, up: false })[from] ?? 'hold';
     if (s.t < 0.5) { s.sas = next; s.sasPending = undefined; s.holdA = s.a; s.holdB = s.b; }
     else { s.sasPending = next; s.sasAt = s.t + SAS_DELAY; }
   }
@@ -241,6 +246,99 @@ function curvature(p, y, vx, vy, vz, z = 0) {
 export function missOrbit(planet, sign = 1, dv = 18) {
   const v = orbitSpeed(planet, planet.alt), miss = Math.round(((dv / v) * planet.R) / 10) * 10;
   return { miss: sign * miss, downrange: Math.round(Math.max(planet.R * Math.PI * 0.62, (planet.deorbitAt ?? 0) + 6000)) };
+}
+/** orbit levels: daylight at a point (1 = sun, 0 = in the planet's shadow; a soft edge), from the cylinder of
+ *  shadow behind the planet. Default: the lander now. */
+export function daylight(s, x = s.x, y = s.y, z = s.z) {
+  if (!s.planet.orbit || !s.planet.R) return 1;
+  const { r } = inertial(s, x, y, z), d = r[0] * SUN[0] + r[1] * SUN[1] + r[2] * SUN[2];
+  if (d >= 0) return 1;
+  const perp = Math.hypot(r[0] - d * SUN[0], r[1] - d * SUN[1], r[2] - d * SUN[2]), R = s.planet.R;
+  const t = Math.min(1, Math.max(0, (perp - R * 0.985) / (R * 0.03)));
+  return t * t * (3 - 2 * t);
+}
+/** the sun in the lander's local frame (east, up, north) */
+export function sunLocal(s) {
+  if (!s.planet.orbit || !s.planet.R) return null;
+  const { E, U, N } = inertial(s), dot = (a) => a[0] * SUN[0] + a[1] * SUN[1] + a[2] * SUN[2];
+  return { x: dot(E), y: dot(U), z: dot(N) };
+}
+/** orbit levels: night ahead? on the current orbit (circular at this height and angular rate): in = in the
+ *  shadow now, change = seconds until that changes, night = how long the next / current night lasts */
+export function shadowInfo(s) {
+  if (!s.planet.orbit || !s.planet.R || s.status !== 'flying') return null;
+  if (s._si && s._si.n === s.stepN) return s._si.v; // asked several times per frame (HUD, time warp)
+  const v = shadowCalc(s);
+  s._si = { n: s.stepN, v };
+  return v;
+}
+function shadowCalc(s) {
+  const { r, v, U } = inertial(s), rl = Math.hypot(...r);
+  const vr = v[0] * U[0] + v[1] * U[1] + v[2] * U[2], vh = v.map((c, i) => c - vr * U[i]), vhl = Math.hypot(...vh);
+  if (vhl < 20) return null;
+  const T = vh.map((c) => c / vhl), om = vhl / rl, R = s.planet.R;
+  const lit = (th) => { const p = U.map((c, i) => (c * Math.cos(th) + T[i] * Math.sin(th)) * rl), d = p[0] * SUN[0] + p[1] * SUN[1] + p[2] * SUN[2];
+    return d >= 0 || Math.hypot(p[0] - d * SUN[0], p[1] - d * SUN[1], p[2] - d * SUN[2]) > R; };
+  const now = lit(0), st = (2 * Math.PI) / 360;
+  let i = 1; while (i < 360 && lit(i * st) === now) i++;
+  if (i >= 360) return { in: !now, change: Infinity, night: now ? 0 : Infinity };
+  let j = i + 1; while (j < i + 360 && lit(j * st) === lit(i * st)) j++;
+  return { in: !now, change: (i * st) / om, night: ((now ? j - i : i) * st) / om };
+}
+// ---------- objects in orbit: a station (you undock from it) or a module to dock and bring down ----------
+export const ORBIT_OBJECTS = { station: { name: 'Station', dock: false, size: 14 }, module: { name: 'Versorgungsmodul', dock: true, mass: 400, size: 3 } };
+export const DOCK_DIST = 10, DOCK_SPEED = 1.5; // m, m/s: close and slow enough, the module latches on
+/** a free-flying object `ahead` m along the lander's track, `up` m higher, on its own circular orbit */
+function makeTarget(s, t) {
+  const p = s.planet, hv = Math.hypot(s.vx, s.vz) || 1, ex = s.vx / hv, ez = s.vz / hv, k = p.R / (p.R + s.y);
+  const v = orbitSpeed(p, s.y + (t.up ?? 0));
+  const o = ORBIT_OBJECTS[t.type];
+  return { type: t.type, name: t.name ?? o.name, dock: o.dock, mass: o.mass ?? 0, size: o.size,
+    x: s.x + ex * (t.ahead ?? 0) * k, z: s.z + ez * (t.ahead ?? 0) * k, y: s.y + (t.up ?? 0), vx: ex * v, vy: 0, vz: ez * v };
+}
+/** the object coasts (no air: it stays above it) with the same equations as the lander */
+function coast(p, o, dt) {
+  const cv = curvature(p, o.y, o.vx, o.vy, o.vz, o.z);
+  o.vx += cv.ax * dt; o.vy -= cv.gy * dt; o.vz += cv.az * dt;
+  o.x += o.vx * cv.kx * dt; o.y += o.vy * dt; o.z += o.vz * cv.k * dt;
+  if (Math.abs(o.x) > Math.PI * p.R) o.x -= Math.sign(o.x) * 2 * Math.PI * p.R;
+}
+/** the target seen from the lander (local east / up / north): rel = where it is, d = distance, vrel = how fast
+ *  the lander moves relative to it, closing = speed toward it, dv = the speed change that brings the lander
+ *  to it (approach speed falls with the distance), dvMag */
+export function targetRel(s) {
+  const o = s.target;
+  if (!o || o.docked || !s.planet.orbit) return null;
+  const L = inertial(s), T = inertial(s, o.x, o.y, o.z, o.vx, o.vy, o.vz);
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const dr = T.r.map((c, i) => c - L.r[i]), d = Math.hypot(...dr);
+  // relative speed in the frame that turns with the orbit (two objects on one orbit are at rest there)
+  const rl2 = dot(L.r, L.r), om = [(L.r[1] * L.v[2] - L.r[2] * L.v[1]) / rl2, (L.r[2] * L.v[0] - L.r[0] * L.v[2]) / rl2, (L.r[0] * L.v[1] - L.r[1] * L.v[0]) / rl2];
+  const wx = [om[1] * dr[2] - om[2] * dr[1], om[2] * dr[0] - om[0] * dr[2], om[0] * dr[1] - om[1] * dr[0]];
+  const dvv = L.v.map((c, i) => c - T.v[i] + wx[i]);
+  const loc = (a) => ({ x: dot(a, L.E), y: dot(a, L.U), z: dot(a, L.N) });
+  const rel = loc(dr), vrel = loc(dvv), u = { x: rel.x / d, y: rel.y / d, z: rel.z / d };
+  const sp = d > DOCK_DIST * 0.6 ? Math.min(6, 0.6 + d / 40) : 0.3;
+  const dv = { x: u.x * sp - vrel.x, y: u.y * sp - vrel.y, z: u.z * sp - vrel.z };
+  return { rel, d, vrel, speed: Math.hypot(vrel.x, vrel.y, vrel.z), closing: vrel.x * u.x + vrel.y * u.y + vrel.z * u.z, dv, dvMag: Math.hypot(dv.x, dv.y, dv.z) };
+}
+/** attitude angles (a, b) that put the nose along unit vector D, the solution nearest the current attitude
+ *  (two solutions, plus full turns: picking the near one keeps the lander from spinning round) */
+function attTarget(s, D) {
+  const a1 = Math.asin(Math.max(-1, Math.min(1, -D.x))), b1 = Math.atan2(D.z, D.y);
+  let best = null, bd = Infinity;
+  for (const [a0, b0] of [[a1, b1], [Math.PI - a1, b1 + Math.PI]]) {
+    const a = a0 + 2 * Math.PI * Math.round((s.a - a0) / (2 * Math.PI)), b = b0 + 2 * Math.PI * Math.round((s.b - b0) / (2 * Math.PI));
+    const dd = Math.abs(a - s.a) + Math.abs(b - s.b);
+    if (dd < bd) { bd = dd; best = [a, b]; }
+  }
+  return best;
+}
+/** Seite / Ziel: the speed change the computer steers for (local east / up / north), or null */
+function maneuver(s) {
+  if (s.sas === 'side') { const tm = trackMiss(s); return tm ? { dv: tm.dv, mag: tm.dvMag, done: SIDE_DONE } : null; }
+  if (s.sas === 'target') { const tr = targetRel(s); return tr ? { dv: tr.dv, mag: tr.dvMag, done: 0.15 } : null; }
+  return null;
 }
 /** orbit levels: does the orbit pass over the base? miss = distance of the pad from the orbit plane (m, signed:
  *  + = the pad lies north, +z), dv = the sideways speed change (local east / up / north) that turns the plane
@@ -543,7 +641,7 @@ export function buildWarnings(build, planets, fuelK = 1, ref = DEFAULT_BUILD) {
   if (weak.length) out.push({ level: 'bad', text: `Triebwerk zu schwach für ${names(weak)}` });
   if (short.length) out.push({ level: 'warn', text: `Weniger Δv als der Standard-Lander: ${names(short)} wird knapp` });
   if (heavy.length) out.push({ level: 'warn', text: `Schwer für den Schirm: auf ${names(heavy)} schneller unten, mehr Bremsen nötig` });
-  const use = 0.55 + 0.25; // base load with attitude hold, %/s of the standard battery
+  const use = 0.3 + 0.15; // base load with attitude hold, %/s of the standard battery
   const mins = (BAT_CAP * spec.batK) / use / 60;
   if (!spec.solarK) out.push({ level: mins < 3 ? 'bad' : 'warn', text: `Kein Solar: Batterie reicht ~${String(Math.round(mins * 10) / 10).replace('.', ',')} min` });
   else if (spec.batK < 1 && spec.solarK < 1) out.push({ level: 'warn', text: 'Wenig Strom: kleine Batterie und kleine Paneele' });
@@ -700,6 +798,11 @@ export function massProps(s) {
     m += mass; mx += mass * px; my += mass * py; mz += mass * pz;
     return [mass, px, py];
   });
+  if (s.docked) { // a module docked on top of the capsule
+    const [px, py] = [0, s.docked.y];
+    m += s.docked.mass; mx += s.docked.mass * px; my += s.docked.mass * py;
+    parts.push([s.docked.mass, px, py]);
+  }
   const cx = mx / m, cy = my / m, cz = mz / m;
   let I = 0; // same inertia assumed about both tilt axes
   for (const [mass, px, py] of parts) I += mass * ((px - cx) ** 2 + (py - cy) ** 2 + 0.4);
@@ -986,6 +1089,13 @@ export function step(s, input, dt) {
   // --- engine ---
   let thr = input.thrust && !s.blackout ? s.limit : 0;
   if (!s.powered) thr = Math.min(thr, 0.6); // pumps off -> pressure-fed only
+  // Seite / Ziel: the computer doses the thrust: only once the nose points along the speed change, and only
+  // as much as is still missing (so holding the thrust button cannot overshoot)
+  const mv = thr > 0 && s.computerOK && p.orbit ? maneuver(s) : null;
+  if (mv) {
+    const u0 = upVector(s), al = mv.mag > 1e-6 ? (u0.x * mv.dv.x + u0.y * mv.dv.y + u0.z * mv.dv.z) / mv.mag : 0;
+    thr = mv.mag <= mv.done || al < 0.97 ? 0 : Math.min(thr, (mv.mag * massProps(s).m) / (s.spec.fMax * 0.6));
+  }
   if (fuel(s) <= 0) thr = 0;
   // deorbit fine control (thick-air orbit levels): high up, the computer throttles down as the predicted
   // touchdown nears the pad; 1 m/s there moves the landing point by a few hundred metres
@@ -1028,12 +1138,19 @@ export function step(s, input, dt) {
       if (v > 25 || Math.hypot(rA - s.a, rB - s.b) < 0.6) { tA = rA; tB = rB; }
     }
   }
+  if (s.sas === 'target' && p.orbit) {
+    // Ziel: the nose along the speed change that brings the lander to the module
+    const tr = targetRel(s);
+    if (tr && tr.dvMag > 0.15) { const l = tr.dvMag; [tA, tB] = attTarget(s, { x: tr.dv.x / l, y: tr.dv.y / l, z: tr.dv.z / l }); }
+    else { tA = s.a; tB = s.b; }
+    if (!tr && s.sasPending === undefined) s.sas = 'retro'; // docked (or gone): back to Bremsen
+  }
   if (s.sas === 'side' && p.orbit) {
     // Seite: the nose (thrust) along the sideways speed change that swings the orbit plane over the base
     const tm = trackMiss(s);
     if (tm && tm.dvMag > SIDE_DONE) {
       const l = tm.dvMag, D = { x: tm.dv.x / l, y: tm.dv.y / l, z: tm.dv.z / l };
-      tA = Math.asin(Math.max(-1, Math.min(1, -D.x))); tB = Math.atan2(D.z, D.y);
+      [tA, tB] = attTarget(s, D);
     } else { tA = s.a; tB = s.b; }
     // done (the orbit runs over the base) and the engine off: back to Bremsen by itself
     if ((!tm || tm.dvMag <= SIDE_DONE) && thr === 0 && s.sasPending === undefined) { s.sas = 'retro'; s.events.push({ type: 'sideDone', t: s.t }); }
@@ -1131,6 +1248,18 @@ export function step(s, input, dt) {
   s.x += s.vx * (cv ? cv.kx : 1) * dt;
   s.y += s.vy * dt;
   s.z += s.vz * (cv ? cv.k : 1) * dt;
+  // the object in orbit coasts; a module latches on when the lander is close and slow
+  if (s.target && !s.target.docked) {
+    coast(p, s.target, dt);
+    if (s.target.dock) {
+      const tr = targetRel(s);
+      if (tr && tr.d < DOCK_DIST && tr.speed < DOCK_SPEED) {
+        s.target.docked = true;
+        s.docked = { mass: s.target.mass, y: 6.4 };
+        s.events.push({ type: 'docked', t: s.t });
+      }
+    }
+  }
   // all the way around the planet: x is the arc from the pad, so it wraps at the far side (antipode)
   if (p.orbit && p.R && Math.abs(s.x) > Math.PI * p.R) { const dir = Math.sign(s.x); s.x -= dir * 2 * Math.PI * p.R; s.laps = (s.laps ?? 0) + dir; }
 
@@ -1154,12 +1283,19 @@ export function step(s, input, dt) {
 
   // --- power ---
   // base load: computer, radio, sensors, and life support with a crew (the uncrewed cargo core needs less)
-  const use = (s.spec.payload ? 0.25 : 0.55) + (s.sas ? 0.25 : 0) + 2.2 * rcsUse + 1.2 * thr;
+  const use = (s.spec.payload ? 0.15 : 0.3) + (s.sas ? 0.15 : 0) + 2.2 * rcsUse + 1.2 * thr;
   const gen = (s.spec.engineGen ?? 0) * thr; // alternator on the turbopump (strong engines)
   s.panelFold = Math.max(0, Math.min(1, s.panelFold + (s.panels === 'in' ? dt : -dt) / 1.2));
   const panels = (hasPart(s, 'solarL') ? 1 : 0) + (hasPart(s, 'solarR') ? 1 : 0);
   // orbit levels: above the air the sun shines fully; it dims to the planet's ground value with the air below
-  const sun = p.orbit && p.rho > 0 ? p.solar + (1 - p.solar) * (1 - Math.min(1, density(s) / p.rho)) : p.solar;
+  let sun = p.orbit && p.rho > 0 ? p.solar + (1 - p.solar) * (1 - Math.min(1, density(s) / p.rho)) : p.solar;
+  if (p.orbit) {
+    // orbit levels: none in the planet's shadow; the panels face where the nose points (some light either way)
+    s.daylight = daylight(s);
+    const sl = sunLocal(s), un = upVector(s), face = Math.max(0, un.x * sl.x + un.y * sl.y + un.z * sl.z);
+    s.sunFace = face;
+    sun *= s.daylight * (0.3 + 0.7 * face);
+  }
   s.solarNow = sun;
   const gain = 1.6 * sun * (panels / 2) * (1 - s.panelFold) * (s.spec.solarK ?? 1);
   s.battery = Math.max(0, Math.min(BAT_CAP, s.battery + ((gain + gen - use) / s.spec.batK) * dt)); // big pack: slower %

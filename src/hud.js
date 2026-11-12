@@ -12,6 +12,7 @@ const cls = (el, c) => { el.className = c || ''; };
 export const SAS_MODES = {
   hold: { name: 'Halten', badge: 'H', what: 'hält die Lage – das Steuerkreuz dreht den Lander' },
   retro: { name: 'Bremsen', badge: 'B', what: 'Triebwerk gegen die Flugrichtung – zum Bremsen aus dem Orbit' },
+  target: { name: 'Ziel', badge: 'Z', what: 'Nase so, dass der Lander zum Modul fliegt – Schub halten, der Computer dosiert; angedockt geht es zurück auf Bremsen' },
   side: { name: 'Seite', badge: 'S', what: 'Nase quer zur Bahn – Schub schwenkt die Bahn über die Basis, danach zurück auf Bremsen' },
   retro2: { name: 'Landen', badge: 'L', what: 'stoppt seitliche Drift von selbst – Steuerkreuz = wohin fliegen' },
   up: { name: 'Senkrecht', badge: '↑', what: 'hält den Lander gerade' },
@@ -37,6 +38,29 @@ export function setLabel(el, text, key, title, badge) {
   el.innerHTML = `${ic ? `<svg viewBox="0 0 24 24" aria-hidden="true">${ic}</svg>` : ''}${ic ? '' : `<span class="t">${text}</span>`}${badge ? `<b class="badge">${badge}</b>` : ''}${key ? `<kbd>${key}</kbd>` : ''}`;
   el.title = title ?? text;
   el.setAttribute('aria-label', title ?? text);
+}
+
+/** orbit levels: night side ahead or now, and does the battery last through it */
+function nightHint(s, hints) {
+  const si = S.shadowInfo(s);
+  if (!si || !isFinite(si.change)) return null;
+  const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
+  const drain = Math.max(1e-3, (s.powerUse ?? 0) - (s.powerGen ?? 0)), lasts = s.battery / drain;
+  const need = si.in ? si.change : si.night;
+  if (si.in && lasts < need) return { msg: `BATTERIE REICHT NICHT DURCH DIE NACHT (NOCH ${mmss(si.change)}) – LAGEREGLER AUS SPART STROM`, color: 'var(--warn)' };
+  if (!hints) return null;
+  if (si.in && si.change > 0 && s.t > 3) return { msg: `NACHTSEITE · KEIN SOLARSTROM · SONNE IN ${mmss(si.change)}`, color: 'var(--cyan)' };
+  if (!si.in && si.change < 25) return { msg: `NACHT IN ${Math.round(si.change)} s · DAUERT ${mmss(si.night)}${lasts < si.night ? ' · BATTERIE REICHT NICHT' : ''}`, color: lasts < si.night ? 'var(--warn)' : 'var(--cyan)' };
+  if (!si.in && s.battery < 60 && (s.sunFace ?? 1) < 0.4 && s.throttle === 0 && s.panels === 'out') return { msg: 'BATTERIE LADEN: NASE ZUR SONNE (☀ AUF DEM NAVBALL)', color: 'var(--cyan)' };
+  return null;
+}
+
+/** a module to fetch: how far, how fast, what to do */
+function targetHint(s) {
+  const tr = S.targetRel(s), m = (v) => fmt(v, 1);
+  if (tr.d < 40) return { msg: `ANDOCKEN: ${fmt(tr.d)} m · ${m(tr.speed)} m/s (≤ ${m(S.DOCK_SPEED)})`, color: tr.speed > S.DOCK_SPEED ? 'var(--warn)' : 'var(--ok)' };
+  if (s.sas !== 'target') return { msg: `${s.target.name.toUpperCase()} ${fmt(tr.d)} m · LAGEREGLER AUF ZIEL (Z)`, color: 'var(--amber)' };
+  return s.throttle > 0 ? { msg: `ZIEL · ${fmt(tr.d)} m · ${m(tr.closing)} m/s`, color: 'var(--cyan)' } : { msg: `ZIEL: SCHUB HALTEN – DER COMPUTER DOSIERT (${fmt(tr.d)} m)`, color: 'var(--cyan)' };
 }
 
 /** the orbit misses the base: what to do about it (null when it runs over the base, or it is too late) */
@@ -498,7 +522,7 @@ export function createHud() {
       const toast = $('sas-toast');
       toast.hidden = !pend;
       if (pend) {
-        const order = s.planet.orbit ? ['hold', 'retro', 'side', 'retro2', 'off'] : ['hold', 'retro', 'retro2', 'off'];
+        const order = s.planet.orbit ? ['hold', 'retro', ...(s.target?.dock && !s.target.docked ? ['target'] : []), 'side', 'retro2', 'off'] : ['hold', 'retro', 'retro2', 'off'];
         const html = order.map((k) => `<span class="${k === mode ? 'on' : ''}">${SAS_MODES[k].name}</span>`).join('');
         if (toast.dataset.m !== mode) { toast.dataset.m = mode; $('st-modes').innerHTML = html; $('st-desc').textContent = SAS_MODES[mode].what; }
         $('st-fill').style.width = `${Math.min(100, (1 - (s.sasAt - s.t) / S.SAS_DELAY) * 100)}%`;
@@ -562,6 +586,7 @@ export function createHud() {
       msg = (s.throttle > 0 ? 'BREMSEN … BIS DER SCHIRM GEHT' : 'FÜR DEN SCHIRM BREMSEN') + how;
       color = 'var(--amber)'; pulse = s.throttle === 0;
     }
+    else if (S.targetRel(s)) { const h = targetHint(s); msg = h.msg; color = h.color; pulse = false; }
     else if (hints && sideHint(s)) { const h = sideHint(s); msg = h.msg; color = h.color; pulse = false; }
     else if (hints && S.aeroState(s)) {
       // too high to land from: lower the low point into the air and let it brake over a few laps (time warp)
@@ -588,6 +613,7 @@ export function createHud() {
       const why = { over: 'HITZE VORBEI', safe: 'KEINE HITZEGEFAHR', vacuum: 'KEINE LUFT' }[S.shieldDropHint(s)];
       msg = `${why} – HITZESCHILD ABWERFEN (−${fmt(S.SHIELD.mass)} kg)`; color = 'var(--cyan)'; pulse = false;
     }
+    else if (nightHint(s, hints)) { const h = nightHint(s, hints); msg = h.msg; color = h.color; pulse = false; }
     else if (s.battery < 20) { msg = 'BATTERIE SCHWACH'; color = 'var(--warn)'; pulse = false; }
     else if (hints && s.panels === 'in' && (S.hasPart(s, 'solarL') || S.hasPart(s, 'solarR')) && s.heatFlux < 4 && s.battery < 45 && s.t > 6) { msg = 'PANEELE AUSKLAPPEN – BATTERIE LÄDT NICHT'; color = 'var(--cyan)'; pulse = false; }
     else if (hints && s.chute === 'stowed' && p.rho > 0 && alt > 120 && alt < S.CHUTE_MAX_ALT(p) && s.vy < -15 && s.t > 0.2 && !(s.powered && isFinite(d) && alt <= burnAlt)) {

@@ -71,7 +71,9 @@ for (const P of S.ORBIT_PLANETS) {
       assert.ok(Math.abs(Math.abs(tm.miss) - Math.abs(set.orbit.miss)) < 5, `miss ${tm.miss}`);
       assert.ok(tm.best > 5, 'the cheapest point is still ahead');
       const s = recordPilot(PP, 0, 5, makePilot(S, PP, { dropShield: 'hint' }), 1500, set, {}).s;
-      landedClean(s, P.id === 'brontes-orbit' ? 40 : 30, `${P.id} ${sign}`);
+      // (vacuum / thin air: the pilot does not steer in the last part, a player does with Landen)
+      landedClean(s, P.rho > 0.5 ? 40 : 100, `${P.id} ${sign}`);
+      assert.ok(Math.abs(S.trackMiss(s0) ? s.z : 0) < 60, `${P.id} ${sign}: ${s.z.toFixed(0)} m to the side`);
     }
   });
 }

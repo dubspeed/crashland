@@ -64,6 +64,15 @@ export function createOrbitMap(canvas) {
     pg.addColorStop(0, c1); pg.addColorStop(1, c2);
     ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(cx, cy, R * k, 0, Math.PI * 2); ctx.fill();
 
+    // night: the planet's shadow behind it (map plane: longitude around the pad), and where the sun is
+    {
+      const sx = S.SUN[0], sy = S.SUN[1], l = Math.hypot(sx, sy) || 1, ux = sx / l, uy = -sy / l, nx = -uy, ny = ux, L = rMax * 3 * k;
+      ctx.fillStyle = 'rgba(0,0,10,0.55)'; ctx.beginPath();
+      ctx.moveTo(cx + nx * R * k, cy + ny * R * k); ctx.lineTo(cx + nx * R * k - ux * L, cy + ny * R * k - uy * L);
+      ctx.lineTo(cx - nx * R * k - ux * L, cy - ny * R * k - uy * L); ctx.lineTo(cx - nx * R * k, cy - ny * R * k); ctx.closePath(); ctx.fill();
+      const sr = Math.min(A.right - cx, cx - A.left, (A.bottom - A.top) / 2) - 14, px2 = cx + ux * sr, py2 = cy + uy * sr;
+      ctx.fillStyle = '#fff3b0'; ctx.font = '16px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('☀', px2, py2 + 5);
+    }
     // pad
     const [px, py] = P(0, R);
     ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.arc(px, py, 4.5, 0, Math.PI * 2); ctx.fill();

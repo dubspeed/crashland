@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { terrainHeight, surfaceR, surfaceId, surfaceEdge } from './sim.js';
+import { terrainHeight, surfaceR, surfaceId, surfaceEdge, SUN } from './sim.js';
 import { createMoonTerrain } from './moon.js';
 
 function hash(x, z) {
@@ -24,11 +24,11 @@ export function createWorld(scene, models) {
   const sp = [];
   for (let i = 0; i < 1500; i++) {
     const v = new THREE.Vector3().randomDirection().multiplyScalar(4000);
-    v.y = Math.abs(v.y) * 0.9 + 100;
     sp.push(v.x, v.y, v.z);
   }
   starGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
   const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 2, sizeAttenuation: false, fog: false, transparent: true }));
+  stars.frustumCulled = false;
   scene.add(stars);
 
   // dust particles around the camera give a sense of speed
@@ -180,20 +180,16 @@ export function createWorld(scene, models) {
     const rockMat = rockMesh.material.clone();
     rockMat.color.set(p.ground2).lerp(new THREE.Color(0x888888), 0.35);
     const rocks = new THREE.InstancedMesh(rockMesh.geometry, rockMat, 220);
-    const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3();
-    let n = 0;
+    rockList = [];
     for (let i = 0; i < 220; i++) {
       const r = 24 + rnd(i) * 700, a = rnd(i + 100) * Math.PI * 2;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       if (Math.abs(z) < 6 && r < 60) continue;
       const k = 0.6 + rnd(i + 200) ** 2 * (r < 60 ? 1.5 : 9);
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd(i + 400) * 6);
-      sc.set(k, k * (0.7 + rnd(i + 300) * 0.6), k);
-      curvePoint(x, terrainHeight(x, z) - k * 0.15, z, ps);
-      if (curveR) q.premultiply(curveQuat(x, z, _q));
-      rocks.setMatrixAt(n++, mtx.compose(ps, q, sc));
+      rockList.push({ x, z, k, rot: rnd(i + 400) * 6, sy: 0.7 + rnd(i + 300) * 0.6 });
     }
-    rocks.count = n;
+    rocksMesh = rocks;
+    placeRocks();
     rocks.receiveShadow = true;
     ground.add(rocks);
     scene.add(ground);
@@ -208,6 +204,7 @@ export function createWorld(scene, models) {
     hemi.color.set(p.sky).lerp(new THREE.Color(0xffffff), 0.6);
     hemi.groundColor.set(p.ground2);
     hemi.intensity = surfaceR(p) ? 0.35 : p.stars ? 0.6 : 1.0;
+    hemiBase = hemi.intensity;
     sun.color.set(p.sun);
     stars.material.opacity = p.stars ? 1 : p.id.startsWith('brontes') ? 0.45 : 0;
     starBase = stars.material.opacity;
@@ -238,8 +235,14 @@ export function createWorld(scene, models) {
       if (ws > 0.3) sock.userData.yawTarget = -Math.atan2(wind.z, wind.x);
       sock.rotation.set(0, sock.userData.yawTarget ?? 0, 0.15 + k * 1.35 + Math.sin(t * 7) * 0.05 * k, 'YXZ');
     }
-    // orbit level: low sun (~20°) so the craters get lit rims and shadowed bowls
-    if (curveR) { const k = Math.max(1, focus.y / 60); sun.position.set(focus.x + 70 * k, focus.y + 32 * k, focus.z + 45 * k); }
+    // orbit level: the sun stands still in the planet's frame (sim SUN), so it moves across the sky as the
+    // lander flies round; in the planet's shadow it goes out (and the ambient light dims)
+    if (curveR && orbitSun) {
+      const k = Math.max(1, focus.y / 60);
+      _sd.set(SUN[0], SUN[1], SUN[2]); if (ground) _sd.applyQuaternion(ground.quaternion);
+      sun.position.copy(focus).addScaledVector(_sd, 89 * k);
+      sun.intensity = 2.4 * dayK; hemi.intensity = hemiBase * (0.3 + 0.7 * dayK);
+    } else if (curveR) { const k = Math.max(1, focus.y / 60); sun.position.set(focus.x + 70 * k, focus.y + 32 * k, focus.z + 45 * k); }
     else sun.position.set(focus.x + 30, focus.y + 60, focus.z + 25);
     sun.target.position.copy(focus);
     // the shadow box must reach the ground below a high lander, else its far end cuts straight edges into it
@@ -251,6 +254,10 @@ export function createWorld(scene, models) {
       sc.far = far; sc.left = sc.bottom = -half; sc.right = sc.top = half; sc.updateProjectionMatrix();
     }
     stars.position.copy(camera.position);
+    // all round (orbit: also below the horizon), fixed in space: they turn with the planet's frame
+    if (curveR && ground) stars.quaternion.copy(ground.quaternion); else stars.quaternion.identity();
+    // just inside the far plane, so the planet (nearer) always covers them, also its far limb from high up
+    stars.scale.setScalar((camera.far * 0.9) / 4000);
     sky.position.copy(camera.position);
     dust.visible = !curveR || camera.position.y < 400; // speed dust only near the ground, not in orbit
     // orbit level: pick the terrain tiles for this camera (camera in the moon's frame, from its centre)
@@ -301,7 +308,29 @@ export function createWorld(scene, models) {
     }
   }
 
-  /** landing site: the GPU relief follows the flight model's (S.setSite) */
-  function setSite(i) { moon?.setSite(i); }
-  return { setPlanet, setSite, update, align, toRender, setAir, stats: () => ({ tiles: moon ? moon.tiles() : 0 }) };
+  /** orbit levels: sun from the planet's frame, daylight 0..1 where the lander is (normal levels: off) */
+  let orbitSun = false, dayK = 1, hemiBase = 1;
+  const _sd = new THREE.Vector3();
+  function setSun(on, k = 1) { orbitSun = on; dayK = k; if (!on) { sun.intensity = 2.4; hemi.intensity = hemiBase; } }
+  /** rocks sit on the ground of the current landing site (crater walls, plateau, gorge): placed again on a
+   *  site change, after S.setSite, from the flight model's terrain */
+  let rockList = [], rocksMesh = null;
+  function placeRocks() {
+    if (!rocksMesh) return;
+    const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+    let n = 0;
+    for (const r of rockList) {
+      q.setFromAxisAngle(Y, r.rot);
+      sc.set(r.k, r.k * r.sy, r.k);
+      curvePoint(r.x, terrainHeight(r.x, r.z) - r.k * 0.15, r.z, ps);
+      if (curveR) q.premultiply(curveQuat(r.x, r.z, _q));
+      rocksMesh.setMatrixAt(n++, mtx.compose(ps, q, sc));
+    }
+    rocksMesh.count = n;
+    rocksMesh.instanceMatrix.needsUpdate = true;
+    rocksMesh.computeBoundingSphere?.();
+  }
+  /** landing site: the GPU relief follows the flight model's (S.setSite), the rocks too */
+  function setSite(i) { moon?.setSite(i); placeRocks(); }
+  return { setPlanet, setSite, setSun, update, align, toRender, setAir, stats: () => ({ tiles: moon ? moon.tiles() : 0 }) };
 }

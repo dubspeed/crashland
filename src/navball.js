@@ -90,9 +90,22 @@ export function createNavball(host) {
       ctx.globalAlpha = a; ctx.strokeStyle = TGT; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(x, y, R0 * 0.8 * a, 0, Math.PI * 2);
       ctx.moveTo(x, y - R0 * 1.4 * a); ctx.lineTo(x, y + R0 * 1.4 * a); ctx.moveTo(x - R0 * 1.4 * a, y); ctx.lineTo(x + R0 * 1.4 * a, y); ctx.stroke();
     });
+    // the sun (orbit levels): nose there = panels full on
+    const sl = S.sunLocal(s);
+    if (sl) mark(v3(sl.x, sl.y, sl.z), (x, y, a) => {
+      ctx.globalAlpha = a * ((s.daylight ?? 1) > 0.5 ? 1 : 0.45); ctx.strokeStyle = ctx.fillStyle = '#fff3b0'; ctx.lineWidth = lw * 0.8;
+      ctx.beginPath(); ctx.arc(x, y, R0 * 0.45 * a, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); for (let i = 0; i < 8; i++) { const an = (i * Math.PI) / 4; ctx.moveTo(x + Math.cos(an) * R0 * 0.75 * a, y + Math.sin(an) * R0 * 0.75 * a); ctx.lineTo(x + Math.cos(an) * R0 * 1.15 * a, y + Math.sin(an) * R0 * 1.15 * a); } ctx.stroke();
+    });
     // the side burn that swings the orbit over the base (cyan diamond): nose there + thrust
-    const tm = S.trackMiss(s);
-    if (tm && Math.abs(tm.miss) >= 40 && tm.dvMag > S.SIDE_DONE && tm.ahead * s.planet.R > 2500) mark(v3(tm.dv.x, tm.dv.y, tm.dv.z), (x, y, a) => {
+    // a module to fetch: where it is (orange ◎), and the diamond shows the approach burn instead
+    const tr = S.targetRel(s);
+    if (tr) mark(v3(tr.rel.x, tr.rel.y, tr.rel.z), (x, y, a) => {
+      ctx.globalAlpha = a; ctx.strokeStyle = ctx.fillStyle = '#ffb547'; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(x, y, R0 * 0.9 * a, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, lw * 1.2, 0, Math.PI * 2); ctx.fill();
+    });
+    const tm0 = S.trackMiss(s), tm = tr ? { dv: tr.dv, dvMag: tr.dvMag, miss: 1e9, ahead: 1e9 } : tm0;
+    if (tm && Math.abs(tm.miss) >= 40 && tm.dvMag > (tr ? 0.15 : S.SIDE_DONE) && tm.ahead * s.planet.R > 2500) mark(v3(tm.dv.x, tm.dv.y, tm.dv.z), (x, y, a) => {
       ctx.globalAlpha = a; ctx.strokeStyle = '#8fe3ff'; ctx.lineWidth = lw; const k = R0 * 1.1 * a;
       ctx.beginPath(); ctx.moveTo(x, y - k); ctx.lineTo(x + k, y); ctx.lineTo(x, y + k); ctx.lineTo(x - k, y); ctx.closePath(); ctx.stroke();
       ctx.beginPath(); ctx.arc(x, y, lw, 0, Math.PI * 2); ctx.fillStyle = '#8fe3ff'; ctx.fill();

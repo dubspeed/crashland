@@ -387,6 +387,40 @@ function showBase(base, target) {
 const _bq = new THREE.Quaternion(), _by = new THREE.Quaternion(), _bv = new THREE.Vector3();
 const FLY_T = 7; // s per shot of the briefing (base, then lander)
 /** keep the base on the (curved, turning) planet and its labels on screen */
+// ---------- objects in orbit (station, module) ----------
+let orbitObj = null, dockedObj = null;
+function showOrbitObject() {
+  if (orbitObj) { scene.remove(orbitObj.group); orbitObj.label.remove(); orbitObj = null; }
+  if (dockedObj) { dockedObj.parent?.remove(dockedObj); dockedObj = null; }
+  const o = s.target;
+  if (!o) return;
+  const group = cargoModel(o.type, true); scene.add(group);
+  const label = document.createElement('div'); label.className = 'blabel'; $('base-labels').append(label);
+  orbitObj = { group, label };
+}
+const _oq = new THREE.Quaternion(), _ov = new THREE.Vector3();
+function placeOrbitObject() {
+  const o = s.target;
+  if (!orbitObj || !o) return;
+  if (o.docked) {
+    // latched on top of the capsule
+    scene.remove(orbitObj.group); orbitObj.label.remove(); orbitObj = null;
+    dockedObj = cargoModel(o.type, true); dockedObj.position.y = s.docked.y + 0.2; ship.group.add(dockedObj);
+    return;
+  }
+  world.toRender(o.x, o.y, o.z, orbitObj.group.position, _oq);
+  orbitObj.group.quaternion.copy(_oq).multiply(_by.setFromAxisAngle(_bv.set(0, 1, 0), time * 0.05));
+  const tr = S.targetRel(s), el = orbitObj.label;
+  _ov.copy(orbitObj.group.position).addScaledVector(_bv.set(0, 1, 0).applyQuaternion(_oq), o.size * 0.7 + 2);
+  const dcam = _ov.distanceTo(camera.getWorldPosition(_bv));
+  _ov.project(camera);
+  const vis = mode === 'flight' && _ov.z < 1 && Math.abs(_ov.x) < 1 && Math.abs(_ov.y) < 1 && dcam < 6000;
+  el.hidden = !vis;
+  if (vis) {
+    el.innerHTML = `<b>${o.name}</b><small>${tr ? `${Math.round(tr.d)} m · ${tr.speed.toLocaleString('de-DE', { maximumFractionDigits: 1 })} m/s` : ''}</small>`;
+    el.style.transform = `translate(${((_ov.x * 0.5 + 0.5) * innerWidth).toFixed(0)}px, ${((-_ov.y * 0.5 + 0.5) * innerHeight).toFixed(0)}px)`;
+  }
+}
 function placeBase() {
   if (!baseGroup.children.length) return;
   camera.updateMatrixWorld();
@@ -597,7 +631,7 @@ function start(p, ms) {
     const base = loadBase(p.id), sc = rescue.sc;
     flightBuild = sc.build;
     const obstacles = base.modules.map((m) => ({ x: +(m.x - rescue.target[0]).toFixed(2), z: +(m.z - rescue.target[1]).toFixed(2), r: S.CARGO[m.type].r, name: S.CARGO[m.type].name }));
-    flightSettings = { ...settings, orbit: sc.orbitSet, fuelMult: sc.fuelK, base: { obstacles } };
+    flightSettings = { ...settings, orbit: sc.orbitSet, fuelMult: sc.fuelK, base: { obstacles }, ...(sc.target ? { target: sc.target } : {}) };
     showBase(base, rescue.target);
   } else showBase(null);
   // landing site: a base keeps its own, free flights get one from the seed (it is in the settings, so replays have it)
@@ -606,6 +640,7 @@ function start(p, ms) {
   s = S.newRound(planet, windLevel, seed, flightSettings, flightBuild);
   world.setSite(S.SITE_IDS.indexOf(site));
   ship.reset(s.spec);
+  showOrbitObject();
   rec = { v: 1, planet: planet.id, wind: windLevel, seed, settings: { ...flightSettings }, build: { ...flightBuild }, ev: [] };
   lastRec = { thrust: false, rcs: 0, rcsZ: 0, limit: s.limit };
   hud.reset();
@@ -697,7 +732,7 @@ function finish() {
     }
   }
   if (rescue) {
-    rescue.result = !ok ? 'lost' : Math.hypot(s.x, s.z) > BASE_REACH ? 'far' : 'saved';
+    rescue.result = !ok ? 'lost' : Math.hypot(s.x, s.z) > BASE_REACH ? 'far' : rescue.sc.O.module && !s.target?.docked ? 'nomodule' : 'saved';
     if (rescue.result === 'saved') {
       nextRescue(rescue.planetId); // the next call
       if (career()) {
@@ -722,7 +757,7 @@ function showResult() {
   const siteInfo = S.SITES[s.settings?.site ?? 'plain'];
   $('r-kicker').textContent = `${planet.name} · ${siteInfo.icon} ${siteInfo.name}${s.wind.speed && planet.rho > 0 ? ` · Wind ${s.wind.name}` : ''}${Math.abs(bonus - 1) > 0.001 ? ` · Bonus ×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}` : ''}`;
   const g = s.touch.grade, crash = s.touch.crash;
-  $('r-title').textContent = rescue && ok ? (rescue.result === 'saved' ? (rescue.sc.L.agency ? 'Lander geborgen' : 'Crew gerettet') : 'Basis verfehlt')
+  $('r-title').textContent = rescue && ok ? (rescue.result === 'saved' ? (rescue.sc.O.module ? 'Modul geborgen' : rescue.sc.L.agency ? 'Lander geborgen' : 'Crew gerettet') : rescue.result === 'nomodule' ? 'Ohne Modul' : 'Basis verfehlt')
     : mission && !S.CARGO[mission.type].crew
     ? { intact: 'Fracht abgesetzt', damaged: 'Fracht beschädigt', far: 'Zu weit weg', lost: 'Fracht verloren' }[mission.result]
     : ok ? ['Butterweich gelandet', 'Gelandet', 'Harte Landung'][g]
@@ -777,6 +812,7 @@ function showResult() {
     if (rescue.result === 'saved') notes.push([`✓ ${sc.title} · ${RS.LEVELS[sc.level].name}`, 'ok']);
     if (rescue.pay) notes.push([`💰 +${E.cr(rescue.pay.fee)} Rettungsprämie${rescue.pay.repay ? ` (−${E.cr(rescue.pay.repay)} Kredit)` : ''} · ${E.cr(rescue.pay.money)}`, 'ok']);
     if (rescue.result === 'far') notes.push([`⚠ mehr als ${BASE_REACH} m von der Basis`, 'warn']);
+    if (rescue.result === 'nomodule') notes.push(['⚠ Modul nicht angedockt', 'warn']);
   }
   // money: one figure on the result, the breakdown in its own window
   let money = '';
@@ -884,6 +920,7 @@ function warpStop(w = warp) {
   const tm = S.trackMiss(s);
   if (tm && Math.abs(tm.miss) > 40 && tm.ahead * s.planet.R > 2500 && tm.best < 6 * w && tm.best > -10) return 'Seitenmanöver';
   if (s.sas === 'side') return 'Seite';
+  if (s.sas === 'target' || (S.targetRel(s)?.d ?? Infinity) < 1500) return 'Annäherung';
   const og = S.aeroState(s) ? null : S.orbitGuide(s); // aerobraking: the pad passes every lap, no reason to stop
   if (og && og.brakeIn < 6 * w) return og.deorbit ? 'Deorbit-Punkt' : 'Bremspunkt';
   if (s.pred && s.pred.t < 8 * w) return 'Bodennähe';
@@ -1089,6 +1126,7 @@ renderer.setAnimationLoop(() => {
         const pos = ship.blowOff(ev.id, s);
         if (pos) { debris.burst(pos); cam.shake = Math.max(cam.shake, 0.35); }
       }
+      if (ev.type === 'docked') s.uiMsg = { text: `MODUL ANGEDOCKT · +${s.docked.mass} KG · ZURÜCK AUF BREMSEN`, until: s.t + 4 };
       if (ev.type === 'sideDone') s.uiMsg = { text: 'BAHN ÜBER DER BASIS · LAGEREGLER: BREMSEN', until: s.t + 3 };
       if (ev.type === 'drop') { ship.drop(ev.id, s); cam.shake = Math.max(cam.shake, 0.12); } // pyro bolts: a short jolt
     }
@@ -1111,6 +1149,7 @@ renderer.setAnimationLoop(() => {
   }
   debris.update(dt);
   if (mode !== 'menu') { hud.update(s, input, cam.yaw); navball.draw(s, cam.yaw); }
+  world.setSun(!!planet.orbit && mode !== 'menu', s.daylight ?? 1);
 
   // orbit level: turn the moon under the lander (frozen once it is down, so debris and wreck stay put)
   const sphere = S.surfaceR(planet) > 0;
@@ -1214,7 +1253,7 @@ renderer.setAnimationLoop(() => {
     }
   }
   camera.lookAt(lookAt);
-  placeShipMark(); placePredMark(); placeBase();
+  placeShipMark(); placePredMark(); placeBase(); placeOrbitObject();
   if (mode === 'flight') orbitMap.draw(s);
   world.update(camera, focus, time, mode === 'menu' ? { x: 0, z: 0 } : { x: s.windX, z: s.windZ }, dt);
   renderer.render(scene, camera);
@@ -1226,5 +1265,5 @@ showMenu();
 
 // handle for automated tests
 window.__crashland = { renderer, camera, cam, get state() { return s; }, exportFlight: flightRecord, act: doAct,
-  go() { cam.flyGo = true; }, setWarp(k) { setWarp(k); }, get warp() { return warp; },
+  go() { cam.flyGo = true; }, get orbitObj() { return orbitObj; }, setWarp(k) { setWarp(k); }, get warp() { return warp; },
   setTimeScale(k) { timeScale = Math.max(1, Math.min(50, k)); }, setWind(i) { setWind(i); }, setSettings(o) { Object.assign(settings, o); }, get record() { return rec; }, startSeed(p, seed) { forceSeed = seed; start(p); }, start: (i) => start(i === 'orbit' ? S.ORBIT_PLANETS[0] : typeof i === 'string' ? S.ORBIT_PLANETS.find((p) => p.id === i) : S.PLANETS[i]), input, S, get mode() { return mode; }, setAutopilot(f) { autopilot = f; }, get world() { return world; }, builder, ship };

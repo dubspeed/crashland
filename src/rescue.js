@@ -9,7 +9,7 @@ export const LANDERS = {
   shuttle: { name: 'Fähre Pelikan', icon: '🚀', d: 0, fuelK: 1,
     build: { capsule: 'hab', engine: 'std', tanks: 'large', solar: 'std', battery: 'std', chute: 'std', shield: 'light', legs: 'wide' }, note: '4 Plätze, breite Beine' },
   kestrel: { name: 'Kestrel', agency: 'Agentur Nordlicht', icon: '🦅', d: 1, fuelK: 1,
-    build: { capsule: 'duo', engine: 'mini', tanks: 'large', solar: 'small', battery: 'std', chute: 'small', shield: 'none', legs: 'light' }, note: 'leicht, schwaches Triebwerk, empfindliche Beine' },
+    build: { capsule: 'duo', engine: 'mini', tanks: 'large', solar: 'std', battery: 'std', chute: 'small', shield: 'none', legs: 'light' }, note: 'leicht, schwaches Triebwerk, empfindliche Beine' },
   brick: { name: 'Bulldog', agency: 'Orion Mining', icon: '🚜', d: 1, fuelK: 1,
     build: { capsule: 'armored', engine: 'strong', tanks: 'large', solar: 'small', battery: 'large', chute: 'large', shield: 'light', legs: 'heavy' }, note: 'schwer und stark, kleine Paneele' },
   leaky: { name: 'Albatros', agency: 'Union Spatiale', icon: '💧', d: 2, fuelK: 0.8,
@@ -26,7 +26,15 @@ export const ORBITS = {
   // planets with air: arriving on a long ellipse whose low point grazes the air; each pass brakes a little
   // (aerobraking, a few laps with the time warp) - or burn the whole way down with the engine
   aero: { name: 'Einfangbahn', d: 1, aero: true },
+  // a supply module drifts ahead in the orbit: dock it (attitude mode Ziel), then bring both down
+  module: { name: 'Modul im Orbit', d: 1, alt: 1.2, dr: 1.6, module: true },
 };
+/** the object in orbit for a scenario (settings.target): the station you undock from, or the module to fetch */
+export function targetFor(id, name) {
+  if (id === 'station') return { type: 'station', ahead: 32, up: 3, name };
+  if (id === 'module') return { type: 'module', ahead: 380, up: 30 };
+  return null;
+}
 /** aerobraking orbits: [high point, low point] in m above the ground (2-4 passes; planet.aero.land: low enough to land) */
 export const AERO = { 'mars-orbit': [6500, 4300], 'terra-orbit': [20000, 7000], 'brontes-orbit': [22000, 8200] };
 const STATIONS = ['Kepler', 'Halley', 'Vega', 'Tycho'];
@@ -39,13 +47,15 @@ export function orbitFor(planet, id, sign = 1) {
   const out = { alt: Math.round(planet.alt * o.alt), downrange: Math.round(planet.downrange * o.dr) };
   if (planet.deorbitAt) out.deorbitAt = Math.round(planet.deorbitAt * Math.min(o.dr, 1 + (o.alt - 1) * 0.5));
   if (o.vK) out.vK = o.vK;
+  // the module: docking takes a couple of minutes, all of it before the braking point
+  if (o.module) out.downrange = Math.round(Math.max(out.downrange, 0.85 * Math.PI * planet.R, (out.deorbitAt ?? 0) + 8000));
   // (not where the deorbit point is so far out that there is no room for the side burn before it: Brontes, high)
   if (o.miss && (out.deorbitAt ?? 0) + 6000 < 0.9 * Math.PI * planet.R) Object.assign(out, S.missOrbit({ ...planet, alt: out.alt, deorbitAt: out.deorbitAt }, sign, 12));
   return out;
 }
 
 /** every combination a planet offers (the test pilot lands each one; SKIP: the ones that run dry) */
-export const SKIP = new Set(['terra-orbit:leaky:late', 'brontes-orbit:shuttle:late', 'brontes-orbit:brick:late', 'brontes-orbit:leaky:late', 'luna-orbit:brick:station']);
+export const SKIP = new Set(['terra-orbit:leaky:late', 'brontes-orbit:shuttle:late', 'brontes-orbit:brick:late', 'brontes-orbit:leaky:late', 'luna-orbit:brick:station', 'terra-orbit:leaky:module', 'brontes-orbit:leaky:module']);
 export function combos(planetId) {
   const out = [];
   for (const l of Object.keys(LANDERS)) for (const o of Object.keys(ORBITS)) if (!SKIP.has(`${planetId}:${l}:${o}`) && (!ORBITS[o].aero || AERO[planetId])) out.push([l, o]);
@@ -62,11 +72,12 @@ export function scenario(planet, n) {
   const [lid, oid] = list[Math.floor(r() * list.length)];
   const L = LANDERS[lid], O = ORBITS[oid], d = L.d + O.d, level = d <= 1 ? 0 : d <= 2 ? 1 : 2;
   const where = O.station ? `Station ${STATIONS[Math.floor(r() * STATIONS.length)]}` : O.name;
-  const story = O.aero && !L.agency ? `Die ${L.name} kommt aus dem All und streift die Atmosphäre. Brems sie über ein paar Runden in der Luft ab (Zeitraffer) und lande an der Basis.`
+  const story = O.module ? `Ein Versorgungsmodul (${S.ORBIT_OBJECTS.module.mass} kg) treibt 380 m vor der ${L.name}. Lageregler auf Ziel, Schub halten bis es andockt, dann ab zur Basis.`
+    : O.aero && !L.agency ? `Die ${L.name} kommt aus dem All und streift die Atmosphäre. Brems sie über ein paar Runden in der Luft ab (Zeitraffer) und lande an der Basis.`
     : L.agency
     ? `${L.agency} hat den Kontakt zu ihrem Lander ${L.name} verloren (${where}). Übernimm per Fernsteuerung und bring ihn zu unserer Basis.`
     : O.station ? `Die Crew der ${where} muss evakuiert werden. Die ${L.name} dockt ab, bring sie zur Basis.`
       : `Eine Crew sitzt im ${O.name} fest. Hol sie mit der ${L.name} runter zur Basis.`;
-  return { n, lander: lid, orbit: oid, L, O, d, level, where, story, title: L.agency ? `${L.name} bergen` : O.station ? 'Station evakuieren' : 'Crew abholen',
-    build: S.normalizeBuild(L.build), fuelK: L.fuelK, orbitSet: orbitFor(planet, oid, r() < 0.5 ? 1 : -1), pay: 1 + d * 0.35 };
+  return { n, lander: lid, orbit: oid, L, O, d, level, where, story, title: O.module ? 'Modul bergen' : L.agency ? `${L.name} bergen` : O.station ? 'Station evakuieren' : 'Crew abholen',
+    build: S.normalizeBuild(L.build), fuelK: L.fuelK, orbitSet: orbitFor(planet, oid, r() < 0.5 ? 1 : -1), target: targetFor(oid, where), pay: 1 + d * 0.35 };
 }

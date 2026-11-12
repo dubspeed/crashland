@@ -52,6 +52,12 @@ export function makePilot(S, P, opt = {}) {
     const chute = opt.chute !== false && s.spec.ids.has('chute'); // a lander built without one
     let thrust = false;
     // when to brake: the HUD cue (vacuum / thin air) or the deorbit point (thick air)
+    // a module to fetch: Ziel (Bremsen -> Ziel), hold the thrust (the computer doses it) until it docks; the
+    // mode goes back to Bremsen by itself
+    if (mem.phase === 'wait' && s.target?.dock && !s.target.docked) {
+      if (!mem.tgt) { mem.tgt = true; act('sas'); }
+      return { thrust: s.sas === 'target', rcs: 0, rcsZ: 0 };
+    }
     // the orbit misses the base: at the cheapest point (a quarter orbit before it) switch to Seite and burn
     // until the plane runs over the base; Seite then hands back to Bremsen by itself
     const tm = opt.fixPlane === false ? null : S.trackMiss(s);

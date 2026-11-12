@@ -10,13 +10,14 @@ import { recordPilot, replay, summary } from './replay-lib.mjs';
 for (const P of S.ORBIT_PLANETS) {
   test(`rescue on ${P.id}: every offered lander and orbit lands`, () => {
     for (const [l, o] of R.combos(P.id)) {
-      const L = R.LANDERS[l], set = { orbit: R.orbitFor(P, o), fuelMult: L.fuelK, site: B.BASE_SITES[P.id] }, PP = { ...P, ...set.orbit };
+      const L = R.LANDERS[l], set = { orbit: R.orbitFor(P, o), fuelMult: L.fuelK, site: B.BASE_SITES[P.id], target: R.targetFor(o) }, PP = { ...P, ...set.orbit };
       const { s } = recordPilot(PP, 0, 5, makePilot(S, PP, { dropShield: 'hint', apMax: R.ORBITS[o].aero ? P.aero.land : 0 }), 4000, set, L.build);
       const label = `${P.id} ${l} ${o}`;
       assert.equal(s.status, 'landed', `${label}: ${s.reason}`);
       assert.ok(Math.hypot(s.x, s.z) < 150, `${label}: ${Math.hypot(s.x, s.z).toFixed(0)} m off`);
       assert.equal(Object.keys(s.lost).length, 0, `${label}: lost ${Object.keys(s.lost)}`);
       assert.ok(S.fuel(s) > 5, `${label}: dry`);
+      if (R.ORBITS[o].module) assert.ok(s.target.docked, `${label}: module not docked`);
     }
   });
 }
