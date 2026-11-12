@@ -256,7 +256,7 @@ A fourth start mode. Each planet has an emergency call: a lander that is not you
 
 ## Time warp and the mission briefing
 
-- **Time warp** (button under the switches, keys `.` / `,`): 1× → 2× → 3× → 10×. It only runs more of the same fixed 1/120 s steps per frame, so the physics and replays don't change. It steps down by itself to the fastest safe speed before the brake / deorbit point, near the ground (time to impact), when the chute can open, in heat, with thrust or in an emergency, and the HUD says why ("ZEITRAFFER 3×: BREMSPUNKT").
+- **Time warp** (button under the switches, keys `.` / `,`): 1× → 2× → 3× → 10×. It only runs more of the same fixed 1/120 s steps per frame, so the physics and replays don't change. It never refuses and never slows down on its own (the player decides); only thrust drops it back to 1×.
 - **Briefing waits for Start:** base and rescue missions open with the briefing at the bottom of the screen; the camera alternates between circling the base and circling the lander in its orbit until the Start button (or Enter / Space). The flight clock and the controls wait meanwhile.
 
 ## Laps, aerobraking and the navball

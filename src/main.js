@@ -915,18 +915,9 @@ function cycleSas() { doAct('sas'); }
 const WARPS = [1, 2, 3, 10];
 let warp = 1;
 /** a reason to leave the time warp, or null */
-function warpStop(w = warp) {
+// the player decides: any speed, any time; only thrust drops it back to 1× (a burn at 10× can't be steered)
+function warpStop() {
   if (input.thrust || keys.has('Space')) return 'Schub';
-  const tm = S.trackMiss(s);
-  if (tm && Math.abs(tm.miss) > 40 && tm.ahead * s.planet.R > 2500 && tm.best < 6 * w && tm.best > -10) return 'Seitenmanöver';
-  if (s.sas === 'side') return 'Seite';
-  if (s.sas === 'target' || (S.targetRel(s)?.d ?? Infinity) < 1500) return 'Annäherung';
-  const og = S.aeroState(s) ? null : S.orbitGuide(s); // aerobraking: the pad passes every lap, no reason to stop
-  if (og && og.brakeIn < 6 * w) return og.deorbit ? 'Deorbit-Punkt' : 'Bremspunkt';
-  if (s.pred && s.pred.t < 8 * w) return 'Bodennähe';
-  if (s.planet.rho > 0 && s.chute === 'stowed' && S.hasPart(s, 'chute') && S.chuteSafe(s) && S.altitude(s) < S.CHUTE_MAX_ALT(s.planet)) return 'Fallschirm';
-  if (s.heatFlux > 15) return 'Hitze';
-  if (s.crew.some((c) => c.fainted > 0) || !s.powered) return 'Notfall';
   return null;
 }
 function setWarp(k, why = '') {
@@ -1007,7 +998,7 @@ $('icon-legend').innerHTML = [
   ['sas', '<b>Lageregler</b> wechseln (Modi siehe unten)', 'T'],
   ['view', '<b>Kamera</b>: hinter dem Lander oder Ziel-Ansicht', 'V'],
   ['map', '<b>Bahnkarte</b> (nur aus dem Orbit)', 'K'],
-  ['warp', '<b>Zeitraffer</b> 1× → 2× → 3× → 10×; geht von selbst zurück vor Bremspunkt, Boden, Hitze und Schirm', '. ,'],
+  ['warp', '<b>Zeitraffer</b> 1× → 2× → 3× → 10×; Schub schaltet zurück auf 1×', '. ,'],
 ].map(([ic, txt, key]) => `<dt><svg viewBox="0 0 24 24">${ICONS[ic]}</svg></dt><dd>${txt} <kbd class="key-only">${key}</kbd></dd>`).join('');
 setLabel($('c-com'), 'SP', 'C', 'Schwerpunkt anzeigen');
 // buttons never take keyboard focus: otherwise Space (thrust) or Enter would also "press" the last clicked button
