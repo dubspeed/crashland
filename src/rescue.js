@@ -22,13 +22,19 @@ export const ORBITS = {
   high: { name: 'Hoher Orbit', d: 1, alt: 2.2, dr: 1.6 },
   late: { name: 'Spät abgedockt', d: 2, alt: 1, dr: 0.65 },
   falling: { name: 'Absturzbahn', d: 2, alt: 1.3, dr: 0.9, vK: 0.97 },
+  // planets with air: arriving on a long ellipse whose low point grazes the air; each pass brakes a little
+  // (aerobraking, a few laps with the time warp) - or burn the whole way down with the engine
+  aero: { name: 'Einfangbahn', d: 1, aero: true },
 };
+/** aerobraking orbits: [high point, low point] in m above the ground (2-4 passes; planet.aero.land: low enough to land) */
+export const AERO = { 'mars-orbit': [6500, 4300], 'terra-orbit': [20000, 7000], 'brontes-orbit': [22000, 8200] };
 const STATIONS = ['Kepler', 'Halley', 'Vega', 'Tycho'];
 export const LEVELS = [{ name: 'Leicht', cls: 'ok' }, { name: 'Mittel', cls: 'warn' }, { name: 'Schwer', cls: 'bad' }];
 
 /** the orbit override (settings.orbit) for a planet */
 export function orbitFor(planet, id) {
   const o = ORBITS[id];
+  if (o.aero) return { alt: AERO[planet.id][0], pe: AERO[planet.id][1], downrange: planet.downrange, ...(planet.deorbitAt ? { deorbitAt: planet.deorbitAt } : {}) };
   const out = { alt: Math.round(planet.alt * o.alt), downrange: Math.round(planet.downrange * o.dr) };
   if (planet.deorbitAt) out.deorbitAt = Math.round(planet.deorbitAt * Math.min(o.dr, 1 + (o.alt - 1) * 0.5));
   if (o.vK) out.vK = o.vK;
@@ -39,7 +45,7 @@ export function orbitFor(planet, id) {
 export const SKIP = new Set(['terra-orbit:leaky:late', 'brontes-orbit:shuttle:late', 'brontes-orbit:brick:late', 'brontes-orbit:leaky:late', 'luna-orbit:brick:station']);
 export function combos(planetId) {
   const out = [];
-  for (const l of Object.keys(LANDERS)) for (const o of Object.keys(ORBITS)) if (!SKIP.has(`${planetId}:${l}:${o}`)) out.push([l, o]);
+  for (const l of Object.keys(LANDERS)) for (const o of Object.keys(ORBITS)) if (!SKIP.has(`${planetId}:${l}:${o}`) && (!ORBITS[o].aero || AERO[planetId])) out.push([l, o]);
   return out;
 }
 
@@ -53,7 +59,8 @@ export function scenario(planet, n) {
   const [lid, oid] = list[Math.floor(r() * list.length)];
   const L = LANDERS[lid], O = ORBITS[oid], d = L.d + O.d, level = d <= 1 ? 0 : d <= 2 ? 1 : 2;
   const where = O.station ? `Station ${STATIONS[Math.floor(r() * STATIONS.length)]}` : O.name;
-  const story = L.agency
+  const story = O.aero && !L.agency ? `Die ${L.name} kommt aus dem All und streift die Atmosphäre. Brems sie über ein paar Runden in der Luft ab (Zeitraffer) und lande an der Basis.`
+    : L.agency
     ? `${L.agency} hat den Kontakt zu ihrem Lander ${L.name} verloren (${where}). Übernimm per Fernsteuerung und bring ihn zu unserer Basis.`
     : O.station ? `Die Crew der ${where} muss evakuiert werden. Die ${L.name} dockt ab, bring sie zur Basis.`
       : `Eine Crew sitzt im ${O.name} fest. Hol sie mit der ${L.name} runter zur Basis.`;

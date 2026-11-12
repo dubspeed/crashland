@@ -549,6 +549,13 @@ export function createHud() {
       msg = (s.throttle > 0 ? 'BREMSEN … BIS DER SCHIRM GEHT' : 'FÜR DEN SCHIRM BREMSEN') + how;
       color = 'var(--amber)'; pulse = s.throttle === 0;
     }
+    else if (hints && S.aeroState(s)) {
+      // too high to land from: lower the low point into the air and let it brake over a few laps (time warp)
+      const ae = S.aeroState(s), km = (v) => fmt(v / 1000, 1);
+      if (ae.phase === 'high') msg = s.throttle > 0 ? `TIEFPUNKT ${km(ae.pe)} KM → ${km(ae.target)} KM` : `HOHER ORBIT · TIEFPUNKT AUF ${km(ae.target)} KM SENKEN = LUFTBREMSE`;
+      else msg = s.throttle > 0 ? `TIEFPUNKT ${km(ae.pe)} KM · HOCHPUNKT ${km(ae.ap)} KM` : `LUFTBREMSE · HOCHPUNKT ${km(ae.ap)} KM, LANDEN UNTER ${km(ae.land)} KM · ⏩`;
+      color = 'var(--cyan)'; pulse = false;
+    }
     else if (hints && S.orbitGuide(s)) {
       // orbit level: count down to the braking burn, then keep burning until the orbit speed is gone
       const og = S.orbitGuide(s);

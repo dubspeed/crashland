@@ -76,6 +76,14 @@ export function createWorld(scene, models) {
     const phi = d / curveR, sn = Math.sin(phi);
     return out.set((x / d) * sn, Math.cos(phi), (z / d) * sn);
   }
+  /** rotation that takes "up" at the pad to "up" at (x, z): about the axis across the arc, by the arc's angle
+   *  (well defined all the way round, also at and beyond the far side) */
+  const _ax = new THREE.Vector3();
+  function curveQuat(x, z, out) {
+    const d = Math.hypot(x, z);
+    if (!curveR || d < 1e-6) return out.identity();
+    return out.setFromAxisAngle(_ax.set(z / d, 0, -x / d), d / curveR);
+  }
   function curvePoint(x, h, z, out) {
     if (!curveR) return out.set(x, h, z);
     curveDir(x, z, out);
@@ -182,7 +190,7 @@ export function createWorld(scene, models) {
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rnd(i + 400) * 6);
       sc.set(k, k * (0.7 + rnd(i + 300) * 0.6), k);
       curvePoint(x, terrainHeight(x, z) - k * 0.15, z, ps);
-      if (curveR) q.premultiply(_q.setFromUnitVectors(UP, curveDir(x, z, _d)));
+      if (curveR) q.premultiply(curveQuat(x, z, _q));
       rocks.setMatrixAt(n++, mtx.compose(ps, q, sc));
     }
     rocks.count = n;
@@ -267,7 +275,7 @@ export function createWorld(scene, models) {
   function align(x, z, alt = 0) {
     if (!ground) return;
     if (!curveR) { ground.position.set(0, 0, 0); ground.quaternion.identity(); return; }
-    ground.quaternion.setFromUnitVectors(curveDir(x, z, _d), UP);
+    curveQuat(x, z, ground.quaternion).invert();
     curvePoint(x, 0, z, _g).applyQuaternion(ground.quaternion);
     ground.position.set(x - _g.x, -_g.y, z - _g.z);
     ground.updateMatrixWorld(true);
@@ -276,7 +284,7 @@ export function createWorld(scene, models) {
   function toRender(x, h, z, out, quat) {
     curvePoint(x, h, z, out);
     if (ground) out.applyMatrix4(ground.matrixWorld);
-    if (quat) { quat.setFromUnitVectors(UP, curveDir(x, z, _d)); if (ground) quat.premultiply(ground.quaternion); }
+    if (quat) { curveQuat(x, z, quat); if (ground) quat.premultiply(ground.quaternion); }
     return out;
   }
 

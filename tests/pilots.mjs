@@ -52,8 +52,10 @@ export function makePilot(S, P, opt = {}) {
     const chute = opt.chute !== false && s.spec.ids.has('chute'); // a lander built without one
     let thrust = false;
     // when to brake: the HUD cue (vacuum / thin air) or the deorbit point (thick air)
+    // aerobraking orbit: let the air take the speed off over a few passes until the high point is low enough
+    if (mem.phase === 'wait' && opt.apMax && S.orbitInfo(s).ap > opt.apMax) return { thrust: false, rcs: 0, rcsZ: 0 };
     if (mem.phase === 'wait') {
-      if (P.deorbitAt) { if (-s.x < P.deorbitAt + (opt.dD ?? 0)) mem.phase = 'brake'; }
+      if (P.deorbitAt) { if (S.padAhead(s) < P.deorbitAt + (opt.dD ?? 0)) mem.phase = 'brake'; }
       else { const og = S.orbitGuide(s); if (!og || og.brakeIn < (opt.offset ?? 0)) mem.phase = 'brake'; }
     }
     if (mem.phase === 'brake') {

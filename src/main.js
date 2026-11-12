@@ -12,6 +12,7 @@ import { cargoModel } from './cargo.js';
 import * as E from './economy.js';
 import * as B from './base.js';
 import * as RS from './rescue.js';
+import { createNavball, padToTilt } from './navball.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -871,6 +872,7 @@ bindPointer($('c-rcs'), (e, r) => {
   touch.px = shape((e.clientX - (r.left + r.width / 2)) / (r.width / 2));
   touch.py = shape(((r.top + r.height / 2) - e.clientY) / (r.height / 2));
 }, () => { touch.px = 0; touch.py = 0; });
+const navball = createNavball($('c-rcs'));
 function cycleSas() { doAct('sas'); }
 // ---------- time warp (2×, 3×, 10×): only while nothing needs the pilot ----------
 const WARPS = [1, 2, 3, 10];
@@ -878,7 +880,7 @@ let warp = 1;
 /** a reason to leave the time warp, or null */
 function warpStop(w = warp) {
   if (input.thrust || keys.has('Space')) return 'Schub';
-  const og = S.orbitGuide(s);
+  const og = S.aeroState(s) ? null : S.orbitGuide(s); // aerobraking: the pad passes every lap, no reason to stop
   if (og && og.brakeIn < 6 * w) return og.deorbit ? 'Deorbit-Punkt' : 'Bremspunkt';
   if (s.pred && s.pred.t < 8 * w) return 'Bodennähe';
   if (s.planet.rho > 0 && s.chute === 'stowed' && S.hasPart(s, 'chute') && S.chuteSafe(s) && S.altitude(s) < S.CHUTE_MAX_ALT(s.planet)) return 'Fallschirm';
@@ -1039,10 +1041,17 @@ function readInput(dt) {
   const px = kx || touch.px, py = ky || touch.py;
   input.padX = px; input.padY = py;
   // screen direction -> world tilt direction (camera right / forward on the ground plane)
-  const dxw = px * Math.cos(cam.yaw) - py * Math.sin(cam.yaw);
-  const dzw = -px * Math.sin(cam.yaw) - py * Math.cos(cam.yaw);
-  input.rcs = -dxw;  // roll: + tips the top to -x
-  input.rcsZ = dzw;  // pitch: + tips the top to +z
+  // "Landen": the pad says where to fly (on the ground plane); otherwise it tilts the nose the way the navball
+  // shows (the same as the ground plane while upright, and it stays right when the lander lies on its side)
+  if ((s.sasPending ?? s.sas) === 'retro2') {
+    const dxw = px * Math.cos(cam.yaw) - py * Math.sin(cam.yaw);
+    const dzw = -px * Math.sin(cam.yaw) - py * Math.cos(cam.yaw);
+    input.rcs = -dxw;  // roll: + tips the top to -x
+    input.rcsZ = dzw;  // pitch: + tips the top to +z
+  } else {
+    const tl = padToTilt(s, cam.yaw, px, py);
+    input.rcs = tl.rcs; input.rcsZ = tl.rcsZ;
+  }
   // thrust limiter: + / - (hold) or digits 1..9, 0 = 100 %
   const up = keys.has('Equal') || keys.has('NumpadAdd'), down = keys.has('Minus') || keys.has('NumpadSubtract');
   if (up || down) s.limit = Math.min(1, Math.max(0, s.limit + (up ? 0.6 : -0.6) * dt));
@@ -1096,7 +1105,7 @@ renderer.setAnimationLoop(() => {
     world.setAir(mode === 'menu' ? 1 : air, Math.acos(Math.min(1, R / (R + h))));
   }
   debris.update(dt);
-  if (mode !== 'menu') hud.update(s, input, cam.yaw);
+  if (mode !== 'menu') { hud.update(s, input, cam.yaw); navball.draw(s, cam.yaw); }
 
   // orbit level: turn the moon under the lander (frozen once it is down, so debris and wreck stay put)
   const sphere = S.surfaceR(planet) > 0;

@@ -81,15 +81,15 @@ export const ORBIT_PLANETS = [
     sky: 0x05060c, fog: 0x05060c, ground: 0x9b9a96, ground2: 0x6c6b68, sun: 0xffffff, stars: true },
   // Mars: the thin air is squeezed into a short scale height so it fits the small planet. High up the
   // orbit barely decays; lower down the air brakes (and warms) the lander and the chute helps a bit.
-  { id: 'mars-orbit', name: 'Mars Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 3.71, alt: 2500, downrange: 9000, cueLead: 2, vy: 0, vx: 0, tilt: 0, solar: 0.45, fuel: 650,
+  { id: 'mars-orbit', name: 'Mars Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 3.71, alt: 2500, downrange: 9000, cueLead: 2, vy: 0, vx: 0, tilt: 0, solar: 0.45, fuel: 650, aero: { pe: 4300, top: 4700, land: 5000 },
     rho: 0.02, H: 1100, atmo: 'sehr dünn', drift: 4, text: 'Dünne Luft bremst mit, Schirm hilft etwas.',
     sky: 0xd4a27c, fog: 0xc89670, ground: 0xb4552f, ground2: 0x7d3a22, sun: 0xffe2c4 },
   // Terra and Brontes: thick air squeezed into a thin shell so the orbit sits above it. Only a short
   // deorbit burn is needed (until the cross is on the pad), then the air brakes: heat, then parachute.
-  { id: 'terra-orbit', name: 'Terra Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 9.81, alt: 8000, downrange: 20000, deorbitAt: 13000, vy: 0, vx: 0, tilt: 0, solar: 0.75, fuel: 330,
+  { id: 'terra-orbit', name: 'Terra Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 9.81, alt: 8000, downrange: 20000, deorbitAt: 13000, vy: 0, vx: 0, tilt: 0, solar: 0.75, fuel: 330, aero: { pe: 7000, top: 7600, land: 10400 },
     rho: 1.225, H: 1000, heatK: 0.6, atmo: 'normal', drift: 17, text: 'Wiedereintritt: Hitze, dann Schirm.',
     sky: 0x8ec5ff, fog: 0xa9d2ff, ground: 0x5f9a4c, ground2: 0x7a6145, sun: 0xffffff },
-  { id: 'brontes-orbit', name: 'Brontes Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 15.2, alt: 9000, downrange: 26000, deorbitAt: 18500, limit0: 0.75, vy: 0, vx: 0, tilt: 0, solar: 0.3, fuel: 420,
+  { id: 'brontes-orbit', name: 'Brontes Orbit', orbit: true, R: ORBIT.R, edge: ORBIT.edge, g: 15.2, alt: 9000, downrange: 26000, deorbitAt: 18500, limit0: 0.75, vy: 0, vx: 0, tilt: 0, solar: 0.3, fuel: 420, aero: { pe: 8200, top: 8800, land: 11700 },
     rho: 2.8, H: 1000, heatK: 0.6, atmo: 'dicht', drift: 20, text: 'Glühender Eintritt, Schirm erst spät.',
     sky: 0x3b2f5c, fog: 0x463868, ground: 0x2f6e6a, ground2: 0x1f4442, sun: 0xd8c8ff },
 ];
@@ -202,6 +202,25 @@ export function advance(s, input) {
   s.stepN++;
 }
 
+/** orbit levels: how far the pad lies ahead along the track (0 .. one circumference: a pad just passed is a
+ *  whole lap away); other levels: the plain distance along the flight direction */
+export function padAhead(s) {
+  const vh = Math.hypot(s.vx, s.vz) || 1, along = -(s.x * s.vx + s.z * s.vz) / vh;
+  if (!s.planet.orbit || !s.planet.R) return along;
+  const C = 2 * Math.PI * s.planet.R;
+  return ((along % C) + C) % C;
+}
+/** aerobraking (planets with air, planet.aero): 'high' = the orbit is too high to land from, its low point
+ *  stays above the air; 'braking' = the low point dips into the air, each pass takes speed off; null = low
+ *  enough to land from (or no air). pe: the low point that brakes in a few passes, land: the high point to
+ *  land from, top: where the air starts to brake noticeably. */
+export function aeroState(s) {
+  const A = s.planet.aero;
+  if (!A || !s.planet.orbit || s.status !== 'flying') return null;
+  const o = orbitInfo(s);
+  if (!o || o.escape || o.ap <= A.land) return null;
+  return { phase: o.pe <= A.top ? 'braking' : 'high', ap: o.ap, pe: o.pe, target: A.pe, land: A.land, top: A.top };
+}
 /** circular orbit speed at height y above the surface */
 export function orbitSpeed(p, y) { const r = p.R + y; return Math.sqrt((p.g * p.R * p.R) / r); }
 /** curvature terms for the flat sim frame (x, z = arc length on the surface, y = height): gravity falls off
@@ -222,7 +241,7 @@ export function orbitGuide(s) {
   const acc = (s.spec.fMax * Math.max(s.limit, 0.05)) / m;
   const k = s.planet.R / (s.planet.R + s.y);
   const dist = ((vh * vh) / (2 * acc)) * k;
-  const along = -(s.x * s.vx + s.z * s.vz) / vh; // pad distance ahead along the track
+  const along = padAhead(s); // pad distance ahead along the track
   if (s.planet.deorbitAt) {
     // thick air: a short deorbit burn at a fixed distance, then the cross guides; done once the burn
     // has put the touchdown point on the track (the air does the braking from there)
@@ -581,7 +600,9 @@ export function createState(planet, opts = {}) {
   const fuelK = (opts.fuelK ?? 1) * spec.tankK;
   if (planet.orbit) {
     // circular orbit, lying on the side with the engine pointing retrograde, burn limited to a crew-friendly 50 %
-    const v = orbitSpeed(planet, planet.alt);
+    // pe: start at the high point of an ellipse whose low point is pe above the ground (aerobraking orbits)
+    const rA = planet.R + planet.alt, rP = planet.R + (planet.pe ?? planet.alt);
+    const v = orbitSpeed(planet, planet.alt) * (planet.pe !== undefined ? Math.sqrt((2 * rP) / (rA + rP)) : 1);
     const s = createState({ ...planet, orbit: false }, { ...opts, wind: planet.rho > 0 ? opts.wind : 0, pitch0: 0, vz0: 0 });
     // the starting limiter: crew-friendly, and for a light cargo low enough that the burn stays below its g limit
     let limit0 = planet.limit0 ?? 0.5;
@@ -1042,6 +1063,8 @@ export function step(s, input, dt) {
   s.x += s.vx * (cv ? cv.k : 1) * dt;
   s.y += s.vy * dt;
   s.z += s.vz * (cv ? cv.k : 1) * dt;
+  // all the way around the planet: x is the arc from the pad, so it wraps at the far side (antipode)
+  if (p.orbit && p.R && Math.abs(s.x) > Math.PI * p.R) { const dir = Math.sign(s.x); s.x -= dir * 2 * Math.PI * p.R; s.laps = (s.laps ?? 0) + dir; }
 
   // --- crew g-load ---
   // felt load = all non-gravitational acceleration (engine + air)

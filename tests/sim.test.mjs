@@ -120,3 +120,34 @@ test('landing sites shape the land around the pad, never the pad itself', () => 
   assert.equal(S.currentSite(), 'mesa');
   S.newRound(S.PLANETS[0], 0, 1, {}); assert.equal(S.currentSite(), 'plain');
 });
+
+test('laps: an orbit goes all the way round, x wraps at the far side and the orbit stays the same', () => {
+  const P = S.ORBIT_PLANETS[0];
+  const s = S.newRound(P, 0, 1, {}, {});
+  const o0 = S.orbitInfo(s), input = { thrust: false, rcs: 0, rcsZ: 0 };
+  let maxX = 0;
+  while (s.t < o0.period * 2.2) { S.advance(s, input); maxX = Math.max(maxX, Math.abs(s.x)); }
+  assert.equal(s.status, 'flying');
+  assert.equal(s.laps, 2);
+  assert.ok(maxX <= Math.PI * P.R + 1, `x ${maxX}`);
+  const o1 = S.orbitInfo(s);
+  assert.ok(Math.abs(o1.ap - o0.ap) < 15 && Math.abs(o1.pe - o0.pe) < 15, `ap ${o0.ap.toFixed(0)} -> ${o1.ap.toFixed(0)}, pe ${o0.pe.toFixed(0)} -> ${o1.pe.toFixed(0)}`);
+  assert.ok(S.padAhead(s) >= 0 && S.padAhead(s) < 2 * Math.PI * P.R);
+});
+
+test('aerobraking: a low point in the air takes the high point down over several passes, without burning parts', () => {
+  const P = S.ORBIT_PLANETS.find((p) => p.id === 'terra-orbit');
+  const s = S.newRound(P, 0, 1, { orbit: { alt: 20000, pe: P.aero.pe, downrange: 5000 } }, {});
+  S.act(s, 'panels');
+  const input = { thrust: false, rcs: 0, rcsZ: 0 }, aps = [S.orbitInfo(s).ap];
+  assert.equal(S.aeroState(s).phase, 'braking');
+  let down = false;
+  while (s.status === 'flying' && s.t < 3000 && S.aeroState(s)) {
+    const wasDown = down; S.advance(s, input); down = s.vy < 0;
+    if (wasDown && !down) aps.push(S.orbitInfo(s).ap); // just past the low point
+  }
+  assert.ok(aps.length >= 3, `passes: ${aps.map((a) => a.toFixed(0))}`);
+  for (let i = 1; i < aps.length; i++) assert.ok(aps[i] < aps[i - 1] - 500, `ap ${aps.map((a) => a.toFixed(0))}`);
+  assert.equal(Object.keys(s.lost).length, 0);
+  assert.ok(S.orbitInfo(s).ap <= P.aero.land, 'ends low enough to land from');
+});
