@@ -1,6 +1,7 @@
 import * as S from './sim.js';
 import { createCrew } from './crew.js';
 import { fmtAlt, fmtTime } from './orbitmap.js';
+import { ballFrame } from './navball.js';
 
 const $ = (id) => document.getElementById(id);
 const fmt = (n, d = 0) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -26,6 +27,7 @@ export const ICONS = {
   view: '<path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/>',
   com: '<circle cx="12" cy="12" r="7"/><path d="M12 5v14M5 12h14"/>',
   map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
+  dock: '<circle cx="12" cy="12" r="3"/><path d="M12 2v5M9.5 4.5 12 2l2.5 2.5M12 22v-5M9.5 19.5 12 22l2.5-2.5M2 12h5M4.5 9.5 2 12l2.5 2.5M22 12h-5M19.5 9.5 22 12l-2.5 2.5"/>',
   warp: '<path d="M4 6l7 6-7 6zM13 6l7 6-7 6z"/>',
 };
 /** button label: icon (from data-icon), a short word, the keyboard shortcut (desktop); title = what it does */
@@ -56,9 +58,18 @@ function nightHint(s, hints) {
 }
 
 /** a module to fetch: how far, how fast, what to do */
-function targetHint(s) {
+function targetHint(s, yaw) {
   const tr = S.targetRel(s), m = (v) => fmt(v, 1);
-  if (tr.d < 40) return { msg: `ANDOCKEN: ${fmt(tr.d)} m · ${m(tr.speed)} m/s (≤ ${m(S.DOCK_SPEED)})`, color: tr.speed > S.DOCK_SPEED ? 'var(--warn)' : 'var(--ok)' };
+  if (tr.near && s.sas !== 'target' && s.sasPending !== 'target') return { msg: `MODUL ${fmt(tr.portDist)} m · LAGEREGLER AUF ZIEL (Z): NASE AUFS MODUL`, color: 'var(--amber)' };
+  if (tr.near) {
+    // docking display: ring distance, sideways offset on the navball's axes (↔ right, ↕ up), closing speed
+    const { Br, Bu } = ballFrame(s, yaw), o = tr.off;
+    const ox = o.x * Br.x + o.y * Br.y + o.z * Br.z, oy = o.x * Bu.x + o.y * Bu.y + o.z * Bu.z;
+    const sgn = (v) => `${v >= 0 ? '+' : '−'}${m(Math.abs(v))}`;
+    const fast = tr.closing > S.DOCK_SPEED && tr.portDist < 15, lined = tr.offDist < 0.8;
+    if (!s.uiRcs) return { msg: `MODUL ${fmt(tr.portDist)} m · RCS EINSCHALTEN (FEINSTEUERUNG)`, color: 'var(--amber)' };
+    return { msg: `ANDOCKEN ${m(tr.portDist)} m · ↔ ${sgn(ox)} ↕ ${sgn(oy)} · ${m(tr.closing)} m/s`, color: fast ? 'var(--bad)' : lined ? 'var(--ok)' : 'var(--cyan)' };
+  }
   if (s.sas !== 'target') return { msg: `${s.target.name.toUpperCase()} ${fmt(tr.d)} m · LAGEREGLER AUF ZIEL (Z)`, color: 'var(--amber)' };
   return s.throttle > 0 ? { msg: `ZIEL · ${fmt(tr.d)} m · ${m(tr.closing)} m/s`, color: 'var(--cyan)' } : { msg: `ZIEL: SCHUB HALTEN – DER COMPUTER DOSIERT (${fmt(tr.d)} m)`, color: 'var(--cyan)' };
 }
@@ -586,7 +597,7 @@ export function createHud() {
       msg = (s.throttle > 0 ? 'BREMSEN … BIS DER SCHIRM GEHT' : 'FÜR DEN SCHIRM BREMSEN') + how;
       color = 'var(--amber)'; pulse = s.throttle === 0;
     }
-    else if (S.targetRel(s)) { const h = targetHint(s); msg = h.msg; color = h.color; pulse = false; }
+    else if (S.targetRel(s)) { const h = targetHint(s, yaw); msg = h.msg; color = h.color; pulse = false; }
     else if (hints && sideHint(s)) { const h = sideHint(s); msg = h.msg; color = h.color; pulse = false; }
     else if (hints && S.aeroState(s)) {
       // too high to land from: lower the low point into the air and let it brake over a few laps (time warp)

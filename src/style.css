@@ -807,3 +807,11 @@ body.flyover #controls, body.flyover #crew-say { visibility: hidden; }
 .rcs:has(canvas.navball)::before, .rcs:has(canvas.navball)::after, .rcs:has(canvas.navball) .ar { display: none; }
 .rcs:has(canvas.navball) .knob { border-color: rgba(255,255,255,0.7); background: rgba(255,255,255,0.08); z-index: 1; }
 .rcs.on:has(canvas.navball) .knob { background: rgba(143,227,255,0.35); }
+
+/* RCS mode: the thrust lever becomes forward / back */
+.lever .lbl.rcsl { display: none; top: 10px; bottom: 10px; line-height: 1.1; color: var(--cyan); }
+body.rcsmode .lever { border-color: var(--cyan); background: linear-gradient(to bottom, rgba(143,227,255,0.12), rgba(9,13,22,0.75) 45% 55%, rgba(143,227,255,0.12)), var(--glass); }
+body.rcsmode .lever .fill, body.rcsmode .lever .mark, body.rcsmode .lever .lbl:not(.rcsl) { display: none; }
+body.rcsmode .lever .lbl.rcsl { display: flex; flex-direction: column; justify-content: center; }
+body.rcsmode .lever::after { content: ''; position: absolute; left: 10%; right: 10%; top: 50%; border-top: 1px dashed var(--cyan); }
+.tog.dock:not([hidden]) { border-color: rgba(143,227,255,0.6); }

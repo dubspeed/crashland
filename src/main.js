@@ -12,7 +12,7 @@ import { cargoModel } from './cargo.js';
 import * as E from './economy.js';
 import * as B from './base.js';
 import * as RS from './rescue.js';
-import { createNavball, padToTilt } from './navball.js';
+import { createNavball, padToTilt, ballFrame } from './navball.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -405,11 +405,12 @@ function placeOrbitObject() {
   if (o.docked) {
     // latched on top of the capsule
     scene.remove(orbitObj.group); orbitObj.label.remove(); orbitObj = null;
-    dockedObj = cargoModel(o.type, true); dockedObj.position.y = s.docked.y + 0.2; ship.group.add(dockedObj);
+    dockedObj = cargoModel(o.type, true); dockedObj.position.y = s.docked.y + (o.size ?? 3) / 2; dockedObj.rotation.x = Math.PI; ship.group.add(dockedObj); // port to port
     return;
   }
   world.toRender(o.x, o.y, o.z, orbitObj.group.position, _oq);
-  orbitObj.group.quaternion.copy(_oq).multiply(_by.setFromAxisAngle(_bv.set(0, 1, 0), time * 0.05));
+  if (o.dock) orbitObj.group.quaternion.setFromUnitVectors(_bv.set(0, 1, 0), _ov.copy(ship.group.position).sub(orbitObj.group.position).normalize()); // its port faces us
+  else orbitObj.group.quaternion.copy(_oq).multiply(_by.setFromAxisAngle(_bv.set(0, 1, 0), time * 0.05));
   const tr = S.targetRel(s), el = orbitObj.label;
   _ov.copy(orbitObj.group.position).addScaledVector(_bv.set(0, 1, 0).applyQuaternion(_oq), o.size * 0.7 + 2);
   const dcam = _ov.distanceTo(camera.getWorldPosition(_bv));
@@ -579,6 +580,8 @@ function recordStep() {
     lastRec.thrust = th; lastRec.rcs = input.rcs; lastRec.rcsZ = input.rcsZ;
   }
   if (s.limit !== lastRec.limit) { rec.ev.push([s.stepN ?? 0, 'l', s.limit]); lastRec.limit = s.limit; }
+  input.tx = q3(input.tx); input.ty = q3(input.ty); input.tz = q3(input.tz);
+  if (input.tx !== (lastRec.tx ?? 0) || input.ty !== (lastRec.ty ?? 0) || input.tz !== (lastRec.tz ?? 0)) { rec.ev.push([s.stepN ?? 0, 't', input.tx, input.ty, input.tz]); lastRec.tx = input.tx; lastRec.ty = input.ty; lastRec.tz = input.tz; }
 }
 function flightRecord() {
   return { ...rec, steps: s.stepN ?? 0, result: { status: s.status, t: +s.t.toFixed(3), x: +s.x.toFixed(3), z: +s.z.toFixed(3), vy: +s.vy.toFixed(3), fuel: +S.fuel(s).toFixed(3) } };
@@ -648,7 +651,7 @@ function start(p, ms) {
   mode = 'flight';
   // base mission: a short fly-over of the base and the new target before the flight (tap or key skips it)
   cam.fly = mission || rescue ? 0 : null; cam.flyGo = false; // the briefing waits for its start button
-  setWarp(1);
+  setWarp(1); setRcs(false);
   $('flyover').classList.remove('rescue');
   if (mission) {
     const c = S.CARGO[mission.type], n = loadBase(p.id).modules.length;
@@ -863,6 +866,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyE') doAct('panels');
   if (e.code === 'KeyJ') doAct('shield');
   if (e.code === 'KeyC') toggleCom();
+  if (e.code === 'KeyG' && !$('c-dock').hidden) setRcs(!rcsMode);
   if (e.code === 'Period' || e.code === 'Comma') stepWarp(e.code === 'Period' ? (warp === 10 ? 0 : 1) : -1);
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
@@ -898,11 +902,20 @@ function bindPointer(el, onMove, onEnd) {
 }
 const touch = { lever: false, px: 0, py: 0 };
 bindPointer($('c-lever'), (e, r) => {
+  const f = (r.bottom - e.clientY) / r.height;
+  // RCS (docking): the lever is forward (upper half) / back (lower half), the further out the stronger
+  if (rcsMode) { const v = (f - 0.5) * 2.4; touch.fa = Math.abs(v) < 0.15 ? 0 : Math.max(-1, Math.min(1, v)); return; }
   touch.lever = true;
   // top 12 % snaps to full thrust so a quick thumb press near the top is 100 %
-  const f = (r.bottom - e.clientY) / r.height;
   s.limit = Math.min(1, Math.max(0.05, f >= 0.88 ? 1 : f / 0.88));
-}, () => { touch.lever = false; });
+}, () => { touch.lever = false; touch.fa = 0; });
+// ---------- RCS mode (docking): the pad slides the lander, the lever moves it forward / back, no main engine ----------
+let rcsMode = false;
+function setRcs(on) {
+  rcsMode = !!on; touch.fa = 0; touch.lever = false;
+  $('c-dock').classList.toggle('on', rcsMode); document.body.classList.toggle('rcsmode', rcsMode);
+}
+tap($('c-dock'), () => setRcs(!rcsMode));
 // tilt pad: two axes, relative to the screen (right / away from the camera); further out = faster
 bindPointer($('c-rcs'), (e, r) => {
   const shape = (d) => (Math.abs(d) < 0.12 ? 0 : Math.max(-1, Math.min(1, (d - Math.sign(d) * 0.12) / 0.7)));
@@ -990,6 +1003,7 @@ function toggleMap(force) {
 }
 tap($('c-map'), () => toggleMap());
 setLabel($('c-map'), 'Karte', 'K', 'Bahnkarte');
+setLabel($('c-dock'), 'RCS', 'G', 'Feinsteuerung (RCS) zum Andocken: Steuerkreuz verschiebt, Hebel vor / zurück');
 // help: the switches are icons only, this says what they do
 $('icon-legend').innerHTML = [
   ['chute', '<b>Fallschirm</b> öffnen, offen: abwerfen · leuchtet orange, wenn er jetzt geht', 'P'],
@@ -998,6 +1012,7 @@ $('icon-legend').innerHTML = [
   ['sas', '<b>Lageregler</b> wechseln (Modi siehe unten)', 'T'],
   ['view', '<b>Kamera</b>: hinter dem Lander oder Ziel-Ansicht', 'V'],
   ['map', '<b>Bahnkarte</b> (nur aus dem Orbit)', 'K'],
+  ['dock', '<b>RCS-Feinsteuerung</b> zum Andocken (nur wenn ein Modul wartet): Steuerkreuz verschiebt den Lander, Hebel = vor / zurück, kein Haupttriebwerk', 'G'],
   ['warp', '<b>Zeitraffer</b> 1× → 2× → 3× → 10×; Schub schaltet zurück auf 1×', '. ,'],
 ].map(([ic, txt, key]) => `<dt><svg viewBox="0 0 24 24">${ICONS[ic]}</svg></dt><dd>${txt} <kbd class="key-only">${key}</kbd></dd>`).join('');
 setLabel($('c-com'), 'SP', 'C', 'Schwerpunkt anzeigen');
@@ -1066,12 +1081,21 @@ let timeScale = Math.max(1, Math.min(50, +(new URLSearchParams(location.search).
 let autopilot = null; // optional (state) => {thrust, rcs}, used by automated tests
 function readInput(dt) {
   if (autopilot) return; // the autopilot sets the inputs per simulation step
-  input.thrust = keys.has('Space') || touch.lever;
+  input.thrust = !rcsMode && (keys.has('Space') || touch.lever);
   // tilt: WASD / arrows or the pad, in screen terms (px right, py away from the camera)
   const kx = (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0);
   const ky = (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0);
   const px = kx || touch.px, py = ky || touch.py;
   input.padX = px; input.padY = py;
+  input.tx = input.ty = input.tz = 0;
+  if (rcsMode) {
+    // translate in the navball's frame: pad right / up = ball right / up, lever (or Space / Shift) = along the nose
+    const fa = touch.fa || (keys.has('Space') ? 1 : 0) - (keys.has('ShiftLeft') || keys.has('ShiftRight') ? 1 : 0);
+    const { N, Br, Bu } = ballFrame(s, cam.yaw);
+    input.tx = Br.x * px + Bu.x * py + N.x * fa; input.ty = Br.y * px + Bu.y * py + N.y * fa; input.tz = Br.z * px + Bu.z * py + N.z * fa;
+    input.rcs = input.rcsZ = 0;
+    return;
+  }
   // screen direction -> world tilt direction (camera right / forward on the ground plane)
   // "Landen": the pad says where to fly (on the ground plane); otherwise it tilts the nose the way the navball
   // shows (the same as the ground plane while upright, and it stays right when the lander lies on its side)
@@ -1139,7 +1163,12 @@ renderer.setAnimationLoop(() => {
     world.setAir(mode === 'menu' ? 1 : air, Math.acos(Math.min(1, R / (R + h))));
   }
   debris.update(dt);
-  if (mode !== 'menu') { hud.update(s, input, cam.yaw); navball.draw(s, cam.yaw); }
+  if (mode !== 'menu') {
+    const canDock = !!(planet.orbit && s.target?.dock && !s.target.docked && s.status === 'flying');
+    $('c-dock').hidden = !canDock; if (!canDock && rcsMode) setRcs(false);
+    s.uiRcs = rcsMode;
+    hud.update(s, input, cam.yaw); navball.draw(s, cam.yaw);
+  }
   world.setSun(!!planet.orbit && mode !== 'menu', s.daylight ?? 1);
 
   // orbit level: turn the moon under the lander (frozen once it is down, so debris and wreck stay put)

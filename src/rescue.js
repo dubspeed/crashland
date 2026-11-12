@@ -29,6 +29,8 @@ export const ORBITS = {
   // a supply module drifts ahead in the orbit: dock it (attitude mode Ziel), then bring both down
   module: { name: 'Modul im Orbit', d: 1, alt: 1.2, dr: 1.6, module: true },
 };
+/** where a module waits in orbit (no re-entry through thick air with it yet) */
+export const MODULE_PLANETS = ['luna-orbit', 'mars-orbit'];
 /** the object in orbit for a scenario (settings.target): the station you undock from, or the module to fetch */
 export function targetFor(id, name) {
   if (id === 'station') return { type: 'station', ahead: 32, up: 3, name };
@@ -48,17 +50,17 @@ export function orbitFor(planet, id, sign = 1) {
   if (planet.deorbitAt) out.deorbitAt = Math.round(planet.deorbitAt * Math.min(o.dr, 1 + (o.alt - 1) * 0.5));
   if (o.vK) out.vK = o.vK;
   // the module: docking takes a couple of minutes, all of it before the braking point
-  if (o.module) out.downrange = Math.round(Math.max(out.downrange, 0.85 * Math.PI * planet.R, (out.deorbitAt ?? 0) + 8000));
+  if (o.module) out.downrange = Math.round(Math.max(out.downrange, 0.85 * Math.PI * planet.R));
   // (not where the deorbit point is so far out that there is no room for the side burn before it: Brontes, high)
   if (o.miss && (out.deorbitAt ?? 0) + 6000 < 0.9 * Math.PI * planet.R) Object.assign(out, S.missOrbit({ ...planet, alt: out.alt, deorbitAt: out.deorbitAt }, sign, 12));
   return out;
 }
 
 /** every combination a planet offers (the test pilot lands each one; SKIP: the ones that run dry) */
-export const SKIP = new Set(['terra-orbit:leaky:late', 'brontes-orbit:shuttle:late', 'brontes-orbit:brick:late', 'brontes-orbit:leaky:late', 'luna-orbit:brick:station', 'terra-orbit:leaky:module', 'brontes-orbit:leaky:module']);
+export const SKIP = new Set(['terra-orbit:leaky:late', 'brontes-orbit:shuttle:late', 'brontes-orbit:brick:late', 'brontes-orbit:leaky:late', 'luna-orbit:brick:station']);
 export function combos(planetId) {
   const out = [];
-  for (const l of Object.keys(LANDERS)) for (const o of Object.keys(ORBITS)) if (!SKIP.has(`${planetId}:${l}:${o}`) && (!ORBITS[o].aero || AERO[planetId])) out.push([l, o]);
+  for (const l of Object.keys(LANDERS)) for (const o of Object.keys(ORBITS)) if (!SKIP.has(`${planetId}:${l}:${o}`) && (!ORBITS[o].aero || AERO[planetId]) && (!ORBITS[o].module || MODULE_PLANETS.includes(planetId))) out.push([l, o]);
   return out;
 }
 

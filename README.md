@@ -287,3 +287,10 @@ A fourth start mode. Each planet has an emergency call: a lander that is not you
 - **Seite and Ziel dose the thrust:** the engine only fires once the nose points along the burn, and only as much as is still missing, so holding the thrust button cannot overshoot. `attTarget` picks the attitude angles nearest the current ones (no spinning round at the angles' ambiguity).
 - The test pilot docks and lands in every module combination (except the leaking Albatros on Terra and Brontes, which runs dry with the extra 400 kg).
 - **Rocks** are placed again when the landing site changes (they used to keep the heights of the flat site: floating in a crater, stuck in a plateau).
+
+## Docking with RCS
+
+- **RCS mode** (button with four arrows, key `G`; only while a module waits): the pad slides the lander along the navball's right / up axes (perpendicular to the nose) and the thrust lever becomes forward / back along the nose (upper half forward, lower half back; Space / Shift on a keyboard); the main engine stays off. Recorded as `[step, 't', tx, ty, tz]` (local east / up / north), so replays stay exact; side jets `RCS_TRANS`, extra power use.
+- **Ziel** (right after Bremsen, only with a module): beyond `NEAR` (120 m) the dosed main-engine approach as before; closer, the nose (our docking ring on top of the capsule, `PORT_Y`) is held on the module.
+- **Docking ports:** the module turns its lit green ring toward the lander; it latches when the rings are under `DOCK_DIST` (1.2 m) apart, slower than `DOCK_SPEED` (0.5 m/s) and the nose within `DOCK_ANGLE` (20°) of the module; touching faster or crooked bounces back. The HUD shows "ANDOCKEN 4,2 m · ↔ +0,3 ↕ −0,1 · 0,3 m/s" (ring distance, sideways offset on the navball's axes, closing speed), red when too fast, green when lined up. Docked, the module sits port to port on the capsule.
+- The module call is offered on Luna and Mars only for now (with 400 kg more, the touchdown prediction through thick air drifts by 150-300 m); the test pilot docks with RCS and lands in all of them.

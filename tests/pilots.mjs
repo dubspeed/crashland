@@ -56,8 +56,17 @@ export function makePilot(S, P, opt = {}) {
     // mode goes back to Bremsen by itself
     if (mem.phase === 'wait' && s.target?.dock && !s.target.docked) {
       if (!mem.tgt) { mem.tgt = true; act('sas'); }
-      return { thrust: s.sas === 'target', rcs: 0, rcsZ: 0 };
+      const tr = S.targetRel(s);
+      if (!tr || !tr.near || s.sas !== 'target') return { thrust: s.sas === 'target', rcs: 0, rcsZ: 0, tx: 0, ty: 0, tz: 0 };
+      // close: RCS like a player with the docking display - line the port up, then creep in
+      const p = tr.port, pd = Math.max(0.01, Math.hypot(p.x, p.y, p.z));
+      const sp = Math.min(3, 0.12 + tr.portDist * 0.08) * (tr.offDist > 1.5 && tr.along < 6 ? 0 : 1);
+      const want = { x: (p.x / pd) * sp, y: (p.y / pd) * sp, z: (p.z / pd) * sp };
+      const c = (v) => Math.max(-1, Math.min(1, v));
+      // vrel is how the lander moves relative to the module
+      return { thrust: false, rcs: 0, rcsZ: 0, tx: c((want.x - tr.vrel.x) * 2), ty: c((want.y - tr.vrel.y) * 2), tz: c((want.z - tr.vrel.z) * 2) };
     }
+
     // the orbit misses the base: at the cheapest point (a quarter orbit before it) switch to Seite and burn
     // until the plane runs over the base; Seite then hands back to Bremsen by itself
     const tm = opt.fixPlane === false ? null : S.trackMiss(s);

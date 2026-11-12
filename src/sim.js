@@ -287,7 +287,9 @@ function shadowCalc(s) {
 }
 // ---------- objects in orbit: a station (you undock from it) or a module to dock and bring down ----------
 export const ORBIT_OBJECTS = { station: { name: 'Station', dock: false, size: 14 }, module: { name: 'Versorgungsmodul', dock: true, mass: 400, size: 3 } };
-export const DOCK_DIST = 10, DOCK_SPEED = 1.5; // m, m/s: close and slow enough, the module latches on
+// docking: the lander's port sits on top of the capsule (PORT_Y above the feet, along the nose), the module's
+// port faces the lander; they latch when the ports are close, slow and the nose points at the module
+export const PORT_Y = 6.4, DOCK_DIST = 1.2, DOCK_SPEED = 0.5, DOCK_ANGLE = 20, NEAR = 120; // m, m/s, °, m (Ziel holds the nose on the module)
 /** a free-flying object `ahead` m along the lander's track, `up` m higher, on its own circular orbit */
 function makeTarget(s, t) {
   const p = s.planet, hv = Math.hypot(s.vx, s.vz) || 1, ex = s.vx / hv, ez = s.vz / hv, k = p.R / (p.R + s.y);
@@ -318,9 +320,18 @@ export function targetRel(s) {
   const dvv = L.v.map((c, i) => c - T.v[i] + wx[i]);
   const loc = (a) => ({ x: dot(a, L.E), y: dot(a, L.U), z: dot(a, L.N) });
   const rel = loc(dr), vrel = loc(dvv), u = { x: rel.x / d, y: rel.y / d, z: rel.z / d };
-  const sp = d > DOCK_DIST * 0.6 ? Math.min(6, 0.6 + d / 40) : 0.3;
+  // far: the main-engine approach (the speed falls with the distance, to ~2 m/s at NEAR); near: RCS
+  const sp = Math.min(6, 0.3 + d / 60);
   const dv = { x: u.x * sp - vrel.x, y: u.y * sp - vrel.y, z: u.z * sp - vrel.z };
-  return { rel, d, vrel, speed: Math.hypot(vrel.x, vrel.y, vrel.z), closing: vrel.x * u.x + vrel.y * u.y + vrel.z * u.z, dv, dvMag: Math.hypot(dv.x, dv.y, dv.z) };
+  // ports: ours on the nose, the module's facing us (half its size from its centre)
+  const N = upVector(s), pr = { x: rel.x - N.x * PORT_Y, y: rel.y - N.y * PORT_Y, z: rel.z - N.z * PORT_Y };
+  const pl = Math.hypot(pr.x, pr.y, pr.z) || 1, half = (o.size ?? 3) / 2;
+  const port = { x: pr.x - (pr.x / pl) * half, y: pr.y - (pr.y / pl) * half, z: pr.z - (pr.z / pl) * half }; // our port -> theirs
+  const along = port.x * N.x + port.y * N.y + port.z * N.z;
+  const off = { x: port.x - N.x * along, y: port.y - N.y * along, z: port.z - N.z * along }; // sideways offset from our nose axis
+  const aim = Math.acos(Math.max(-1, Math.min(1, (pr.x * N.x + pr.y * N.y + pr.z * N.z) / pl))) * 180 / Math.PI;
+  return { rel, d, vrel, u, speed: Math.hypot(vrel.x, vrel.y, vrel.z), closing: vrel.x * u.x + vrel.y * u.y + vrel.z * u.z, dv, dvMag: Math.hypot(dv.x, dv.y, dv.z),
+    port, portDist: Math.max(0, pl - half), along, off, offDist: Math.hypot(off.x, off.y, off.z), aim, near: d < NEAR };
 }
 /** attitude angles (a, b) that put the nose along unit vector D, the solution nearest the current attitude
  *  (two solutions, plus full turns: picking the near one keeps the lander from spinning round) */
@@ -337,7 +348,7 @@ function attTarget(s, D) {
 /** Seite / Ziel: the speed change the computer steers for (local east / up / north), or null */
 function maneuver(s) {
   if (s.sas === 'side') { const tm = trackMiss(s); return tm ? { dv: tm.dv, mag: tm.dvMag, done: SIDE_DONE } : null; }
-  if (s.sas === 'target') { const tr = targetRel(s); return tr ? { dv: tr.dv, mag: tr.dvMag, done: 0.15 } : null; }
+  if (s.sas === 'target') { const tr = targetRel(s); return tr && !tr.near ? { dv: tr.dv, mag: tr.dvMag, done: 0.15 } : null; }
   return null;
 }
 /** orbit levels: does the orbit pass over the base? miss = distance of the pad from the orbit plane (m, signed:
@@ -1141,7 +1152,8 @@ export function step(s, input, dt) {
   if (s.sas === 'target' && p.orbit) {
     // Ziel: the nose along the speed change that brings the lander to the module
     const tr = targetRel(s);
-    if (tr && tr.dvMag > 0.15) { const l = tr.dvMag; [tA, tB] = attTarget(s, { x: tr.dv.x / l, y: tr.dv.y / l, z: tr.dv.z / l }); }
+    if (tr && tr.near) [tA, tB] = attTarget(s, tr.u); // close: the nose (our port) on the module, translate with RCS
+    else if (tr && tr.dvMag > 0.15) { const l = tr.dvMag; [tA, tB] = attTarget(s, { x: tr.dv.x / l, y: tr.dv.y / l, z: tr.dv.z / l }); }
     else { tA = s.a; tB = s.b; }
     if (!tr && s.sasPending === undefined) s.sas = 'retro'; // docked (or gone): back to Bremsen
   }
@@ -1238,6 +1250,13 @@ export function step(s, input, dt) {
   s.vy += ((F * u.y + dy) / m - (cv ? cv.gy : p.g)) * dt;
   s.vz += ((F * u.z + dz) / m + (cv ? cv.az : 0)) * dt;
   if (trans) { s.vx += trans.ax * dt; s.vz += trans.az * dt; }
+  // RCS translation (docking): input.tx / ty / tz in the local frame (east / up / north), from the side jets
+  const tl = Math.hypot(input.tx || 0, input.ty || 0, input.tz || 0);
+  if (tl > 0 && s.computerOK && !s.blackout && p.orbit) {
+    const k = (RCS_TRANS / m) / Math.max(1, tl);
+    s.vx += (input.tx || 0) * k * dt; s.vy += (input.ty || 0) * k * dt; s.vz += (input.tz || 0) * k * dt;
+    s.rcsTrans = Math.min(1, tl);
+  } else s.rcsTrans = 0;
   if (s.steerX || s.steerZ) {
     // steerable canopy: glide up to CHUTE_GLIDE m/s through the air in the commanded direction
     const sl = Math.hypot(s.steerX, s.steerZ), ex = s.steerX / sl, ez = s.steerZ / sl;
@@ -1253,10 +1272,15 @@ export function step(s, input, dt) {
     coast(p, s.target, dt);
     if (s.target.dock) {
       const tr = targetRel(s);
-      if (tr && tr.d < DOCK_DIST && tr.speed < DOCK_SPEED) {
+      if (tr && tr.portDist < DOCK_DIST && tr.speed < DOCK_SPEED && tr.aim < DOCK_ANGLE) {
         s.target.docked = true;
-        s.docked = { mass: s.target.mass, y: 6.4 };
+        s.docked = { mass: s.target.mass, y: PORT_Y };
         s.events.push({ type: 'docked', t: s.t });
+      } else if (tr && tr.portDist < 0.3 && tr.closing > 0) {
+        // bumped into it (too fast or crooked): bounce back a little
+        const k = tr.closing * 1.4;
+        s.vx -= tr.u.x * k; s.vy -= tr.u.y * k; s.vz -= tr.u.z * k;
+        s.events.push({ type: 'bump', t: s.t, v: tr.closing });
       }
     }
   }
@@ -1283,7 +1307,7 @@ export function step(s, input, dt) {
 
   // --- power ---
   // base load: computer, radio, sensors, and life support with a crew (the uncrewed cargo core needs less)
-  const use = (s.spec.payload ? 0.15 : 0.3) + (s.sas ? 0.15 : 0) + 2.2 * rcsUse + 1.2 * thr;
+  const use = (s.spec.payload ? 0.15 : 0.3) + (s.sas ? 0.15 : 0) + 2.2 * rcsUse + 1.1 * (s.rcsTrans ?? 0) + 1.2 * thr;
   const gen = (s.spec.engineGen ?? 0) * thr; // alternator on the turbopump (strong engines)
   s.panelFold = Math.max(0, Math.min(1, s.panelFold + (s.panels === 'in' ? dt : -dt) / 1.2));
   const panels = (hasPart(s, 'solarL') ? 1 : 0) + (hasPart(s, 'solarR') ? 1 : 0);

@@ -2,6 +2,7 @@
 // A round is fully determined by planet, wind level, seed and the recorded events:
 //   [step, 'a', name]           action before that step (chute, panels, sas)
 //   [step, 'i', thrust, rcs, rcsZ]  inputs from that step on
+//   [step, 't', tx, ty, tz]          RCS translation (docking) from that step on
 //   [step, 'l', limit]          thrust limiter from that step on
 import * as S from '../src/sim.js';
 
@@ -23,6 +24,7 @@ export function replay(record, onStep) {
       const e = ev[i++];
       if (e[1] === 'a') S.act(s, e[2]);
       else if (e[1] === 'i') { input.thrust = !!e[2]; input.rcs = e[3]; input.rcsZ = e[4]; }
+      else if (e[1] === 't') { input.tx = e[2]; input.ty = e[3]; input.tz = e[4]; }
       else if (e[1] === 'l') s.limit = e[2];
     }
     S.advance(s, input);
@@ -55,6 +57,8 @@ export function recordPilot(planet, wind, seed, pilot, maxT = 600, settings = {}
       last.thrust = th; last.rcs = input.rcs; last.rcsZ = input.rcsZ;
     }
     if (s.limit !== last.limit) { record.ev.push([s.stepN ?? 0, 'l', s.limit]); last.limit = s.limit; }
+    input.tx = q3(input.tx); input.ty = q3(input.ty); input.tz = q3(input.tz);
+    if (input.tx !== (last.tx ?? 0) || input.ty !== (last.ty ?? 0) || input.tz !== (last.tz ?? 0)) { record.ev.push([s.stepN ?? 0, 't', input.tx, input.ty, input.tz]); last.tx = input.tx; last.ty = input.ty; last.tz = input.tz; }
     S.advance(s, input);
   }
   record.steps = s.stepN;

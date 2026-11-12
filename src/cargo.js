@@ -101,6 +101,8 @@ const BUILD = {
     add(g, cyl(0.6, 0.6, 0.12, 14), dark(), 0, -h / 2 + 0.3);
     for (const s of [-1, 1]) add(g, box(2.2, 0.05, 0.9), cells(), s * 2.1, 0, 0, 0, 0, 0);
     add(g, new THREE.SphereGeometry(0.1, 8, 6), lamp(), 0.7, h / 2 - 0.3, 0.5);
+    // the docking ring (green, lit) on its port
+    add(g, new THREE.TorusGeometry(0.5, 0.08, 8, 24), mat('ring', 0x4dff9a, { emissive: 0x2aff7a, emissiveIntensity: 1.6 }), 0, h / 2 + 0.02, 0, Math.PI / 2, 0, 0);
   },
   station(g) { // orbital station: core, habitat ring, docking node, four big solar wings
     add(g, cyl(1.6, 1.6, 9, 16), hull(), 0, 0, 0, 0, 0, Math.PI / 2);
