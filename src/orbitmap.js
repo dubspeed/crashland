@@ -25,18 +25,35 @@ export function createOrbitMap(canvas) {
     return dpr;
   }
 
-  /** free screen area between the HUD at the top and the controls at the bottom */
+  /** the map card: the screen area left free by the panels around it (measured, so it fits any layout:
+   *  phone, tablet portrait / landscape, desktop) */
+  let card = null;
   function freeArea(dpr) {
-    const W = canvas.width / dpr, H = canvas.height / dpr;
+    const W = canvas.width / dpr, H = canvas.height / dpr, phone = W < 560;
+    const box = (id) => { const e = document.getElementById(id); if (!e || e.hidden) return null; const b = e.getBoundingClientRect(); return b.width > 4 && b.height > 4 ? b : null; };
+    let left = 10, right = W - 10, top = phone ? 150 : 70;
+    if (phone) { const rd = box('radar'); if (rd) top = Math.max(top, rd.bottom + 6); } // below the compass
+    if (!phone) {
+      const lc = box('leftcol'); if (lc && lc.right < W * 0.45) left = lc.right + 12;
+      for (const id of ['burn', 'side']) { const b = box(id); if (b && b.left > W * 0.55 && b.top < H * 0.5) right = Math.min(right, b.left - 12); }
+      const ro = box('readout'); if (ro && ro.left < right && ro.right > left) top = Math.max(top, ro.bottom + 10);
+    }
     const ctrl = document.getElementById('controls')?.getBoundingClientRect();
-    const top = W < 560 ? 150 : 70;
-    let bottom = ctrl && ctrl.top > top + 120 ? ctrl.top - 10 : H - 10;
-    const mv = document.getElementById('map-view');
-    if (mv && !mv.hidden) bottom -= 30; // the side / top view switch sits above the controls
-    const pc = document.getElementById('plan-chips');
-    if (pc && !pc.hidden) { const r = pc.getBoundingClientRect(); if (r.top > top + 120) bottom = Math.min(bottom, r.top - 8); } // room for the plan chips
-    const left = W < 560 ? 10 : 290, right = W < 560 ? W - 10 : W - 290;
-    return { left, right, top, bottom };
+    let bottom = ctrl && ctrl.top > top + 160 ? ctrl.top - 10 : H - 10;
+    const pc = box('plan-chips'); if (pc && pc.top > top + 160) bottom = Math.min(bottom, pc.top - 8); // room for the plan chips
+    card = { left, right, top, bottom };
+    // the content inside the card: a row at the top for the view switch
+    return { left: left + 8, right: right - 8, top: top + 46, bottom: bottom - 6 };
+  }
+  /** the card's frame (both views) */
+  function drawCard() {
+    if (!card) return;
+    const { left, right, top, bottom } = card, r = 12;
+    ctx.fillStyle = 'rgba(9,13,22,0.72)'; ctx.strokeStyle = 'rgba(160,200,255,0.16)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(left, top, right - left, bottom - top, r) : ctx.rect(left, top, right - left, bottom - top);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = 'rgba(215,244,255,0.55)'; ctx.font = '700 10px "Chakra Petch", sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(view === 'top' ? 'DRAUFSICHT · BODENSPUR' : 'BAHN', left + 12, top + 24);
   }
 
   /** top view: the ground track around the base, sideways stretched so a miss of a kilometre is plain to see */
@@ -97,6 +114,7 @@ export function createOrbitMap(canvas) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     const A = freeArea(dpr);
+    drawCard();
     if (view === 'top') { drawTop(s, o, A); return; }
     const R = o.R;
     // scale: planet plus the orbit (apoapsis capped), plus a margin for labels
@@ -241,6 +259,7 @@ export function createOrbitMap(canvas) {
     draw,
     get visible() { return visible; },
     get view() { return view; },
+    get card() { return card; },
     set view(v) { view = v === 'top' ? 'top' : 'side'; },
     set visible(v) { visible = v; canvas.hidden = !v; if (!v) ctx.clearRect(0, 0, canvas.width, canvas.height); },
   };

@@ -314,3 +314,9 @@ A fourth start mode. Each planet has an emergency call: a lander that is not you
 - **Readout** (always, also without hints, while the track misses the base and there is still room): "↔ Basis 1,18 km neben der Bahn · ▲-Seite", above the switches.
 - Test: the track passes the pad at the miss distance, and a 2 m/s nudge toward the indicated marker reduces the miss on every planet, both sides.
 - **Map views:** the orbit map switches (bottom right, remembered) between **Seite** (the orbit seen from the side, as before) and **Draufsicht** (the ground track around the base from above, full size: km ticks along the pad's east-west line, the track stretched sideways so a kilometre of miss is plain, a dashed violet line from the base to the track with the distance and ▲/▼, the base, the lander as an arrow). The small inset is gone; on a phone the altitude readout and the track-miss chip step aside while the map is open.
+
+## Decluttered flight screen (tablet / desktop) and the map card
+
+- Gone from the flight screen: the "CRASHLAND · planet" top bar (the planet is named at the start), "reicht für … s Vollschub", the always-on parts panel (it appears only when something needs attention: a part hot, lost or failing, low power, the computer off, the chute in danger) and its developer numbers (mass, thrust/weight, centre of mass, torque, dynamic pressure: only in the debug view). The landing window shows only below 1000 m (up in orbit it only said "Crash" in red).
+- Tablet / desktop: the burn gauge moved to the right edge; a long HUD message wraps and pushes the altitude readout down instead of covering it.
+- The orbit map is a framed card in the screen area the panels leave free (measured from the panels: phone, tablet portrait / landscape, desktop), titled BAHN / DRAUFSICHT · BODENSPUR, with the view switch as two icon buttons in the switches' style in its top right corner.

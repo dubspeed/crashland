@@ -482,6 +482,12 @@ export function createHud() {
     const qEl = $('v-q');
     qEl.textContent = air ? `${fmt(s.q / 1000, 1)} kPa` : '–';
     cls(qEl, s.q > S.CHUTE_QMAX ? 'bad' : s.q > S.CHUTE_QMAX * 0.8 ? 'warn' : '');
+    // the parts panel only when something needs attention: a part hot, lost or failing, low power, the computer off
+    const h0 = hottest(s), issue = Object.keys(s.lost).length > 0 || h0.f > 0.5 || s.battery < 20 || !s.computerOK || s.chute === 'torn' || (s.chute === 'stowed' && s.q > S.CHUTE_QMAX * 0.8 && p.rho > 0);
+    $('parts').classList.toggle('issue', issue);
+    // the landing window only near the ground (high up in orbit it would only show "Crash" in red)
+    const farUp = S.altitude(s) > 1000 && s.status === 'flying';
+    $('h-landing').hidden = farUp; $('landing').hidden = farUp;
     const pb = $('c-panels');
     const solarGone = !S.hasPart(s, 'solarL') && !S.hasPart(s, 'solarR');
     const noPanels = !s.spec.ids.has('solarL');

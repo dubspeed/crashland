@@ -994,7 +994,7 @@ $('hud').addEventListener('touchend', swallow, { passive: false });
 $('c-com').classList.toggle('on', showCom);
 // ---------- debug overlay: F3, ?debug, or three taps on the title (phone) ----------
 const dbg = { on: false, frames: 0, acc: 0, worst: 0, steps: 0, at: 0 };
-function setDebug(on) { dbg.on = on; $('debug').hidden = !on; try { localStorage.setItem('crashland.debug', on ? '1' : ''); } catch { /* storage unavailable */ } }
+function setDebug(on) { dbg.on = on; $('debug').hidden = !on; document.body.classList.toggle('dbg', on); try { localStorage.setItem('crashland.debug', on ? '1' : ''); } catch { /* storage unavailable */ } }
 try { if (new URLSearchParams(location.search).has('debug') || localStorage.getItem('crashland.debug')) setDebug(true); } catch { /* ignore */ }
 let taps = [];
 for (const el of document.querySelectorAll('.brand, #menu h1')) {
@@ -1201,6 +1201,10 @@ renderer.setAnimationLoop(() => {
     $('c-dock').hidden = !canDock; if (!canDock && rcsMode) setRcs(false);
     s.uiRcs = rcsMode;
     updatePlanChips();
+    // tablet / desktop: a long HUD message (wrapped) pushes the altitude readout down instead of covering it
+    { const al = $('alert'), ro = $('readout');
+      const ab = !al.hidden ? al.getBoundingClientRect() : null;
+      ro.style.top = ab && innerWidth > 720 && ab.top < 200 && ab.bottom > 0 ? `${Math.round(ab.bottom + 8)}px` : ''; }
     // the ground track (orbit levels, up in orbit): redrawn 4× a second, so a sideways burn swings it live
     if (planet.orbit && s.status === 'flying' && S.altitude(s) > 250) {
       if (time - (trackAt ?? -1) > 0.25) { trackAt = time; world.setTrack(S.groundTrack(s)?.pts ?? null); }
@@ -1208,7 +1212,8 @@ renderer.setAnimationLoop(() => {
     // the track-miss readout: always (an instrument, also without hints) while the track misses the base
     const tm = planet.orbit ? S.trackMiss(s) : null, gt = tm && Math.abs(tm.miss) >= 40 && tm.ahead * s.planet.R > 2500 ? S.groundTrack(s, 4) : null;
     $('track-chip').hidden = !gt || !$('plan-chips').hidden || !$('sas-toast').hidden || orbitMap.visible; // (the map shows the miss itself)
-    if (orbitMap.visible) { const tg = document.querySelector('#controls .toggles')?.getBoundingClientRect(); if (tg) $('map-view').style.bottom = `${Math.round(innerHeight - tg.top + 8)}px`; }
+    // the view switch sits in the map card's top right corner
+    if (orbitMap.visible && orbitMap.card) { const c = orbitMap.card, mv = $('map-view'); mv.style.left = `${Math.round(c.right - mv.offsetWidth - 8)}px`; mv.style.top = `${Math.round(c.top + 6)}px`; }
     if (gt) { const tg = document.querySelector('#controls .toggles')?.getBoundingClientRect(); if (tg) $('track-chip').style.bottom = `${Math.round(innerHeight - tg.top + 10)}px`; }
     if (gt) $('track-chip').innerHTML = `↔ Basis <b>${(Math.abs(tm.miss) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} km</b> neben der Bahn · <span class="${gt.side > 0 ? 'nrm' : 'anrm'}">${gt.side > 0 ? '▲' : '▼'}-Seite</span>`;
     hud.update(s, input, cam.yaw); navball.draw(s, cam.yaw);

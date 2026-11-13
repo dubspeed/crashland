@@ -834,7 +834,24 @@ body.flyover #plan-chips { visibility: hidden; }
 body.flyover #track-chip { visibility: hidden; }
 
 /* orbit map: side view / top view switch */
-.map-view { position: absolute; right: 12px; top: auto; z-index: 6; display: flex; border: 1px solid var(--glass-edge); border-radius: 999px; overflow: hidden; background: var(--glass); }
-.map-view button { border: 0; background: none; padding: 4px 12px; font: 700 11px var(--display); letter-spacing: 0.06em; color: var(--mute); }
-.map-view button.on { background: var(--cyan); color: #06121c; }
 @media (max-width: 559px) { body.mapopen #readout { visibility: hidden; } } /* the map needs the middle of the phone screen */
+
+/* ---------- decluttered flight screen (tablet / desktop) ---------- */
+#top { display: none; } /* the planet is named when the flight starts */
+#v-burntime { display: none; }
+/* the parts panel only when something needs attention (hot, lost, failing, low power); the developer numbers
+   (mass, thrust/weight, centre of mass, torque, dynamic pressure) only in the debug view */
+#parts:not(.issue) { display: none; }
+#parts .com { display: none; }
+body.dbg #parts { display: block; }
+body.dbg #parts .com { display: flex; }
+@media (min-width: 721px) and (min-height: 521px) {
+  #burn { left: auto; right: max(10px, env(safe-area-inset-right, 0px)); }
+  #side { top: calc(240px + env(safe-area-inset-top, 0px)); } /* below the burn gauge */
+  #alert { max-width: calc(100vw - 2 * (max(10px, env(safe-area-inset-left, 0px)) + 280px)); white-space: normal; text-align: center; }
+}
+/* the orbit map's view switch: two icon buttons like the other switches, in the map card's corner (placed by JS) */
+.map-view { position: absolute; z-index: 6; display: flex; gap: 6px; border: 0; background: none; border-radius: 0; overflow: visible; }
+.map-view button { width: 40px; height: 36px; padding: 0; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--glass-edge); background: var(--glass); color: var(--mute); }
+.map-view button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.map-view button.on { border-color: var(--cyan); color: var(--cyan); background: var(--glass); }

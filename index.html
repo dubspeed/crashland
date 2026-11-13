@@ -13,7 +13,7 @@
   <div id="tunnel" aria-hidden="true"></div>
   <pre id="debug" hidden aria-hidden="true"></pre>
   <div id="hud" hidden>
-    <div id="map-view" class="map-view" hidden role="radiogroup" aria-label="Kartenansicht"><button data-v="side">Seite</button><button data-v="top">Draufsicht</button></div>
+    <div id="map-view" class="map-view" hidden role="radiogroup" aria-label="Kartenansicht"><button data-v="side" title="Seitenansicht: die Bahn um den Planeten" aria-label="Seitenansicht"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="5"/><ellipse cx="12" cy="13" rx="10" ry="7"/></svg></button><button data-v="top" title="Draufsicht: die Bodenspur an der Basis" aria-label="Draufsicht"><svg viewBox="0 0 24 24"><path d="M2 17c5-7 15-7 20 0"/><circle cx="12" cy="8" r="2.2"/><path d="M12 10.5v3" stroke-dasharray="1.5 1.5"/></svg></button></div>
     <canvas id="orbitmap" hidden aria-label="Bahnkarte: Planet, Bahn, Apoapsis, Periapsis, Ziel"></canvas>
     <div id="base-labels" aria-hidden="true"></div>
     <div id="flyover" hidden></div>
@@ -49,7 +49,7 @@
       <small id="v-burntime" class="burntime"></small>
       </div>
       <div class="col-b">
-      <h2>Landefenster</h2>
+      <h2 id="h-landing">Landefenster</h2>
       <div id="landing"></div>
       <h2>Energie</h2>
       <div id="power" class="power" aria-label="Batterie, Solarleistung und Verbrauch">
