@@ -597,7 +597,7 @@ export function createHud() {
       msg = (s.throttle > 0 ? 'BREMSEN … BIS DER SCHIRM GEHT' : 'FÜR DEN SCHIRM BREMSEN') + how;
       color = 'var(--amber)'; pulse = s.throttle === 0;
     }
-    else if (S.targetRel(s)) { const h = targetHint(s, yaw); msg = h.msg; color = h.color; pulse = false; }
+    else if (s.target?.dock && S.targetRel(s)) { const h = targetHint(s, yaw); msg = h.msg; color = h.color; pulse = false; }
     else if (hints && sideHint(s)) { const h = sideHint(s); msg = h.msg; color = h.color; pulse = false; }
     else if (hints && S.aeroState(s)) {
       // too high to land from: lower the low point into the air and let it brake over a few laps (time warp)
