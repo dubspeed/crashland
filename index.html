@@ -23,6 +23,7 @@
       <span id="planet-tag"></span>
     </header>
     <div id="alert" hidden></div>
+    <div id="track-chip" hidden></div>
     <div id="readout" aria-live="off"><div class="ro-alt"><b id="ro-alt"></b><span id="ro-alt-u">über Grund</span></div><div class="ro-v"><span id="ro-vy"></span><span id="ro-vh"></span></div></div>
 
     <div id="plan-chips" hidden aria-label="Treffplan"></div>
@@ -167,7 +168,7 @@
         <p class="help-lead">Bremse <b>so spät wie möglich, so kurz wie nötig</b> (Suicide Burn) und setz langsam, gerade und ohne Drift auf dem Pad auf.</p>
         <dl class="help-keys touch-hint">
           <dt>Schubhebel rechts</dt><dd>halten = Schub, Fingerhöhe = Stärke</dd>
-          <dt>Navball links</dt><dd>zeigt die Lage: Mitte (orange) = wohin die Nase zeigt, blau = Himmel, braun = Boden. <span style="color:#e8ff4a">◯</span> Flugrichtung, <span style="color:#e8ff4a">⊗</span> gegen die Flugrichtung, <span style="color:#ff5cf0">⊕</span> Basis, <span style="color:#8fe3ff">◇</span> Seitenschub (Bahn verfehlt die Basis). Ziehen neigt den Lander (oben = vom Bildschirm weg)</dd>
+          <dt>Navball links</dt><dd>zeigt die Lage: Mitte (orange) = wohin die Nase zeigt, blau = Himmel, braun = Boden. <span style="color:#e8ff4a">◯</span> Flugrichtung, <span style="color:#e8ff4a">⊗</span> gegen die Flugrichtung, <span style="color:#ff5cf0">⊕</span> Basis, <span style="color:#8fe3ff">◇</span> Seitenschub (Bahn verfehlt die Basis), <span style="color:#c58bff">▲ ▼</span> quer zur Bahn (Schub dorthin schwenkt die Bahn zu dieser Seite). Ziehen neigt den Lander (oben = vom Bildschirm weg)</dd>
           <dt>Wischen</dt><dd>Kamera drehen · Doppeltipp = zurück</dd>
         </dl>
         <dl class="help-keys key-hint">
@@ -182,6 +183,7 @@
           <dt>H · Halten</dt><dd>hält die Lage; das Steuerkreuz dreht</dd>
           <dt>B · Bremsen</dt><dd>Triebwerk gegen die Flugrichtung: Bremsmanöver aus dem Orbit, Wiedereintritt</dd>
           <dt>Z · Ziel</dt><dd>nur wenn ein Modul im Orbit wartet (gleich nach Bremsen): weit weg Nase so, dass der Lander hinfliegt (◎ auf dem Navball), Schub halten, der Computer dosiert. Liegt das Modul weit weg (über 1,5 km), erst einen <b>Treffplan</b> wählen (Chips: 1–3 Runden, Treibstoff gegen Zeit; ein Zündstoß jetzt, nach k Runden triffst du es). Auf der Bahnkarte zeigen zwei Marken mit Linie, wo und wann ihr euch am nächsten kommt. Unter 1,5 km fliegt Ziel die Annäherung, unter 120 m zeigt die Nase (unser Andockring) aufs Modul: Schub weiter halten, dann fliegt der Computer die letzten Meter mit den Seitendüsen und dockt an. Wer selbst fliegen will: <b>RCS</b> einschalten, Steuerkreuz = seitlich ausrichten, Hebel = vor / zurück. Andocken: Ringe unter 1,2 m, langsamer als 0,5 m/s</dd>
+          <dt>Bodenspur</dt><dd>die hellblaue Spur auf dem Planeten (und die Draufsicht auf der Bahnkarte) zeigt, wo deine Bahn verläuft. „Basis 1,2 km neben der Bahn · ▲-Seite“: die Basis liegt auf der Seite, auf die ▲ zeigt. Nase auf ▲ (Halten), kurz Schub: die Spur schwenkt hinüber. Weit vor der Basis wirkt ein Stoß am stärksten, direkt davor kaum noch.</dd>
           <dt>S · Seite</dt><dd>nur aus dem Orbit: Nase quer zur Bahn. Läuft die Bahn neben der Basis vorbei, schwenkt Schub sie darüber (am billigsten eine Viertelrunde vorher, die Anzeige sagt wann); fertig geht's zurück auf Bremsen</dd>
           <dt>L · Landen</dt><dd>stoppt Drift von selbst (Seitendüsen, bis 20° Neigung); Steuerkreuz = wohin fliegen, loslassen = stehen</dd>
           <dt>– · Aus</dt><dd>keine Hilfe, die Düsen zünden direkt</dd>

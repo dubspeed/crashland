@@ -429,6 +429,31 @@ function maneuver(s) {
   }
   return null;
 }
+/** orbit levels: the ground track, the great circle under the orbit plane, n points all the way round from the
+ *  lander (planet-frame directions d, chart x / z), and which side of it the base lies (+1: the side the orbit
+ *  normal points to, the navball's ▲) */
+export function groundTrack(s, n = 256) {
+  if (!s.planet.orbit || !s.planet.R) return null;
+  const { r, v, U } = inertial(s), R = s.planet.R;
+  const h = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]], hl = Math.hypot(...h);
+  if (hl < 1e-6) return null;
+  const hn = h.map((c) => c / hl), e2 = [hn[1] * U[2] - hn[2] * U[1], hn[2] * U[0] - hn[0] * U[2], hn[0] * U[1] - hn[1] * U[0]];
+  const pts = [];
+  for (let i = 0; i <= n; i++) {
+    const t = (i / n) * 2 * Math.PI, c = Math.cos(t), sn = Math.sin(t), d = [U[0] * c + e2[0] * sn, U[1] * c + e2[1] * sn, U[2] * c + e2[2] * sn];
+    pts.push({ d, x: R * Math.atan2(d[0], d[1]), z: R * Math.asin(Math.max(-1, Math.min(1, d[2]))) });
+  }
+  return { pts, side: hn[1] >= 0 ? 1 : -1, normal: hn };
+}
+/** the orbit normal (▲ on the navball) in the lander's local frame */
+export function normalLocal(s) {
+  if (!s.planet.orbit || !s.planet.R) return null;
+  const { r, v, E, U, N } = inertial(s);
+  const h = [r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0]], hl = Math.hypot(...h);
+  if (hl < 1e-6) return null;
+  const dot = (a) => (a[0] * h[0] + a[1] * h[1] + a[2] * h[2]) / hl;
+  return { x: dot(E), y: dot(U), z: dot(N) };
+}
 /** orbit levels: does the orbit pass over the base? miss = distance of the pad from the orbit plane (m, signed:
  *  + = the pad lies north, +z), dv = the sideways speed change (local east / up / north) that turns the plane
  *  through the pad here, ahead = angle along the orbit to the pad, best = seconds to the cheapest point to do it

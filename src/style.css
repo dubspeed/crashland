@@ -826,3 +826,9 @@ body.rcsmode .lever::after { content: ''; position: absolute; left: 10%; right: 
 #plan-chips button.on small { color: #1a1206; }
 #plan-chips button:disabled { opacity: 0.35; border-color: var(--mute); color: var(--mute); }
 body.flyover #plan-chips { visibility: hidden; }
+
+/* the track-miss instrument: how far the base lies beside the ground track, and on which marker's side */
+#track-chip { position: absolute; left: 50%; transform: translateX(-50%); top: auto; padding: 3px 10px; border-radius: 999px; background: rgba(9,13,22,0.7); border: 1px solid var(--glass-edge); font: 600 11.5px var(--mono); color: var(--ink); white-space: nowrap; pointer-events: none; }
+#track-chip b { color: var(--cyan); }
+#track-chip .nrm, #track-chip .anrm { color: #c58bff; font-weight: 700; }
+body.flyover #track-chip { visibility: hidden; }

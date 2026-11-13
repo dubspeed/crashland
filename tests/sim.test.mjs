@@ -151,3 +151,17 @@ test('aerobraking: a low point in the air takes the high point down over several
   assert.equal(Object.keys(s.lost).length, 0);
   assert.ok(S.orbitInfo(s).ap <= P.aero.land, 'ends low enough to land from');
 });
+
+test('ground track and ▲/▼: the base lies on the indicated side, a burn toward that marker swings the track closer', () => {
+  for (const P of S.ORBIT_PLANETS) for (const sign of [1, -1]) {
+    const s = S.newRound(P, 0, 1, { orbit: S.missOrbit(P, sign) }, {});
+    const gt = S.groundTrack(s), m0 = Math.abs(S.trackMiss(s).miss);
+    // the track's closest point to the pad is about the miss away
+    const closest = Math.min(...gt.pts.map((q) => Math.hypot(q.x, q.z)));
+    assert.ok(Math.abs(closest - m0) < m0 * 0.1 + 20, `${P.id} ${sign}: track ${closest.toFixed(0)} vs miss ${m0.toFixed(0)}`);
+    // a 2 m/s nudge toward the base's side (▲ = orbit normal if side > 0)
+    const n = S.normalLocal(s), k = 2 * gt.side;
+    s.vx += n.x * k; s.vy += n.y * k; s.vz += n.z * k;
+    assert.ok(Math.abs(S.trackMiss(s).miss) < m0 - 20, `${P.id} ${sign}: miss ${m0.toFixed(0)} -> ${Math.abs(S.trackMiss(s).miss).toFixed(0)}`);
+  }
+});

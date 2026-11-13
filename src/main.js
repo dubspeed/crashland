@@ -549,7 +549,7 @@ function showMenu() {
   $('menu').hidden = false; $('result').hidden = true; $('result-open').hidden = true; $('hud').hidden = true;
   buildMenu();
   debris.clear();
-  showBase(null); mission = null; rescue = null;
+  showBase(null); mission = null; rescue = null; world.setTrack(null); trackAt = null; $('track-chip').hidden = true;
   S.setSite('plain'); world.setSite(0);
   parkShip();
 }
@@ -910,7 +910,7 @@ bindPointer($('c-lever'), (e, r) => {
   s.limit = Math.min(1, Math.max(0.05, f >= 0.88 ? 1 : f / 0.88));
 }, () => { touch.lever = false; touch.fa = 0; });
 // ---------- RCS mode (docking): the pad slides the lander, the lever moves it forward / back, no main engine ----------
-let rcsMode = false;
+let rcsMode = false, trackAt = null;
 function setRcs(on) {
   rcsMode = !!on; touch.fa = 0; touch.lever = false;
   $('c-dock').classList.toggle('on', rcsMode); document.body.classList.toggle('rcsmode', rcsMode);
@@ -1190,6 +1190,15 @@ renderer.setAnimationLoop(() => {
     $('c-dock').hidden = !canDock; if (!canDock && rcsMode) setRcs(false);
     s.uiRcs = rcsMode;
     updatePlanChips();
+    // the ground track (orbit levels, up in orbit): redrawn 4× a second, so a sideways burn swings it live
+    if (planet.orbit && s.status === 'flying' && S.altitude(s) > 250) {
+      if (time - (trackAt ?? -1) > 0.25) { trackAt = time; world.setTrack(S.groundTrack(s)?.pts ?? null); }
+    } else if (trackAt !== null) { trackAt = null; world.setTrack(null); }
+    // the track-miss readout: always (an instrument, also without hints) while the track misses the base
+    const tm = planet.orbit ? S.trackMiss(s) : null, gt = tm && Math.abs(tm.miss) >= 40 && tm.ahead * s.planet.R > 2500 ? S.groundTrack(s, 4) : null;
+    $('track-chip').hidden = !gt || !$('plan-chips').hidden || !$('sas-toast').hidden;
+    if (gt) { const tg = document.querySelector('#controls .toggles')?.getBoundingClientRect(); if (tg) $('track-chip').style.bottom = `${Math.round(innerHeight - tg.top + 10)}px`; }
+    if (gt) $('track-chip').innerHTML = `↔ Basis <b>${(Math.abs(tm.miss) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} km</b> neben der Bahn · <span class="${gt.side > 0 ? 'nrm' : 'anrm'}">${gt.side > 0 ? '▲' : '▼'}-Seite</span>`;
     hud.update(s, input, cam.yaw); navball.draw(s, cam.yaw);
   }
   world.setSun(!!planet.orbit && mode !== 'menu', s.daylight ?? 1);

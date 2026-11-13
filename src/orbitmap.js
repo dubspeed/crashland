@@ -158,6 +158,26 @@ export function createOrbitMap(canvas) {
     ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-6, 5); ctx.lineTo(-3, 0); ctx.lineTo(-6, -5); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
 
+    // top view of the ground track near the base (sideways stretched): does the orbit run over the base?
+    if (p.orbit && s.status === 'flying') {
+      const gt = S.groundTrack(s, 256);
+      if (gt) {
+        const w = Math.min(170, (A.right - A.left) * 0.42), h = 70, x0 = A.left + 6, y0 = A.bottom - 40 - h - 4, L = 12000, Z = 2500;
+        ctx.fillStyle = 'rgba(9,13,22,0.82)'; ctx.strokeStyle = 'rgba(160,200,255,0.25)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.rect(x0, y0, w, h); ctx.fill(); ctx.stroke();
+        ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, w, h); ctx.clip();
+        const X = (x) => x0 + w / 2 + (x / L) * (w / 2), Y = (z) => y0 + h / 2 - (z / Z) * (h / 2);
+        ctx.strokeStyle = '#8fe3ff'; ctx.lineWidth = 1.6; ctx.beginPath();
+        let pen = false;
+        for (const q of gt.pts) { if (Math.abs(q.x) > L * 1.1) { pen = false; continue; } pen ? ctx.lineTo(X(q.x), Y(q.z)) : ctx.moveTo(X(q.x), Y(q.z)); pen = true; }
+        ctx.stroke();
+        ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.arc(X(0), Y(0), 4, 0, Math.PI * 2); ctx.fill();
+        if (Math.abs(s.x) < L) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(X(s.x), Y(s.z), 3, 0, Math.PI * 2); ctx.fill(); }
+        ctx.restore();
+        ctx.fillStyle = 'rgba(215,244,255,0.7)'; ctx.font = '600 9.5px "IBM Plex Mono", monospace'; ctx.textAlign = 'left';
+        ctx.fillText(`Draufsicht · quer ×${Math.round((h / 2 / Z) / (w / 2 / L))}`, x0 + 4, y0 + 11);
+      }
+    }
     // orbit computer readout under the map
     // one line: Ap/Pe are on the map already; time to touchdown and how far the cross is off the pad
     const lines = [];

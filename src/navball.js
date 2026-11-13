@@ -90,6 +90,14 @@ export function createNavball(host) {
       ctx.globalAlpha = a; ctx.strokeStyle = TGT; ctx.lineWidth = lw; ctx.beginPath(); ctx.arc(x, y, R0 * 0.8 * a, 0, Math.PI * 2);
       ctx.moveTo(x, y - R0 * 1.4 * a); ctx.lineTo(x, y + R0 * 1.4 * a); ctx.moveTo(x - R0 * 1.4 * a, y); ctx.lineTo(x + R0 * 1.4 * a, y); ctx.stroke();
     });
+    // across the orbit: ▲ normal / ▼ antinormal (violet); thrust toward one swings the orbit plane (and the
+    // ground track) to that side
+    const nl = S.normalLocal(s);
+    if (nl) for (const [sg, up] of [[1, true], [-1, false]]) mark(v3(nl.x * sg, nl.y * sg, nl.z * sg), (x, y, a) => {
+      ctx.globalAlpha = a; ctx.strokeStyle = ctx.fillStyle = '#c58bff'; ctx.lineWidth = lw; const k = R0 * 0.95 * a;
+      ctx.beginPath(); if (up) { ctx.moveTo(x, y - k); ctx.lineTo(x + k * 0.9, y + k * 0.6); ctx.lineTo(x - k * 0.9, y + k * 0.6); } else { ctx.moveTo(x, y + k); ctx.lineTo(x + k * 0.9, y - k * 0.6); ctx.lineTo(x - k * 0.9, y - k * 0.6); }
+      ctx.closePath(); ctx.stroke(); ctx.beginPath(); ctx.arc(x, y, lw * 0.9, 0, Math.PI * 2); ctx.fill();
+    });
     // the sun (orbit levels): nose there = panels full on
     const sl = S.sunLocal(s);
     if (sl) mark(v3(sl.x, sl.y, sl.z), (x, y, a) => {

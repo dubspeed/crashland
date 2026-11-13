@@ -308,6 +308,35 @@ export function createWorld(scene, models) {
     }
   }
 
+  /** orbit levels: the ground track on the surface (planet-frame directions + chart coords from S.groundTrack),
+   *  a line a little above the terrain; null hides it */
+  let trackLine = null;
+  function setTrack(pts) {
+    if (!pts || !ground || !curveR) { if (trackLine) trackLine.visible = false; return; }
+    const n = pts.length;
+    if (!trackLine || trackLine.parent !== ground) {
+      // a band 30 m wide on the ground (a 1-pixel line vanishes from orbit height)
+      const g = new THREE.BufferGeometry(), idx = [];
+      g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 2 * 3), 3));
+      for (let i = 0; i < n - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+      g.setIndex(idx);
+      trackLine = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: 0x8fe3ff, transparent: true, opacity: 0.5, fog: false, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }));
+      trackLine.frustumCulled = false; trackLine.renderOrder = 2;
+      ground.add(trackLine);
+    }
+    const a = trackLine.geometry.attributes.position, W = 15;
+    for (let i = 0; i < n; i++) {
+      const p = pts[i], q = pts[Math.min(n - 1, i + 1)], o = pts[Math.max(0, i - 1)];
+      const k = curveR + terrainHeight(p.x, p.z) + 6, d = p.d;
+      // sideways: up × along-the-track
+      const tx = q.d[0] - o.d[0], ty = q.d[1] - o.d[1], tz = q.d[2] - o.d[2];
+      let sx = d[1] * tz - d[2] * ty, sy = d[2] * tx - d[0] * tz, sz = d[0] * ty - d[1] * tx; const sl = Math.hypot(sx, sy, sz) || 1;
+      sx *= W / sl; sy *= W / sl; sz *= W / sl;
+      a.setXYZ(i * 2, d[0] * k + sx, d[1] * k - curveR + sy, d[2] * k + sz);
+      a.setXYZ(i * 2 + 1, d[0] * k - sx, d[1] * k - curveR - sy, d[2] * k - sz);
+    }
+    a.needsUpdate = true; trackLine.visible = true;
+  }
   /** orbit levels: sun from the planet's frame, daylight 0..1 where the lander is (normal levels: off) */
   let orbitSun = false, dayK = 1, hemiBase = 1;
   const _sd = new THREE.Vector3();
@@ -332,5 +361,5 @@ export function createWorld(scene, models) {
   }
   /** landing site: the GPU relief follows the flight model's (S.setSite), the rocks too */
   function setSite(i) { moon?.setSite(i); placeRocks(); }
-  return { setPlanet, setSite, setSun, update, align, toRender, setAir, stats: () => ({ tiles: moon ? moon.tiles() : 0 }) };
+  return { setPlanet, setSite, setSun, setTrack, update, align, toRender, setAir, stats: () => ({ tiles: moon ? moon.tiles() : 0 }) };
 }
