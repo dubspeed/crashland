@@ -333,6 +333,14 @@ export function targetRel(s) {
   return { rel, d, vrel, u, speed: Math.hypot(vrel.x, vrel.y, vrel.z), closing: vrel.x * u.x + vrel.y * u.y + vrel.z * u.z, dv, dvMag: Math.hypot(dv.x, dv.y, dv.z),
     port, portDist: Math.max(0, pl - half), along, off, offDist: Math.hypot(off.x, off.y, off.z), aim, near: d < NEAR };
 }
+/** the computer's final approach with the RCS jets (Ziel, thrust held): toward the module's ring, slower the
+ *  closer (under DOCK_SPEED at the ring); if the rings are off to the side up close, first stop and line up */
+function dockApproach(tr) {
+  const p = tr.port, pd = Math.max(0.01, Math.hypot(p.x, p.y, p.z));
+  const sp = Math.min(2, 0.12 + tr.portDist * 0.06) * (tr.offDist > 1.5 && tr.along < 6 ? 0 : 1);
+  const c = (v) => Math.max(-1, Math.min(1, v));
+  return { tx: c(((p.x / pd) * sp - tr.vrel.x) * 2), ty: c(((p.y / pd) * sp - tr.vrel.y) * 2), tz: c(((p.z / pd) * sp - tr.vrel.z) * 2) };
+}
 /** attitude angles (a, b) that put the nose along unit vector D, the solution nearest the current attitude
  *  (two solutions, plus full turns: picking the near one keeps the lander from spinning round) */
 function attTarget(s, D) {
@@ -1102,6 +1110,13 @@ export function step(s, input, dt) {
   if (!s.powered) thr = Math.min(thr, 0.6); // pumps off -> pressure-fed only
   // Seite / Ziel: the computer doses the thrust: only once the nose points along the speed change, and only
   // as much as is still missing (so holding the thrust button cannot overshoot)
+  // Ziel close to the module: the main engine stays off; holding the thrust lets the computer fly the last
+  // metres with the RCS jets (line the rings up, creep in); manual RCS (input.tx/ty/tz) works too
+  let autoDock = null;
+  if (p.orbit && s.sas === 'target' && s.computerOK) {
+    const tr = targetRel(s);
+    if (tr?.near) { if (thr > 0) autoDock = dockApproach(tr); thr = 0; }
+  }
   const mv = thr > 0 && s.computerOK && p.orbit ? maneuver(s) : null;
   if (mv) {
     const u0 = upVector(s), al = mv.mag > 1e-6 ? (u0.x * mv.dv.x + u0.y * mv.dv.y + u0.z * mv.dv.z) / mv.mag : 0;
@@ -1251,10 +1266,11 @@ export function step(s, input, dt) {
   s.vz += ((F * u.z + dz) / m + (cv ? cv.az : 0)) * dt;
   if (trans) { s.vx += trans.ax * dt; s.vz += trans.az * dt; }
   // RCS translation (docking): input.tx / ty / tz in the local frame (east / up / north), from the side jets
-  const tl = Math.hypot(input.tx || 0, input.ty || 0, input.tz || 0);
+  const tin = autoDock && !(input.tx || input.ty || input.tz) ? autoDock : input;
+  const tl = Math.hypot(tin.tx || 0, tin.ty || 0, tin.tz || 0);
   if (tl > 0 && s.computerOK && !s.blackout && p.orbit) {
     const k = (RCS_TRANS / m) / Math.max(1, tl);
-    s.vx += (input.tx || 0) * k * dt; s.vy += (input.ty || 0) * k * dt; s.vz += (input.tz || 0) * k * dt;
+    s.vx += (tin.tx || 0) * k * dt; s.vy += (tin.ty || 0) * k * dt; s.vz += (tin.tz || 0) * k * dt;
     s.rcsTrans = Math.min(1, tl);
   } else s.rcsTrans = 0;
   if (s.steerX || s.steerZ) {
