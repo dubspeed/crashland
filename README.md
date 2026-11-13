@@ -313,3 +313,4 @@ A fourth start mode. Each planet has an emergency call: a lander that is not you
 - **Navball:** violet ▲ normal / ▼ antinormal.
 - **Readout** (always, also without hints, while the track misses the base and there is still room): "↔ Basis 1,18 km neben der Bahn · ▲-Seite", above the switches.
 - Test: the track passes the pad at the miss distance, and a 2 m/s nudge toward the indicated marker reduces the miss on every planet, both sides.
+- **Map views:** the orbit map switches (bottom right, remembered) between **Seite** (the orbit seen from the side, as before) and **Draufsicht** (the ground track around the base from above, full size: km ticks along the pad's east-west line, the track stretched sideways so a kilometre of miss is plain, a dashed violet line from the base to the track with the distance and ▲/▼, the base, the lander as an arrow). The small inset is gone; on a phone the altitude readout and the track-miss chip step aside while the map is open.

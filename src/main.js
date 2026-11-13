@@ -1022,8 +1022,19 @@ function toggleMap(force) {
   if (!planet.orbit) { orbitMap.visible = false; return; }
   orbitMap.visible = force ?? !orbitMap.visible;
   $('c-map').classList.toggle('on', orbitMap.visible);
+  $('map-view').hidden = !orbitMap.visible;
+  document.body.classList.toggle('mapopen', orbitMap.visible);
 }
 tap($('c-map'), () => toggleMap());
+// map view: side (the orbit) or top (the ground track around the base); remembered
+try { orbitMap.view = localStorage.getItem('crashland.mapview') ?? 'side'; } catch { /* default */ }
+function setMapView(v) {
+  orbitMap.view = v;
+  for (const b of $('map-view').querySelectorAll('button')) b.classList.toggle('on', b.dataset.v === orbitMap.view);
+  try { localStorage.setItem('crashland.mapview', orbitMap.view); } catch { /* storage unavailable */ }
+}
+setMapView(orbitMap.view);
+for (const b of $('map-view').querySelectorAll('button')) tap(b, () => setMapView(b.dataset.v));
 setLabel($('c-map'), 'Karte', 'K', 'Bahnkarte');
 setLabel($('c-dock'), 'RCS', 'G', 'Feinsteuerung (RCS) zum Andocken: Steuerkreuz verschiebt, Hebel vor / zurück');
 // help: the switches are icons only, this says what they do
@@ -1196,7 +1207,8 @@ renderer.setAnimationLoop(() => {
     } else if (trackAt !== null) { trackAt = null; world.setTrack(null); }
     // the track-miss readout: always (an instrument, also without hints) while the track misses the base
     const tm = planet.orbit ? S.trackMiss(s) : null, gt = tm && Math.abs(tm.miss) >= 40 && tm.ahead * s.planet.R > 2500 ? S.groundTrack(s, 4) : null;
-    $('track-chip').hidden = !gt || !$('plan-chips').hidden || !$('sas-toast').hidden;
+    $('track-chip').hidden = !gt || !$('plan-chips').hidden || !$('sas-toast').hidden || orbitMap.visible; // (the map shows the miss itself)
+    if (orbitMap.visible) { const tg = document.querySelector('#controls .toggles')?.getBoundingClientRect(); if (tg) $('map-view').style.bottom = `${Math.round(innerHeight - tg.top + 8)}px`; }
     if (gt) { const tg = document.querySelector('#controls .toggles')?.getBoundingClientRect(); if (tg) $('track-chip').style.bottom = `${Math.round(innerHeight - tg.top + 10)}px`; }
     if (gt) $('track-chip').innerHTML = `↔ Basis <b>${(Math.abs(tm.miss) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 2, minimumFractionDigits: 2 })} km</b> neben der Bahn · <span class="${gt.side > 0 ? 'nrm' : 'anrm'}">${gt.side > 0 ? '▲' : '▼'}-Seite</span>`;
     hud.update(s, input, cam.yaw); navball.draw(s, cam.yaw);

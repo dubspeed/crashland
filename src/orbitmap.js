@@ -16,7 +16,7 @@ export function fmtTime(t) {
 
 export function createOrbitMap(canvas) {
   const ctx = canvas.getContext('2d');
-  let visible = false;
+  let visible = false, view = 'side'; // 'side': the orbit seen from the side, 'top': the ground track from above
 
   function size() {
     const dpr = Math.min(2, devicePixelRatio || 1);
@@ -31,10 +31,61 @@ export function createOrbitMap(canvas) {
     const ctrl = document.getElementById('controls')?.getBoundingClientRect();
     const top = W < 560 ? 150 : 70;
     let bottom = ctrl && ctrl.top > top + 120 ? ctrl.top - 10 : H - 10;
+    const mv = document.getElementById('map-view');
+    if (mv && !mv.hidden) bottom -= 30; // the side / top view switch sits above the controls
     const pc = document.getElementById('plan-chips');
     if (pc && !pc.hidden) { const r = pc.getBoundingClientRect(); if (r.top > top + 120) bottom = Math.min(bottom, r.top - 8); } // room for the plan chips
     const left = W < 560 ? 10 : 290, right = W < 560 ? W - 10 : W - 290;
     return { left, right, top, bottom };
+  }
+
+  /** top view: the ground track around the base, sideways stretched so a miss of a kilometre is plain to see */
+  function drawTop(s, o, A) {
+    const gt = S.groundTrack(s, 512);
+    const cx = (A.left + A.right) / 2, cy = (A.top + A.bottom - 40) / 2 + 4, w = A.right - A.left - 16, h = A.bottom - A.top - 70;
+    const tm = S.trackMiss(s), miss = tm ? Math.abs(tm.miss) : 0;
+    const L = Math.min(Math.PI * s.planet.R * 0.95, Math.max(6000, Math.abs(s.x) * 1.15)); // along the track: base and lander in view
+    const Z = Math.max(600, miss * 2.4, Math.abs(s.z) * 1.6); // across: the miss fills about half the height
+    const X = (x) => cx + (x / L) * (w / 2), Y = (z) => cy - (z / Z) * (h / 2);
+    const ex = Math.max(1, Math.round((h / 2 / Z) / (w / 2 / L)));
+    // frame, the pad's east-west line, km ticks along it
+    ctx.strokeStyle = 'rgba(160,200,255,0.18)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(X(-L), Y(0)); ctx.lineTo(X(L), Y(0)); ctx.stroke();
+    const step = L > 15000 ? 5000 : 2000;
+    ctx.fillStyle = 'rgba(215,244,255,0.45)'; ctx.font = '600 10px "IBM Plex Mono", monospace'; ctx.textAlign = 'center';
+    for (let x = -Math.floor(L / step) * step; x <= L; x += step) { ctx.beginPath(); ctx.moveTo(X(x), Y(0) - 3); ctx.lineTo(X(x), Y(0) + 3); ctx.stroke(); if (x) ctx.fillText(`${x / 1000} km`, X(x), Y(0) + 15); }
+    // the ground track (breaks where it wraps round the planet)
+    if (gt) {
+      ctx.strokeStyle = '#8fe3ff'; ctx.lineWidth = 2.5; ctx.beginPath();
+      let pen = false, last = null;
+      for (const q of gt.pts) {
+        const ok = Math.abs(q.x) <= L * 1.05 && Math.abs(q.z) <= Z * 1.2 && (!last || Math.abs(q.x - last.x) < L);
+        if (!ok) { pen = false; last = q; continue; }
+        pen ? ctx.lineTo(X(q.x), Y(q.z)) : ctx.moveTo(X(q.x), Y(q.z)); pen = true; last = q;
+      }
+      ctx.stroke();
+      // the miss: from the base square onto the track
+      if (miss >= 40) {
+        const c = gt.pts.reduce((b, q) => (Math.hypot(q.x, q.z) < Math.hypot(b.x, b.z) ? q : b));
+        ctx.setLineDash([4, 4]); ctx.strokeStyle = '#c58bff'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(X(0), Y(0)); ctx.lineTo(X(c.x), Y(c.z)); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle = '#c58bff'; ctx.font = '700 12px "IBM Plex Mono", monospace'; ctx.textAlign = 'left';
+        ctx.fillText(`${fmtAlt(miss)} ${gt.side > 0 ? '▲' : '▼'}`, X(c.x) + 10, (Y(0) + Y(c.z)) / 2 + 4);
+      }
+    }
+    // the base and the lander (arrow along its ground track, stretched like the map)
+    ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.arc(X(0), Y(0), 5, 0, Math.PI * 2); ctx.fill();
+    ctx.font = '600 11px "IBM Plex Mono", monospace'; ctx.textAlign = 'right'; ctx.fillText('BASIS', X(0) - 9, Y(0) + 4);
+    if (Math.abs(s.x) <= L) {
+      const ang = Math.atan2(-(s.vz / Z) * (h / 2), (s.vx / L) * (w / 2));
+      ctx.save(); ctx.translate(X(s.x), Y(s.z)); ctx.rotate(ang);
+      ctx.fillStyle = '#ffffff'; ctx.strokeStyle = '#0b1220'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(9, 0); ctx.lineTo(-6, 5); ctx.lineTo(-3, 0); ctx.lineTo(-6, -5); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.fillStyle = 'rgba(215,244,255,0.6)'; ctx.font = '600 10px "IBM Plex Mono", monospace'; ctx.textAlign = 'left';
+    ctx.fillText(`quer ×${ex} gestreckt`, A.left + 8, A.bottom - 30); // (the switch below says which view)
+    readout(s, o, A, cx);
   }
 
   function draw(s) {
@@ -46,6 +97,7 @@ export function createOrbitMap(canvas) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
     const A = freeArea(dpr);
+    if (view === 'top') { drawTop(s, o, A); return; }
     const R = o.R;
     // scale: planet plus the orbit (apoapsis capped), plus a margin for labels
     const rMax = Math.min(R + Math.max(isFinite(o.ap) ? o.ap : 0, s.y, 2500) * 1.05, R * 3);
@@ -158,27 +210,12 @@ export function createOrbitMap(canvas) {
     ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-6, 5); ctx.lineTo(-3, 0); ctx.lineTo(-6, -5); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
 
-    // top view of the ground track near the base (sideways stretched): does the orbit run over the base?
-    if (p.orbit && s.status === 'flying') {
-      const gt = S.groundTrack(s, 256);
-      if (gt) {
-        const w = Math.min(170, (A.right - A.left) * 0.42), h = 70, x0 = A.left + 6, y0 = A.bottom - 40 - h - 4, L = 12000, Z = 2500;
-        ctx.fillStyle = 'rgba(9,13,22,0.82)'; ctx.strokeStyle = 'rgba(160,200,255,0.25)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.rect(x0, y0, w, h); ctx.fill(); ctx.stroke();
-        ctx.save(); ctx.beginPath(); ctx.rect(x0, y0, w, h); ctx.clip();
-        const X = (x) => x0 + w / 2 + (x / L) * (w / 2), Y = (z) => y0 + h / 2 - (z / Z) * (h / 2);
-        ctx.strokeStyle = '#8fe3ff'; ctx.lineWidth = 1.6; ctx.beginPath();
-        let pen = false;
-        for (const q of gt.pts) { if (Math.abs(q.x) > L * 1.1) { pen = false; continue; } pen ? ctx.lineTo(X(q.x), Y(q.z)) : ctx.moveTo(X(q.x), Y(q.z)); pen = true; }
-        ctx.stroke();
-        ctx.fillStyle = '#f2c230'; ctx.beginPath(); ctx.arc(X(0), Y(0), 4, 0, Math.PI * 2); ctx.fill();
-        if (Math.abs(s.x) < L) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(X(s.x), Y(s.z), 3, 0, Math.PI * 2); ctx.fill(); }
-        ctx.restore();
-        ctx.fillStyle = 'rgba(215,244,255,0.7)'; ctx.font = '600 9.5px "IBM Plex Mono", monospace'; ctx.textAlign = 'left';
-        ctx.fillText(`Draufsicht · quer ×${Math.round((h / 2 / Z) / (w / 2 / L))}`, x0 + 4, y0 + 11);
-      }
-    }
-    // orbit computer readout under the map
+    readout(s, o, A, cx);
+  }
+
+  /** the one-line orbit computer readout under the map (both views) */
+  function readout(s, o, A, cx) {
+    const p = s.planet;
     // one line: Ap/Pe are on the map already; time to touchdown and how far the cross is off the pad
     const lines = [];
     if (o.escape) lines.push('Fluchtbahn');
@@ -203,6 +240,8 @@ export function createOrbitMap(canvas) {
   return {
     draw,
     get visible() { return visible; },
+    get view() { return view; },
+    set view(v) { view = v === 'top' ? 'top' : 'side'; },
     set visible(v) { visible = v; canvas.hidden = !v; if (!v) ctx.clearRect(0, 0, canvas.width, canvas.height); },
   };
 }
