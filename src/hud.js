@@ -60,6 +60,18 @@ function nightHint(s, hints) {
 /** a module to fetch: how far, how fast, what to do */
 function targetHint(s, yaw) {
   const tr = S.targetRel(s), m = (v) => fmt(v, 1);
+  const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
+  if (tr.far) {
+    // far: choose a meeting plan, fly its burn (Ziel, thrust held), then wait for the meeting (time warp)
+    const ca = S.closestApproach(s), meet = ca ? ` · BEGEGNUNG ${fmtAlt(ca.d)} IN ${mmss(ca.t)}` : '';
+    if (!s.plan) return { msg: `MODUL ${fmt(tr.d / 1000, 1)} km${meet} · TREFFPLAN WÄHLEN`, color: 'var(--amber)' };
+    if (!s.plan.done) {
+      const mp = S.meetPlan(s, s.plan.k), dir = mp && mp.dv < 0 ? 'BREMSEN' : 'BESCHLEUNIGEN';
+      if (s.sas !== 'target' && s.sasPending !== 'target') return { msg: `PLAN ${s.plan.k} RUNDE${s.plan.k > 1 ? 'N' : ''}: LAGEREGLER AUF ZIEL (Z)`, color: 'var(--amber)' };
+      return s.throttle > 0 ? { msg: `PLAN · NOCH ${m(Math.abs(mp?.dv ?? 0))} m/s`, color: 'var(--amber)' } : { msg: `PLAN: SCHUB HALTEN – ${m(Math.abs(mp?.dv ?? 0))} m/s ${dir}`, color: 'var(--cyan)' };
+    }
+    return { msg: `KURS STEHT${meet} · ⏩`, color: 'var(--ok)' };
+  }
   if (tr.near && s.sas !== 'target' && s.sasPending !== 'target') return { msg: `MODUL ${fmt(tr.portDist)} m · LAGEREGLER AUF ZIEL (Z): NASE AUFS MODUL`, color: 'var(--amber)' };
   if (tr.near) {
     // docking display: ring distance, sideways offset on the navball's axes (↔ right, ↕ up), closing speed

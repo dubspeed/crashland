@@ -55,7 +55,12 @@ export function makePilot(S, P, opt = {}) {
     // a module to fetch: Ziel (Bremsen -> Ziel), hold the thrust (the computer doses it) until it docks; the
     // mode goes back to Bremsen by itself
     if (mem.phase === 'wait' && s.target?.dock && !s.target.docked) {
-      if (!mem.tgt) { mem.tgt = true; act('sas'); }
+      if (!mem.tgt) {
+        mem.tgt = true; act('sas');
+        // the cheapest plan whose low point is clear (like tapping the chip)
+        const plans = [1, 2, 3].map((k) => S.meetPlan(s, k)).filter((m) => m?.ok);
+        if (plans.length) act(`plan:${plans.reduce((a, b) => (Math.abs(b.dv) < Math.abs(a.dv) ? b : a)).k}`);
+      }
       // hold the thrust: far, the dosed main engine; close, the computer's RCS approach
       return { thrust: s.sas === 'target', rcs: 0, rcsZ: 0 };
     }
@@ -76,11 +81,18 @@ export function makePilot(S, P, opt = {}) {
     if (mem.phase === 'wait' && opt.apMax && S.orbitInfo(s).ap > opt.apMax) return { thrust: false, rcs: 0, rcsZ: 0 };
     if (mem.phase === 'wait') {
       if (P.deorbitAt) { if (S.padAhead(s) < P.deorbitAt + (opt.dD ?? 0)) mem.phase = 'brake'; }
-      else { const og = S.orbitGuide(s); if (!og || og.brakeIn < (opt.offset ?? 0)) mem.phase = 'brake'; }
+      else {
+        const og = S.orbitGuide(s);
+        // (after a docking right at the pad the cue can be long past: like a player, wait for the next lap)
+        if (s.target?.docked && og && og.brakeIn > 5) mem.cueSeen = true; // a fresh braking cue after docking
+        if (!og || (og.brakeIn < (opt.offset ?? 0) && (!s.target?.docked || mem.cueSeen))) mem.phase = 'brake';
+      }
     }
     if (mem.phase === 'brake') {
       mem.lim0 ??= s.limit;
       thrust = !p || p.x > 0;
+      // only once the engine points against the flight direction (after Ziel / Seite the lander may still face elsewhere)
+      { const u = S.upVector(s), v = Math.hypot(s.vx, s.vy, s.vz) || 1; if ((u.x * s.vx + u.y * s.vy + u.z * s.vz) / v > -0.9 && v > 30) thrust = thrust && false; }
       if (!thrust) { mem.phase = 'coast'; s.limit = mem.lim0; } // limiter back up after the fine part (HUD reminds)
       // follow the fine-control hint (unless the optional automatic fine control does it)
       const fh = s.settings?.autoFine || !thrust ? null : S.fineHint(s);

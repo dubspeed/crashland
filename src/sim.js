@@ -185,6 +185,7 @@ export function act(s, name) {
   if (name === 'chute') return toggleChute(s);
   if (name === 'panels') return togglePanels(s);
   if (name === 'shield') return jettison(s, 'shield');
+  if (name.startsWith('plan:')) { const k = +name.slice(5); s.plan = k ? { k, done: false } : null; return true; }
   if (name === 'sas') {
     // the next mode only takes over once the switch rests for SAS_DELAY (cycling past "Senkrecht" to get to
     // "Aus" must not flip the lander); before the flight really starts it switches at once
@@ -290,13 +291,19 @@ export const ORBIT_OBJECTS = { station: { name: 'Station', dock: false, size: 14
 // docking: the lander's port sits on top of the capsule (PORT_Y above the feet, along the nose), the module's
 // port faces the lander; they latch when the ports are close, slow and the nose points at the module
 export const PORT_Y = 6.4, DOCK_DIST = 1.2, DOCK_SPEED = 0.5, DOCK_ANGLE = 20, NEAR = 120; // m, m/s, °, m (Ziel holds the nose on the module)
+// beyond FAR the module is on another part of the orbit: Ziel flies the chosen meeting plan, not straight at it
+export const FAR = 1500;
 /** a free-flying object `ahead` m along the lander's track, `up` m higher, on its own circular orbit */
 function makeTarget(s, t) {
   const p = s.planet, hv = Math.hypot(s.vx, s.vz) || 1, ex = s.vx / hv, ez = s.vz / hv, k = p.R / (p.R + s.y);
   const v = orbitSpeed(p, s.y + (t.up ?? 0));
   const o = ORBIT_OBJECTS[t.type];
-  return { type: t.type, name: t.name ?? o.name, dock: o.dock, mass: o.mass ?? 0, size: o.size,
-    x: s.x + ex * (t.ahead ?? 0) * k, z: s.z + ez * (t.ahead ?? 0) * k, y: s.y + (t.up ?? 0), vx: ex * v, vy: 0, vz: ez * v };
+  // ahead: metres along the orbit; phase: the angle along it (rad, + = ahead)
+  const ahead = t.phase !== undefined ? t.phase * (p.R + s.y) : t.ahead ?? 0;
+  const out = { type: t.type, name: t.name ?? o.name, dock: o.dock, mass: o.mass ?? 0, size: o.size,
+    x: s.x + ex * ahead * k, z: s.z + ez * ahead * k, y: s.y + (t.up ?? 0), vx: ex * v, vy: 0, vz: ez * v };
+  if (Math.abs(out.x) > Math.PI * p.R) out.x -= Math.sign(out.x) * 2 * Math.PI * p.R;
+  return out;
 }
 /** the object coasts (no air: it stays above it) with the same equations as the lander */
 function coast(p, o, dt) {
@@ -320,8 +327,8 @@ export function targetRel(s) {
   const dvv = L.v.map((c, i) => c - T.v[i] + wx[i]);
   const loc = (a) => ({ x: dot(a, L.E), y: dot(a, L.U), z: dot(a, L.N) });
   const rel = loc(dr), vrel = loc(dvv), u = { x: rel.x / d, y: rel.y / d, z: rel.z / d };
-  // far: the main-engine approach (the speed falls with the distance, to ~2 m/s at NEAR); near: RCS
-  const sp = Math.min(6, 0.3 + d / 60);
+  // middle: the main-engine approach (at most 6 m/s, falling with the distance, ~3.5 m/s at NEAR); near: RCS
+  const sp = Math.min(6, 0.5 + d / 40);
   const dv = { x: u.x * sp - vrel.x, y: u.y * sp - vrel.y, z: u.z * sp - vrel.z };
   // ports: ours on the nose, the module's facing us (half its size from its centre)
   const N = upVector(s), pr = { x: rel.x - N.x * PORT_Y, y: rel.y - N.y * PORT_Y, z: rel.z - N.z * PORT_Y };
@@ -331,7 +338,7 @@ export function targetRel(s) {
   const off = { x: port.x - N.x * along, y: port.y - N.y * along, z: port.z - N.z * along }; // sideways offset from our nose axis
   const aim = Math.acos(Math.max(-1, Math.min(1, (pr.x * N.x + pr.y * N.y + pr.z * N.z) / pl))) * 180 / Math.PI;
   return { rel, d, vrel, u, speed: Math.hypot(vrel.x, vrel.y, vrel.z), closing: vrel.x * u.x + vrel.y * u.y + vrel.z * u.z, dv, dvMag: Math.hypot(dv.x, dv.y, dv.z),
-    port, portDist: Math.max(0, pl - half), along, off, offDist: Math.hypot(off.x, off.y, off.z), aim, near: d < NEAR };
+    port, portDist: Math.max(0, pl - half), along, off, offDist: Math.hypot(off.x, off.y, off.z), aim, near: d < NEAR, far: d > FAR };
 }
 /** the computer's final approach with the RCS jets (Ziel, thrust held): toward the module's ring, slower the
  *  closer (under DOCK_SPEED at the ring); if the rings are off to the side up close, first stop and line up */
@@ -341,22 +348,85 @@ function dockApproach(tr) {
   const c = (v) => Math.max(-1, Math.min(1, v));
   return { tx: c(((p.x / pd) * sp - tr.vrel.x) * 2), ty: c(((p.y / pd) * sp - tr.vrel.y) * 2), tz: c(((p.z / pd) * sp - tr.vrel.z) * 2) };
 }
-/** attitude angles (a, b) that put the nose along unit vector D, the solution nearest the current attitude
- *  (two solutions, plus full turns: picking the near one keeps the lander from spinning round) */
+/** attitude targets (a, b) that turn the nose toward unit vector D along the shortest way: the turn split onto
+ *  the two tilt axes from where the nose is now (no absolute angles, so no jumps at the angles' ambiguities:
+ *  near the axis where b hardly moves the nose, b first turns the a-axis round, then a does the turn) */
 function attTarget(s, D) {
-  const a1 = Math.asin(Math.max(-1, Math.min(1, -D.x))), b1 = Math.atan2(D.z, D.y);
-  let best = null, bd = Infinity;
-  for (const [a0, b0] of [[a1, b1], [Math.PI - a1, b1 + Math.PI]]) {
-    const a = a0 + 2 * Math.PI * Math.round((s.a - a0) / (2 * Math.PI)), b = b0 + 2 * Math.PI * Math.round((s.b - b0) / (2 * Math.PI));
-    const dd = Math.abs(a - s.a) + Math.abs(b - s.b);
-    if (dd < bd) { bd = dd; best = [a, b]; }
+  const ca = Math.cos(s.a), sa = Math.sin(s.a), cb = Math.cos(s.b), sb = Math.sin(s.b);
+  const N = { x: -sa, y: ca * cb, z: ca * sb };
+  const Ja = { x: -ca, y: -sa * cb, z: -sa * sb }, sg = ca < 0 ? -1 : 1, Jb = { x: 0, y: -sb * sg, z: cb * sg };
+  const nd = Math.max(-1, Math.min(1, N.x * D.x + N.y * D.y + N.z * D.z)), th = Math.acos(nd);
+  let P = { x: D.x - N.x * nd, y: D.y - N.y * nd, z: D.z - N.z * nd };
+  const pl = Math.hypot(P.x, P.y, P.z);
+  if (pl < 1e-6) { if (th < 0.01) return [s.a, s.b]; P = Ja; } else P = { x: P.x / pl, y: P.y / pl, z: P.z / pl };
+  const da = th * (P.x * Ja.x + P.y * Ja.y + P.z * Ja.z), db = (th * (P.x * Jb.x + P.y * Jb.y + P.z * Jb.z)) / Math.max(0.25, Math.abs(ca));
+  return [s.a + da, s.b + db];
+}
+/** meeting plans: one burn here, along or against the flight direction, so that after k laps the lander is back
+ *  at this point just when the module gets there (same orbit plane; a few hundred metres of height difference
+ *  stay, Ziel's approach takes them out). Lowering the orbit makes it faster: braking catches up.
+ *  Returns { k, n (the module's laps), dv (m/s, + = along the flight direction), t (s until the meeting), ok (low
+ *  point clear of the ground / air) } or null. */
+export function meetPlan(s, k) {
+  const o = s.target;
+  if (!o || o.docked || !s.planet.orbit) return null;
+  const p = s.planet, mu = p.g * p.R * p.R, L = inertial(s), T = inertial(s, o.x, o.y, o.z, o.vx, o.vy, o.vz);
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const h = cross(L.r, L.v), hl = Math.hypot(...h);
+  const phi = Math.atan2(dot(cross(L.r, T.r), h) / hl, dot(L.r, T.r)); // module ahead (+) / behind (-), rad
+  const rm = Math.hypot(...T.r), wm = Math.hypot(...T.v) / rm, r = Math.hypot(...L.r), v = Math.hypot(...L.v);
+  // two ways to meet after k of our laps: catch up (the module does k laps: usually lower = faster) or let it
+  // come round to us (it does k + 1: higher = slower, the low point stays here, always safe); the cheaper valid one
+  const opt = (n) => {
+    const t = (2 * Math.PI * n - phi) / wm, Tn = t / k;
+    if (!(Tn > 0)) return null;
+    const a = Math.cbrt(mu * (Tn / (2 * Math.PI)) ** 2), dv = Math.sqrt(Math.max(0, mu * (2 / r - 1 / a))) - v;
+    const low = Math.min(r, 2 * a - r) - p.R; // the new low point (the burn point is the other end)
+    return { k, n, dv, t, low, ok: low > p.alt * 0.6 && 2 * a - r - p.R < p.alt * 4 };
+  };
+  const c = [opt(k), opt(k + 1)].filter(Boolean);
+  return c.filter((o) => o.ok).sort((x, y) => Math.abs(x.dv) - Math.abs(y.dv))[0] ?? c[0] ?? null;
+}
+/** the closest approach to the module over the next laps if nothing is burned (both coast, no air): distance,
+ *  time from now, and both positions then (planet frame) - the meeting markers. Cached for 0.5 s. */
+export function closestApproach(s) {
+  const o = s.target;
+  if (!o || o.docked || !s.planet.orbit) return null;
+  if (s._ca && s.t - s._ca.t0 < 0.5) return s._ca.v;
+  const p = s.planet, mu = p.g * p.R * p.R, L = inertial(s), T = inertial(s, o.x, o.y, o.z, o.vx, o.vy, o.vz);
+  const a = [{ r: [...L.r], v: [...L.v] }, { r: [...T.r], v: [...T.v] }];
+  const acc = (r) => { const l = Math.hypot(...r), k = -mu / (l * l * l); return r.map((c) => c * k); };
+  const period = (2 * Math.PI * Math.hypot(...L.r)) / Math.hypot(...L.v);
+  const dt = 2, n = Math.min(4000, Math.ceil((period * 3.2) / dt));
+  let best = { d: Math.hypot(...a[0].r.map((c, i) => c - a[1].r[i])), t: 0, rl: [...a[0].r], rm: [...a[1].r] };
+  for (const b of a) b.ac = acc(b.r);
+  for (let i = 1; i <= n; i++) {
+    for (const b of a) { // velocity Verlet: stable over a few laps
+      b.v = b.v.map((c, j) => c + b.ac[j] * dt / 2); b.r = b.r.map((c, j) => c + b.v[j] * dt);
+      b.ac = acc(b.r); b.v = b.v.map((c, j) => c + b.ac[j] * dt / 2);
+    }
+    if (Math.hypot(...a[0].r) < p.R) break; // it comes down first
+    const d = Math.hypot(...a[0].r.map((c, j) => c - a[1].r[j]));
+    if (d < best.d) best = { d, t: i * dt, rl: [...a[0].r], rm: [...a[1].r] };
   }
+  s._ca = { t0: s.t, v: best };
   return best;
 }
 /** Seite / Ziel: the speed change the computer steers for (local east / up / north), or null */
 function maneuver(s) {
   if (s.sas === 'side') { const tm = trackMiss(s); return tm ? { dv: tm.dv, mag: tm.dvMag, done: SIDE_DONE } : null; }
-  if (s.sas === 'target') { const tr = targetRel(s); return tr && !tr.near ? { dv: tr.dv, mag: tr.dvMag, done: 0.15 } : null; }
+  if (s.sas === 'target') {
+    const tr = targetRel(s);
+    if (!tr || tr.near) return null;
+    if (tr.far) { // far: the chosen meeting plan's burn, along / against the flight direction
+      if (!s.plan || s.plan.done) return null;
+      const mp = meetPlan(s, s.plan.k), v = Math.hypot(s.vx, s.vy, s.vz) || 1;
+      if (!mp) return null;
+      return { dv: { x: (s.vx / v) * mp.dv, y: (s.vy / v) * mp.dv, z: (s.vz / v) * mp.dv }, mag: Math.abs(mp.dv), done: 0.1, plan: true };
+    }
+    return { dv: tr.dv, mag: tr.dvMag, done: 0.15 };
+  }
   return null;
 }
 /** orbit levels: does the orbit pass over the base? miss = distance of the pad from the orbit plane (m, signed:
@@ -660,7 +730,7 @@ export function buildWarnings(build, planets, fuelK = 1, ref = DEFAULT_BUILD) {
   if (weak.length) out.push({ level: 'bad', text: `Triebwerk zu schwach für ${names(weak)}` });
   if (short.length) out.push({ level: 'warn', text: `Weniger Δv als der Standard-Lander: ${names(short)} wird knapp` });
   if (heavy.length) out.push({ level: 'warn', text: `Schwer für den Schirm: auf ${names(heavy)} schneller unten, mehr Bremsen nötig` });
-  const use = 0.3 + 0.15; // base load with attitude hold, %/s of the standard battery
+  const use = 0.2 + 0.1; // base load with attitude hold, %/s of the standard battery
   const mins = (BAT_CAP * spec.batK) / use / 60;
   if (!spec.solarK) out.push({ level: mins < 3 ? 'bad' : 'warn', text: `Kein Solar: Batterie reicht ~${String(Math.round(mins * 10) / 10).replace('.', ',')} min` });
   else if (spec.batK < 1 && spec.solarK < 1) out.push({ level: 'warn', text: 'Wenig Strom: kleine Batterie und kleine Paneele' });
@@ -1088,6 +1158,7 @@ function controlAxis(s, ang, rate, holdKey, integKey, cmd, target, comTorque, I,
   } else if (s.sas && s.computerOK) {
     // 'up' holds vertical, 'retro' leans against the drift; integrate only near the target (no windup)
     if (Math.abs(A - target) < 0.1) s[integKey] = Math.max(-0.5, Math.min(0.5, s[integKey] + (A - target) * dt));
+    else s[integKey] *= 1 - Math.min(1, 1.5 * dt); // far from the target: let an old integral fade (no windup that cancels the correction)
     // big turns (Senkrecht from lying flat, Retro after an overshot burn) at a steady rate instead of a whip:
     // the error is capped, so the turn rate stays near 0.3 rad/s and the lander does not swing past
     const err = Math.max(-0.35, Math.min(0.35, A - target));
@@ -1110,17 +1181,21 @@ export function step(s, input, dt) {
   if (!s.powered) thr = Math.min(thr, 0.6); // pumps off -> pressure-fed only
   // Seite / Ziel: the computer doses the thrust: only once the nose points along the speed change, and only
   // as much as is still missing (so holding the thrust button cannot overshoot)
+  // Seite / Ziel without the board computer: nothing doses the engine, so it does not fire blindly
+  if (p.orbit && (s.sas === 'target' || s.sas === 'side') && !s.computerOK) thr = 0;
   // Ziel close to the module: the main engine stays off; holding the thrust lets the computer fly the last
   // metres with the RCS jets (line the rings up, creep in); manual RCS (input.tx/ty/tz) works too
   let autoDock = null;
   if (p.orbit && s.sas === 'target' && s.computerOK) {
     const tr = targetRel(s);
     if (tr?.near) { if (thr > 0) autoDock = dockApproach(tr); thr = 0; }
+    else if (tr?.far && !maneuver(s)) thr = 0; // far, no plan burn to fly: nothing to do (no blind thrust)
   }
   const mv = thr > 0 && s.computerOK && p.orbit ? maneuver(s) : null;
   if (mv) {
     const u0 = upVector(s), al = mv.mag > 1e-6 ? (u0.x * mv.dv.x + u0.y * mv.dv.y + u0.z * mv.dv.z) / mv.mag : 0;
     thr = mv.mag <= mv.done || al < 0.97 ? 0 : Math.min(thr, (mv.mag * massProps(s).m) / (s.spec.fMax * 0.6));
+    if (mv.plan && mv.mag <= mv.done && !s.plan.done) { s.plan.done = true; s.plan.at = s.t; s.events.push({ type: 'planDone', t: s.t }); }
   }
   if (fuel(s) <= 0) thr = 0;
   // deorbit fine control (thick-air orbit levels): high up, the computer throttles down as the predicted
@@ -1167,8 +1242,17 @@ export function step(s, input, dt) {
   if (s.sas === 'target' && p.orbit) {
     // Ziel: the nose along the speed change that brings the lander to the module
     const tr = targetRel(s);
+    const mvp = tr?.far ? maneuver(s) : null;
     if (tr && tr.near) [tA, tB] = attTarget(s, tr.u); // close: the nose (our port) on the module, translate with RCS
-    else if (tr && tr.dvMag > 0.15) { const l = tr.dvMag; [tA, tB] = attTarget(s, { x: tr.dv.x / l, y: tr.dv.y / l, z: tr.dv.z / l }); }
+    else if (tr?.far) {
+      // the plan's burn; otherwise, waiting for the meeting: the panels (the nose) toward the sun, to charge
+      if (mvp && mvp.mag > 0.1) { const l = mvp.mag; [tA, tB] = attTarget(s, { x: mvp.dv.x / l, y: mvp.dv.y / l, z: mvp.dv.z / l }); }
+      else { const sl = (s.daylight ?? 1) > 0.5 ? sunLocal(s) : null; if (sl) [tA, tB] = attTarget(s, sl); else { tA = s.a; tB = s.b; } }
+    }
+    // middle: aim along the approach burn only when there is a real one to fly (no chasing small wobbles, which
+    // costs the attitude jets' power); in between, keep the attitude
+    else if (tr && (tr.dvMag > 0.5 || (s.throttle > 0 && tr.dvMag > 0.15))) { const l = tr.dvMag; [tA, tB] = attTarget(s, { x: tr.dv.x / l, y: tr.dv.y / l, z: tr.dv.z / l }); }
+    else if (tr) { tA = s.a; tB = s.b; }
     else { tA = s.a; tB = s.b; }
     if (!tr && s.sasPending === undefined) s.sas = 'retro'; // docked (or gone): back to Bremsen
   }
@@ -1323,7 +1407,7 @@ export function step(s, input, dt) {
 
   // --- power ---
   // base load: computer, radio, sensors, and life support with a crew (the uncrewed cargo core needs less)
-  const use = (s.spec.payload ? 0.15 : 0.3) + (s.sas ? 0.15 : 0) + 2.2 * rcsUse + 1.1 * (s.rcsTrans ?? 0) + 1.2 * thr;
+  const use = (s.spec.payload ? 0.12 : 0.2) + (s.sas ? 0.1 : 0) + 1.4 * rcsUse + 1.1 * (s.rcsTrans ?? 0) + 1.2 * thr;
   const gen = (s.spec.engineGen ?? 0) * thr; // alternator on the turbopump (strong engines)
   s.panelFold = Math.max(0, Math.min(1, s.panelFold + (s.panels === 'in' ? dt : -dt) / 1.2));
   const panels = (hasPart(s, 'solarL') ? 1 : 0) + (hasPart(s, 'solarR') ? 1 : 0);

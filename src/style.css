@@ -815,3 +815,14 @@ body.rcsmode .lever .fill, body.rcsmode .lever .mark, body.rcsmode .lever .lbl:n
 body.rcsmode .lever .lbl.rcsl { display: flex; flex-direction: column; justify-content: center; }
 body.rcsmode .lever::after { content: ''; position: absolute; left: 10%; right: 10%; top: 50%; border-top: 1px dashed var(--cyan); }
 .tog.dock:not([hidden]) { border-color: rgba(143,227,255,0.6); }
+
+/* meeting plan chips (a module far away): one compact row above the switches */
+#plan-chips { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 5px; align-items: center; padding: 4px 6px; border-radius: 10px; background: var(--glass); border: 1px solid var(--glass-edge); z-index: 4; white-space: nowrap; }
+#plan-chips .pc-l { font: 700 9px var(--display); letter-spacing: 0.1em; color: var(--mute); text-transform: uppercase; }
+#plan-chips button { display: grid; gap: 0; padding: 3px 7px; border-radius: 8px; border: 1px solid var(--amber); background: rgba(255,181,71,0.08); color: var(--amber); text-align: center; line-height: 1.15; }
+#plan-chips button b { font: 700 12px var(--display); }
+#plan-chips button small { font: 600 9.5px var(--mono); color: var(--ink); }
+#plan-chips button.on { background: var(--amber); color: #1a1206; }
+#plan-chips button.on small { color: #1a1206; }
+#plan-chips button:disabled { opacity: 0.35; border-color: var(--mute); color: var(--mute); }
+body.flyover #plan-chips { visibility: hidden; }

@@ -29,12 +29,16 @@ export const ORBITS = {
   // a supply module drifts ahead in the orbit: dock it (attitude mode Ziel), then bring both down
   module: { name: 'Modul im Orbit', d: 1, alt: 1.2, dr: 1.6, module: true },
 };
-/** where a module waits in orbit (no re-entry through thick air with it yet) */
-export const MODULE_PLANETS = ['luna-orbit', 'mars-orbit'];
+/** where a module waits in orbit: Luna for now (in air the waiting laps decay the lander's orbit, not the module's, and the plans drift) */
+export const MODULE_PLANETS = ['luna-orbit'];
 /** the object in orbit for a scenario (settings.target): the station you undock from, or the module to fetch */
-export function targetFor(id, name) {
+export function targetFor(id, name, r = null) {
   if (id === 'station') return { type: 'station', ahead: 32, up: 3, name };
-  if (id === 'module') return { type: 'module', ahead: 380, up: 30 };
+  // the module: 4-8 km ahead or behind on the same orbit plane, a little higher or lower (meeting plans)
+  if (id === 'module') {
+    const ph = r ? (0.35 + r() * 0.35) * (r() < 0.6 ? 1 : -1) : 0.5, up = r ? (80 + r() * 120) * (r() < 0.5 ? 1 : -1) : 120;
+    return { type: 'module', phase: Math.round(ph * 1000) / 1000, up: Math.round(up) };
+  }
   return null;
 }
 /** aerobraking orbits: [high point, low point] in m above the ground (2-4 passes; planet.aero.land: low enough to land) */
@@ -49,15 +53,18 @@ export function orbitFor(planet, id, sign = 1) {
   const out = { alt: Math.round(planet.alt * o.alt), downrange: Math.round(planet.downrange * o.dr) };
   if (planet.deorbitAt) out.deorbitAt = Math.round(planet.deorbitAt * Math.min(o.dr, 1 + (o.alt - 1) * 0.5));
   if (o.vK) out.vK = o.vK;
+  // the module waits above the air (laps of waiting must not decay the orbits)
+  if (o.module && planet.aero) out.alt = Math.max(out.alt, planet.aero.top + 800);
   // the module: docking takes a couple of minutes, all of it before the braking point
-  if (o.module) out.downrange = Math.round(Math.max(out.downrange, 0.85 * Math.PI * planet.R));
+  // the meeting happens where the plan burn is (the start, k laps later): mid-day, ~30° before the pad
+  if (o.module) out.downrange = Math.round(0.55 * planet.R);
   // (not where the deorbit point is so far out that there is no room for the side burn before it: Brontes, high)
   if (o.miss && (out.deorbitAt ?? 0) + 6000 < 0.9 * Math.PI * planet.R) Object.assign(out, S.missOrbit({ ...planet, alt: out.alt, deorbitAt: out.deorbitAt }, sign, 12));
   return out;
 }
 
 /** every combination a planet offers (the test pilot lands each one; SKIP: the ones that run dry) */
-export const SKIP = new Set(['terra-orbit:leaky:late', 'brontes-orbit:shuttle:late', 'brontes-orbit:brick:late', 'brontes-orbit:leaky:late', 'luna-orbit:brick:station']);
+export const SKIP = new Set(['terra-orbit:leaky:late', 'brontes-orbit:shuttle:late', 'brontes-orbit:brick:late', 'brontes-orbit:leaky:late', 'luna-orbit:brick:station', 'luna-orbit:leaky:module']);
 export function combos(planetId) {
   const out = [];
   for (const l of Object.keys(LANDERS)) for (const o of Object.keys(ORBITS)) if (!SKIP.has(`${planetId}:${l}:${o}`) && (!ORBITS[o].aero || AERO[planetId]) && (!ORBITS[o].module || MODULE_PLANETS.includes(planetId))) out.push([l, o]);
@@ -74,12 +81,12 @@ export function scenario(planet, n) {
   const [lid, oid] = list[Math.floor(r() * list.length)];
   const L = LANDERS[lid], O = ORBITS[oid], d = L.d + O.d, level = d <= 1 ? 0 : d <= 2 ? 1 : 2;
   const where = O.station ? `Station ${STATIONS[Math.floor(r() * STATIONS.length)]}` : O.name;
-  const story = O.module ? `Ein Versorgungsmodul (${S.ORBIT_OBJECTS.module.mass} kg) treibt 380 m vor der ${L.name}. Lageregler auf Ziel, Schub halten bis es andockt, dann ab zur Basis.`
+  const story = O.module ? `Ein Versorgungsmodul (${S.ORBIT_OBJECTS.module.mass} kg) treibt einige Kilometer entfernt auf deiner Bahn. Wähle einen Treffplan (1–3 Runden), Lageregler auf Ziel und Schub halten: erst der Plan, dann Annäherung und Andocken. Danach ab zur Basis.`
     : O.aero && !L.agency ? `Die ${L.name} kommt aus dem All und streift die Atmosphäre. Brems sie über ein paar Runden in der Luft ab (Zeitraffer) und lande an der Basis.`
     : L.agency
     ? `${L.agency} hat den Kontakt zu ihrem Lander ${L.name} verloren (${where}). Übernimm per Fernsteuerung und bring ihn zu unserer Basis.`
     : O.station ? `Die Crew der ${where} muss evakuiert werden. Die ${L.name} dockt ab, bring sie zur Basis.`
       : `Eine Crew sitzt im ${O.name} fest. Hol sie mit der ${L.name} runter zur Basis.`;
   return { n, lander: lid, orbit: oid, L, O, d, level, where, story, title: O.module ? 'Modul bergen' : L.agency ? `${L.name} bergen` : O.station ? 'Station evakuieren' : 'Crew abholen',
-    build: S.normalizeBuild(L.build), fuelK: L.fuelK, orbitSet: orbitFor(planet, oid, r() < 0.5 ? 1 : -1), target: targetFor(oid, where), pay: 1 + d * 0.35 };
+    build: S.normalizeBuild(L.build), fuelK: L.fuelK, orbitSet: orbitFor(planet, oid, r() < 0.5 ? 1 : -1), target: targetFor(oid, where, r), pay: 1 + d * 0.35 };
 }

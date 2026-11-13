@@ -35,3 +35,16 @@ test('rescue scenarios: deterministic, varied, and the orbit override replays', 
   const { s: flown, record } = recordPilot({ ...P, ...sc.orbitSet }, 0, 9, makePilot(S, { ...P, ...sc.orbitSet }, {}), 900, set, sc.build);
   assert.deepEqual(summary(replay(record)), summary(flown));
 });
+
+test('meeting plans: from 4-8 km ahead / behind, higher / lower, a plan, the approach and docking work', () => {
+  const P = S.ORBIT_PLANETS[0], L = R.LANDERS.shuttle;
+  for (const [phase, up] of [[0.55, 150], [0.6, -170], [-0.45, 120], [-0.4, -100]]) {
+    const set = { orbit: R.orbitFor(P, 'module'), fuelMult: L.fuelK, site: B.BASE_SITES[P.id], target: { type: 'module', phase, up } }, PP = { ...P, ...set.orbit };
+    const s0 = S.newRound(P, 0, 5, set, L.build);
+    const plans = [1, 2, 3].map((k) => S.meetPlan(s0, k));
+    assert.ok(plans.some((m) => m.ok), `${phase} ${up}: no valid plan`);
+    const { s } = recordPilot(PP, 0, 5, makePilot(S, PP, {}), 5000, set, L.build);
+    assert.ok(s.target.docked, `${phase} ${up}: not docked`);
+    assert.equal(s.status, 'landed', `${phase} ${up}: ${s.reason}`);
+  }
+});

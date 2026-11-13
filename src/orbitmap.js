@@ -30,7 +30,9 @@ export function createOrbitMap(canvas) {
     const W = canvas.width / dpr, H = canvas.height / dpr;
     const ctrl = document.getElementById('controls')?.getBoundingClientRect();
     const top = W < 560 ? 150 : 70;
-    const bottom = ctrl && ctrl.top > top + 120 ? ctrl.top - 10 : H - 10;
+    let bottom = ctrl && ctrl.top > top + 120 ? ctrl.top - 10 : H - 10;
+    const pc = document.getElementById('plan-chips');
+    if (pc && !pc.hidden) { const r = pc.getBoundingClientRect(); if (r.top > top + 120) bottom = Math.min(bottom, r.top - 8); } // room for the plan chips
     const left = W < 560 ? 10 : 290, right = W < 560 ? W - 10 : W - 290;
     return { left, right, top, bottom };
   }
@@ -128,6 +130,25 @@ export function createOrbitMap(canvas) {
       mark(0, 'Pe', o.pe, o.tPe);
     }
 
+    // a module in orbit: its orbit, where it is, and the meeting markers (closest approach: both positions then)
+    if (s.target?.dock && !s.target.docked) {
+      const o = s.target, T = S.inertial(s, o.x, o.y, o.z, o.vx, o.vy, o.vz), rm = Math.hypot(...T.r);
+      const ang = (r) => Math.atan2(r[0], r[1]);
+      ctx.setLineDash([3, 6]); ctx.strokeStyle = 'rgba(255,181,71,0.45)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.arc(cx, cy, rm * k, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      const [mx, my] = P(ang(T.r), rm);
+      ctx.fillStyle = '#ffb547'; ctx.beginPath(); ctx.arc(mx, my, 4, 0, Math.PI * 2); ctx.fill();
+      const ca = S.closestApproach(s);
+      if (ca && ca.t > 1) {
+        const [ax, ay] = P(ang(ca.rl), Math.hypot(...ca.rl)), [bx, by] = P(ang(ca.rm), Math.hypot(...ca.rm));
+        ctx.strokeStyle = ca.d < 1500 ? '#5fe0a0' : '#ffb547'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+        ctx.beginPath(); ctx.arc(ax, ay, 6, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(bx, by, 6, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = ctx.strokeStyle; ctx.font = '600 11px "IBM Plex Mono", monospace'; ctx.textAlign = 'center';
+        ctx.fillText(`${fmtAlt(ca.d)} · ${fmtTime(ca.t)}`, (ax + bx) / 2, Math.min(ay, by) - 12);
+      }
+    }
     // the lander, pointing along its velocity
     const th = s.x / R, [lx, ly] = P(th, R + s.y);
     const vxs = Math.cos(th) * s.vx * 1 + Math.sin(th) * s.vy, vys = Math.sin(th) * s.vx - Math.cos(th) * s.vy;
@@ -145,6 +166,8 @@ export function createOrbitMap(canvas) {
     else lines.push(p.rho > 0 ? '⏱ – · Luft bremst langsam' : '⏱ – · stabiler Orbit');
     const tm = S.trackMiss(s);
     if (tm && Math.abs(tm.miss) >= 40) lines[lines.length - 1] += ` · ↔ ${fmtAlt(Math.abs(tm.miss))} neben der Basis`;
+    const ca = s.target?.dock && !s.target.docked ? S.closestApproach(s) : null;
+    if (ca) lines[lines.length - 1] = `⇄ Begegnung ${fmtAlt(ca.d)}${ca.t > 1 ? ` in ${fmtTime(ca.t)}` : ''}`;
     ctx.textAlign = 'center'; ctx.font = '600 12px "IBM Plex Mono", monospace';
     const by = A.bottom - 6 - (lines.length - 1) * 16;
     lines.forEach((l, i) => {

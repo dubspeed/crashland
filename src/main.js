@@ -916,6 +916,28 @@ function setRcs(on) {
   $('c-dock').classList.toggle('on', rcsMode); document.body.classList.toggle('rcsmode', rcsMode);
 }
 tap($('c-dock'), () => setRcs(!rcsMode));
+// ---------- meeting plans (a module far away): chips "1 / 2 / 3 Runden" with the burn and the time ----------
+let planKey = '';
+function updatePlanChips() {
+  const el = $('plan-chips'), tr = mode === 'flight' && s.status === 'flying' && s.target?.dock ? S.targetRel(s) : null;
+  const show = !!(tr?.far && !s.plan?.done && (cam.fly === null || cam.fly === undefined) && $('sas-toast').hidden);
+  el.hidden = !show;
+  if (!show) { planKey = ''; return; }
+  const plans = [1, 2, 3].map((k) => S.meetPlan(s, k));
+  const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.round(t % 60)).padStart(2, '0')}`;
+  const key = plans.map((m) => `${m?.ok}${m?.dv.toFixed(1)}${Math.round((m?.t ?? 0) / 10)}`).join() + (s.plan?.k ?? 0);
+  if (key === planKey) return;
+  planKey = key;
+  el.innerHTML = '<span class="pc-l">Plan</span>' + plans.map((m) => m && `<button data-k="${m.k}" class="${s.plan?.k === m.k ? 'on' : ''}" ${m.ok ? '' : 'disabled'}><b>${m.k} ⟳</b><small>${m.ok ? `${Math.round(m.t / 60)} min · ${Math.abs(m.dv).toLocaleString('de-DE', { maximumFractionDigits: 1 })}${m.dv < 0 ? '▼' : '▲'}` : 'zu tief'}</small></button>`).join('');
+  const tg = document.querySelector('#controls .toggles')?.getBoundingClientRect();
+  if (tg) el.style.bottom = `${Math.round(innerHeight - tg.top + 10)}px`;
+}
+for (const ev of ['pointerdown', 'click']) $('plan-chips').addEventListener(ev, (e) => {
+  const b = e.target.closest('button[data-k]'); if (!b || b.disabled) return;
+  e.preventDefault(); e.stopPropagation();
+  if (ev === 'click' && e.detail !== 0) return; // handled on pointerdown
+  const k = +b.dataset.k; doAct(`plan:${s.plan?.k === k ? 0 : k}`); planKey = '';
+});
 // tilt pad: two axes, relative to the screen (right / away from the camera); further out = faster
 bindPointer($('c-rcs'), (e, r) => {
   const shape = (d) => (Math.abs(d) < 0.12 ? 0 : Math.max(-1, Math.min(1, (d - Math.sign(d) * 0.12) / 0.7)));
@@ -1167,6 +1189,7 @@ renderer.setAnimationLoop(() => {
     const canDock = !!(planet.orbit && s.target?.dock && !s.target.docked && s.status === 'flying');
     $('c-dock').hidden = !canDock; if (!canDock && rcsMode) setRcs(false);
     s.uiRcs = rcsMode;
+    updatePlanChips();
     hud.update(s, input, cam.yaw); navball.draw(s, cam.yaw);
   }
   world.setSun(!!planet.orbit && mode !== 'menu', s.daylight ?? 1);
