@@ -28,6 +28,7 @@
     <div id="readout" aria-live="off"><div class="ro-alt"><b id="ro-alt"></b><span id="ro-alt-u">über Grund</span></div><div class="ro-v"><span id="ro-vy"></span><span id="ro-vh"></span></div></div>
 
     <div id="plan-chips" hidden aria-label="Treffplan"></div>
+    <div id="sas-pick" hidden role="menu" aria-label="Lageregler wählen"></div>
     <div id="sas-toast" hidden aria-live="polite"><span class="st-l">Lageregler</span><div id="st-modes" class="st-modes"></div><span id="st-desc" class="st-desc"></span><div class="st-bar"><i id="st-fill"></i></div></div>
     <div id="td" hidden aria-live="off">
       <div class="td-top"><span id="td-v" class="td-v"></span><span class="td-unit">m/s</span><span id="td-grade" class="td-grade"></span></div>
@@ -138,6 +139,7 @@
         <div class="wind-row"><span class="wind-label">⛽ Treibstoff</span><div id="fuel-select" class="opt-select" role="radiogroup" aria-label="Treibstoffvorrat"></div></div>
         <div class="wind-row"><span class="wind-label">💡 Hinweise</span><div id="hint-select" class="opt-select" role="radiogroup" aria-label="Hinweise im HUD"></div></div>
         <div class="wind-row"><span class="wind-label" title="Feinregelung nach dem Bremsmanöver auf Terra und Brontes aus dem Orbit">🎯 Feinregelung</span><div id="auto-select" class="opt-select" role="radiogroup" aria-label="Feinregelung nach dem Deorbit"></div></div>
+        <div class="wind-row"><span class="wind-label" title="Einfach: Bremsen, Seite, Ziel mit Computer-Dosierung und Hinweisen. Realistisch: Prograd, Retrograd, Normal, Radial, Ziel – nur Ausrichtung, Schub selbst, keine Anweisungen">🧭 Lageregler</span><div id="sasmode-select" class="opt-select" role="radiogroup" aria-label="Lageregler einfach oder realistisch"></div></div>
         <div class="wind-row"><span class="wind-label">⟲ Spielstand</span><button id="reset-toggle" class="link">zurücksetzen …</button><div id="reset-row" class="opt-select reset-row" hidden><button id="reset-money">Geld<small>Karriere neu</small></button><button id="reset-bases">Basen<small>alle Module weg</small></button><button id="reset-all">Alles<small>Geld, Basen, Lander</small></button></div></div>
       </div>
     </div>
@@ -183,6 +185,7 @@
         <dl class="help-keys">
           <dt>H · Halten</dt><dd>hält die Lage; das Steuerkreuz dreht</dd>
           <dt>B · Bremsen</dt><dd>Triebwerk gegen die Flugrichtung: Bremsmanöver aus dem Orbit, Wiedereintritt</dd>
+          <dt>Realistisch</dt><dd>(Einstellungen → Lageregler) Antippen öffnet die Auswahl: <b>Stabil</b>, <b>Prograd</b> / <b>Retrograd</b> (in / gegen Flugrichtung), <b>Normal</b> / <b>Antinormal</b> (quer zur Bahn, ▲▼), <b>Radial außen</b> / <b>innen</b> (vom Planeten weg / hin), <b>Ziel</b> / <b>Anti-Ziel</b>, <b>Landen</b> (ohne Seitendüsen), <b>Aus</b>. Nur Ausrichtung – den Schub gibst du selbst, kein Computer dosiert, keine Anweisungen im HUD (Warnungen bleiben). ×1,1 Punkte.</dd>
           <dt>Z · Ziel</dt><dd>nur wenn ein Modul im Orbit wartet (gleich nach Bremsen): weit weg Nase so, dass der Lander hinfliegt (◎ auf dem Navball), Schub halten, der Computer dosiert. Liegt das Modul weit weg (über 1,5 km), erst einen <b>Treffplan</b> wählen (Chips: 1–3 Runden, Treibstoff gegen Zeit; ein Zündstoß jetzt, nach k Runden triffst du es). Auf der Bahnkarte zeigen zwei Marken mit Linie, wo und wann ihr euch am nächsten kommt. Unter 1,5 km fliegt Ziel die Annäherung, unter 120 m zeigt die Nase (unser Andockring) aufs Modul: Schub weiter halten, dann fliegt der Computer die letzten Meter mit den Seitendüsen und dockt an. Wer selbst fliegen will: <b>RCS</b> einschalten, Steuerkreuz = seitlich ausrichten, Hebel = vor / zurück. Andocken: Ringe unter 1,2 m, langsamer als 0,5 m/s</dd>
           <dt>Bodenspur</dt><dd>die hellblaue Spur auf dem Planeten (und die Draufsicht auf der Bahnkarte) zeigt, wo deine Bahn verläuft. „Basis 1,2 km neben der Bahn · ▲-Seite“: die Basis liegt auf der Seite, auf die ▲ zeigt. Nase auf ▲ (Halten), kurz Schub: die Spur schwenkt hinüber. Weit vor der Basis wirkt ein Stoß am stärksten, direkt davor kaum noch.</dd>
           <dt>S · Seite</dt><dd>nur aus dem Orbit: Nase quer zur Bahn. Läuft die Bahn neben der Basis vorbei, schwenkt Schub sie darüber (am billigsten eine Viertelrunde vorher, die Anzeige sagt wann); fertig geht's zurück auf Bremsen</dd>

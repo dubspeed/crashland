@@ -165,3 +165,25 @@ test('ground track and ▲/▼: the base lies on the indicated side, a burn towa
     assert.ok(Math.abs(S.trackMiss(s).miss) < m0 - 20, `${P.id} ${sign}: miss ${m0.toFixed(0)} -> ${Math.abs(S.trackMiss(s).miss).toFixed(0)}`);
   }
 });
+
+test('realistic attitude modes: real directions, no dosing, Landen without side jets', () => {
+  const P = S.ORBIT_PLANETS[0];
+  // Ziel in realistic: the nose on the module, held thrust is not dosed (full limit)
+  const s = S.newRound(P, 0, 1, { realistic: true, target: { type: 'module', ahead: 300, up: 0 } }, {});
+  S.act(s, 'sas:tgt');
+  for (let i = 0; i < 120 * 15; i++) S.advance(s, { thrust: false });
+  const tr = S.targetRel(s), u = S.upVector(s);
+  assert.ok(u.x * tr.u.x + u.y * tr.u.y + u.z * tr.u.z > 0.99, 'nose on the module');
+  S.advance(s, { thrust: true });
+  assert.equal(s.throttle, s.limit, 'no dosing');
+  // Landen: no side-jet help in realistic (simple: the jets push toward the commanded velocity)
+  const drift = (realistic) => {
+    const n = S.newRound(S.PLANETS[0], 0, 1, { realistic }, {});
+    S.act(n, 'sas'); S.act(n, 'sas'); // hold -> retro -> retro2 (Landen)
+    const vz0 = n.vz;
+    for (let i = 0; i < 120; i++) S.advance(n, { thrust: false, rcs: 0, rcsZ: 0 });
+    return Math.abs(n.vz - vz0);
+  };
+  assert.ok(drift(false) > 0.1, 'simple: side jets work');
+  assert.ok(drift(true) < 0.01, 'realistic: no side jets');
+});

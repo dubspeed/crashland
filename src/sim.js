@@ -155,7 +155,11 @@ export const FUEL_LEVELS = [
 ];
 export const HINTS_OFF_BONUS = 1.15; // score multiplier without hints
 export const AUTO_FINE_BONUS = 0.9;  // score multiplier with the automatic deorbit fine control
-export const DEFAULT_SETTINGS = { fuel: 1, hints: true, autoFine: false };
+export const DEFAULT_SETTINGS = { fuel: 1, hints: true, autoFine: false, realistic: false };
+export const REALISTIC_BONUS = 1.1; // score multiplier with the realistic attitude modes (no dosing, no side-jet help)
+/** realistic attitude modes (settings.realistic): the nose along a real direction, nothing doses the thrust.
+ *  hold = Stabil, retro2 = Landen (tilts against the drift, no side jets), off = Aus */
+export const REAL_MODES = ['hold', 'pro', 'retro', 'nrm', 'anrm', 'radout', 'radin', 'tgt', 'atgt', 'retro2', 'off'];
 
 export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) {
   const rnd = seededRandom(seed);
@@ -185,6 +189,8 @@ export function act(s, name) {
   if (name === 'chute') return toggleChute(s);
   if (name === 'panels') return togglePanels(s);
   if (name === 'shield') return jettison(s, 'shield');
+  // realistic: the mode picker sets a mode directly (no cycling, so no delay)
+  if (name.startsWith('sas:')) { const m = name.slice(4); s.sas = m === 'off' ? false : m; s.sasPending = undefined; s.holdA = s.a; s.holdB = s.b; return true; }
   if (name.startsWith('plan:')) { const k = +name.slice(5); s.plan = k ? { k, done: false } : null; return true; }
   if (name === 'sas') {
     // the next mode only takes over once the switch rests for SAS_DELAY (cycling past "Senkrecht" to get to
@@ -415,6 +421,7 @@ export function closestApproach(s) {
 }
 /** Seite / Ziel: the speed change the computer steers for (local east / up / north), or null */
 function maneuver(s) {
+  if (s.settings?.realistic) return null; // realistic: nothing doses the thrust
   if (s.sas === 'side') { const tm = trackMiss(s); return tm ? { dv: tm.dv, mag: tm.dvMag, done: SIDE_DONE } : null; }
   if (s.sas === 'target') {
     const tr = targetRel(s);
@@ -1226,7 +1233,7 @@ export function step(s, input, dt) {
   // deorbit fine control (thick-air orbit levels): high up, the computer throttles down as the predicted
   // touchdown nears the pad; 1 m/s there moves the landing point by a few hundred metres
   s.fineBurn = false;
-  if (p.deorbitAt && thr > 0 && s.pred && altitude(s) > 4000 && s.computerOK && s.settings?.autoFine) {
+  if (p.deorbitAt && thr > 0 && s.pred && altitude(s) > 4000 && s.computerOK && s.settings?.autoFine && !s.settings?.realistic) { // (realistic: no automatic thrust)
     const d = Math.hypot(s.pred.x, s.pred.z);
     if (d < 3000) { thr *= Math.max(0.06, d / 3000); s.fineBurn = true; }
   }
@@ -1263,6 +1270,17 @@ export function step(s, input, dt) {
       const rA = Math.atan2(s.vx, -s.vy), rB = -Math.asin(Math.max(-1, Math.min(1, s.vz / v)));
       if (v > 25 || Math.hypot(rA - s.a, rB - s.b) < 0.6) { tA = rA; tB = rB; }
     }
+  }
+  // realistic modes: the nose along a real direction (prograde, orbit normal, radial, the target); thrust is the pilot's
+  if (s.settings?.realistic && ['pro', 'nrm', 'anrm', 'radout', 'radin', 'tgt', 'atgt'].includes(s.sas)) {
+    let D = null;
+    const v = Math.hypot(s.vx, s.vy, s.vz);
+    if (s.sas === 'pro') D = v > 0.5 ? { x: s.vx / v, y: s.vy / v, z: s.vz / v } : null;
+    else if (s.sas === 'nrm' || s.sas === 'anrm') { const n = normalLocal(s), k = s.sas === 'nrm' ? 1 : -1; D = n ? { x: n.x * k, y: n.y * k, z: n.z * k } : null; }
+    else if (s.sas === 'radout') D = { x: 0, y: 1, z: 0 };
+    else if (s.sas === 'radin') D = { x: 0, y: -1, z: 0 };
+    else { const tr = targetRel(s), k = s.sas === 'tgt' ? 1 : -1; D = tr ? { x: tr.u.x * k, y: tr.u.y * k, z: tr.u.z * k } : null; }
+    if (D) [tA, tB] = attTarget(s, D); else { tA = s.a; tB = s.b; }
   }
   if (s.sas === 'target' && p.orbit) {
     // Ziel: the nose along the speed change that brings the lander to the module
@@ -1302,7 +1320,7 @@ export function step(s, input, dt) {
     const moveX = -cmdA, moveZ = cmdB;
     [tA, tB] = retro2Targets(s, F, m, dt, moveX, moveZ);
     cmdA = cmdB = 0;
-    if (s.computerOK && !s.blackout && !(s.chute === 'open' && p.rho > 0)) {
+    if (s.computerOK && !s.blackout && !(s.chute === 'open' && p.rho > 0) && !s.settings?.realistic) { // (realistic: no side-jet help)
       const vmax = Math.max(1, Math.min(VCMD, altitude(s) * 0.2)), amax = RCS_TRANS / m;
       const ex = moveX * vmax - s.vx, ez = moveZ * vmax - s.vz, want = Math.hypot(ex, ez) * 1.2;
       const acc = Math.min(amax, want), k = want > 1e-6 ? acc / want * 1.2 : 0;

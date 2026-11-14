@@ -113,7 +113,15 @@ export function createNavball(host) {
       ctx.beginPath(); ctx.arc(x, y, lw * 1.2, 0, Math.PI * 2); ctx.fill();
     });
     // (the station is only scenery: nothing to approach, the diamond stays the side burn)
-    const fetch = tr && s.target.dock, tm0 = S.trackMiss(s), tm = fetch ? { dv: tr.dv, dvMag: tr.dvMag, miss: 1e9, ahead: 1e9 } : tm0;
+    if (s.settings?.realistic) {
+      // realistic: the raw directions (radial out / in in light blue), and away from the target; no solution ◇
+      const ring = (x, y, a, cross) => { ctx.globalAlpha = a; ctx.strokeStyle = '#5fd8ff'; ctx.lineWidth = lw; const k = R0 * 0.8 * a; ctx.beginPath(); ctx.arc(x, y, k, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); if (cross) { ctx.moveTo(x - k * 0.6, y - k * 0.6); ctx.lineTo(x + k * 0.6, y + k * 0.6); ctx.moveTo(x + k * 0.6, y - k * 0.6); ctx.lineTo(x - k * 0.6, y + k * 0.6); } else ctx.arc(x, y, lw, 0, Math.PI * 2); ctx.stroke(); };
+      mark(v3(0, 1, 0), (x, y, a) => ring(x, y, a, false));
+      mark(v3(0, -1, 0), (x, y, a) => ring(x, y, a, true));
+      if (tr) mark(v3(-tr.rel.x, -tr.rel.y, -tr.rel.z), (x, y, a) => { ctx.globalAlpha = a; ctx.strokeStyle = '#ffb547'; ctx.lineWidth = lw; const k = R0 * 0.7 * a; ctx.beginPath(); ctx.arc(x, y, k, 0, Math.PI * 2); ctx.moveTo(x - k, y - k); ctx.lineTo(x + k, y + k); ctx.moveTo(x + k, y - k); ctx.lineTo(x - k, y + k); ctx.stroke(); });
+    }
+    const fetch = tr && s.target.dock, tm0 = s.settings?.realistic ? null : S.trackMiss(s), tm = fetch && !s.settings?.realistic ? { dv: tr.dv, dvMag: tr.dvMag, miss: 1e9, ahead: 1e9 } : tm0;
     if (tm && Math.abs(tm.miss) >= 40 && tm.dvMag > (fetch ? 0.15 : S.SIDE_DONE) && tm.ahead * s.planet.R > 2500) mark(v3(tm.dv.x, tm.dv.y, tm.dv.z), (x, y, a) => {
       ctx.globalAlpha = a; ctx.strokeStyle = '#8fe3ff'; ctx.lineWidth = lw; const k = R0 * 1.1 * a;
       ctx.beginPath(); ctx.moveTo(x, y - k); ctx.lineTo(x + k, y); ctx.lineTo(x, y + k); ctx.lineTo(x - k, y); ctx.closePath(); ctx.stroke();

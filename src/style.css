@@ -855,3 +855,10 @@ body.dbg #parts .com { display: flex; }
 .map-view button { width: 40px; height: 36px; padding: 0; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--glass-edge); background: var(--glass); color: var(--mute); }
 .map-view button svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .map-view button.on { border-color: var(--cyan); color: var(--cyan); background: var(--glass); }
+
+/* realistic attitude modes: the picker above the switches */
+#sas-pick { position: absolute; left: 50%; transform: translateX(-50%); z-index: 7; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; padding: 8px; border-radius: 12px; background: var(--glass); border: 1px solid var(--glass-edge); width: min(360px, calc(100vw - 24px)); }
+#sas-pick button { display: grid; justify-items: center; gap: 2px; padding: 6px 2px; border-radius: 8px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,0.04); color: var(--ink); font: 600 10px var(--mono); }
+#sas-pick button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+#sas-pick button.on { border-color: var(--cyan); background: rgba(143,227,255,0.14); }
+.tog .badge { white-space: nowrap; }

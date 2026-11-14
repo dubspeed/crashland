@@ -19,6 +19,22 @@ export const SAS_MODES = {
   up: { name: 'Senkrecht', badge: '↑', what: 'hält den Lander gerade' },
   off: { name: 'Aus', badge: '–', what: 'keine Hilfe – du steuerst die Düsen direkt' },
 };
+// realistic attitude modes (settings.realistic): the real names; shown in the picker and on the button
+export const REAL_MODES = {
+  hold: { name: 'Stabil', badge: 'STB', what: 'hält die Lage', ic: '<circle cx="12" cy="12" r="7"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/>' },
+  pro: { name: 'Prograd', badge: 'PRO', what: 'Nase in Flugrichtung (Schub beschleunigt)', ic: '<circle cx="12" cy="12" r="5"/><path d="M12 7V2M7 12H2M17 12h5"/>', col: '#e8ff4a' },
+  retro: { name: 'Retrograd', badge: 'RET', what: 'Nase gegen die Flugrichtung (Schub bremst)', ic: '<circle cx="12" cy="12" r="5"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7"/>', col: '#e8ff4a' },
+  nrm: { name: 'Normal', badge: 'NRM', what: 'quer zur Bahn (▲): Schub schwenkt die Bahn dorthin', ic: '<path d="M12 4l7 12H5z"/><circle cx="12" cy="12" r="1"/>', col: '#c58bff' },
+  anrm: { name: 'Antinormal', badge: 'ANM', what: 'quer zur Bahn (▼)', ic: '<path d="M12 20L5 8h14z"/><circle cx="12" cy="12" r="1"/>', col: '#c58bff' },
+  radout: { name: 'Radial außen', badge: 'R+', what: 'Nase vom Planeten weg', ic: '<circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.2"/><path d="M12 7V3M12 21v-4M7 12H3M21 12h-4"/>', col: '#5fd8ff' },
+  radin: { name: 'Radial innen', badge: 'R−', what: 'Nase zum Planeten hin', ic: '<circle cx="12" cy="12" r="5"/><path d="M8.5 8.5l7 7M15.5 8.5l-7 7M12 3v3M12 21v-3M3 12h3M21 12h-3"/>', col: '#5fd8ff' },
+  tgt: { name: 'Ziel', badge: 'ZL', what: 'Nase aufs Ziel (Modul / Station)', ic: '<circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="1.6"/>', col: '#ffb547' },
+  atgt: { name: 'Anti-Ziel', badge: 'AZ', what: 'Nase vom Ziel weg', ic: '<circle cx="12" cy="12" r="6"/><path d="M8 8l8 8M16 8l-8 8"/>', col: '#ffb547' },
+  retro2: { name: 'Landen', badge: 'LND', what: 'neigt gegen die Drift (ohne Seitendüsen), Schub ist deiner', ic: '<path d="M12 4v8M7 20l3-6h4l3 6M5 20h4M15 20h4"/>' },
+  off: { name: 'Aus', badge: '–', what: 'keine Lageregelung', ic: '<path d="M6 12h12"/>' },
+};
+/** the attitude mode as the player sees it (simple or realistic names) */
+export const modeInfo = (s, id) => (s.settings?.realistic ? REAL_MODES[id || 'off'] : null) ?? SAS_MODES[id || 'off'];
 export const ICONS = {
   chute: '<path d="M3 11a9 7 0 0 1 18 0z"/><path d="M3 11l9 9 9-9M12 11v9"/>',
   panels: '<path d="M2 8h8v8H2zM14 8h8v8h-8z"/><path d="M10 12h4M6 8v8M18 8v8"/>',
@@ -543,7 +559,7 @@ export function createHud() {
     {
       // a mode that is still waiting (switch must rest) blinks in the badge
       const pend = s.sasPending !== undefined, mode = (pend ? s.sasPending : s.sas) || 'off';
-      const M = SAS_MODES[mode];
+      const M = modeInfo(s, mode);
       setLabel(sas, M.name, 'T', `Lageregler: ${M.name} – ${M.what}${pend ? ' (gleich aktiv)' : ''}`, M.badge);
       sas.classList.toggle('pending', pend);
       // the choice in big, above the controls (the thumb covers the button): every mode in a row, the chosen
@@ -570,11 +586,11 @@ export function createHud() {
     const al = $('alert');
     let msg = null, color = 'var(--bad)', pulse = true;
     // hints (advice) can be switched off in the start menu; warnings always show
-    const hints = s.settings?.hints !== false;
+    const hints = s.settings?.hints !== false && !s.settings?.realistic; // realistic: instruments, no instructions (warnings stay)
     // a newly active attitude mode is named once in the message line
     if (s.sas !== sasMsg.mode) {
       if (sasMsg.mode !== undefined && s.t > 0.5 && s.status === 'flying') {
-        sasMsg.text = `LAGEREGLER: ${SAS_MODES[s.sas || 'off'].name.toUpperCase()}`;
+        sasMsg.text = `LAGEREGLER: ${modeInfo(s, s.sas).name.toUpperCase()}`;
         sasMsg.until = s.t + 2;
       }
       sasMsg.mode = s.sas;

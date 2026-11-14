@@ -4,7 +4,7 @@ import { loadModels } from './models.js';
 import { createWorld } from './world.js';
 import { createShip } from './ship.js';
 import { createDebris } from './debris.js';
-import { createHud, setLabel, ICONS } from './hud.js';
+import { createHud, setLabel, ICONS, REAL_MODES } from './hud.js';
 import { createOrbitMap } from './orbitmap.js';
 import { createReentry } from './reentry.js';
 import { createBuilder } from './builder.js';
@@ -209,6 +209,7 @@ function buildSettings() {
   row('fuel-select', S.FUEL_LEVELS.map((f, i) => [i, f.name, `${Math.round(f.k * 100)} % · ${x(f.bonus)}`]), settings.fuel, 'fuel');
   row('hint-select', [[true, 'An', 'Tipps im HUD'], [false, 'Aus', `nur Warnungen · ${x(S.HINTS_OFF_BONUS)}`]], settings.hints, 'hints');
   row('auto-select', [[false, 'Von Hand', 'nach dem Hinweis'], [true, 'Automatisch', `Computer · ${x(S.AUTO_FINE_BONUS)}`]], settings.autoFine, 'autoFine');
+  row('sasmode-select', [[false, 'Einfach', 'Bremsen · Seite · Ziel'], [true, 'Realistisch', `Pro/Retro/Normal … · ${x(S.REALISTIC_BONUS)}`]], !!settings.realistic, 'realistic');
 }
 // ---------- lander builder ----------
 let build = { ...S.DEFAULT_BUILD };
@@ -319,9 +320,9 @@ $('build-sub').addEventListener('click', (e) => {
 });
 
 /** score multiplier of the chosen settings (wind is applied separately, only where there is air) */
-const settingsBonus = (set) => (S.FUEL_LEVELS[set.fuel]?.bonus ?? 1) * (set.hints ? 1 : S.HINTS_OFF_BONUS) * (set.autoFine ? S.AUTO_FINE_BONUS : 1);
+const settingsBonus = (set) => (S.FUEL_LEVELS[set.fuel]?.bonus ?? 1) * (set.hints ? 1 : S.HINTS_OFF_BONUS) * (set.autoFine && !set.realistic ? S.AUTO_FINE_BONUS : 1) * (set.realistic ? S.REALISTIC_BONUS : 1);
 // wind only counts where there is air to blow
-const bestKey = (id) => `${id}${windLevel && [...S.PLANETS, ...S.ORBIT_PLANETS].find((p) => p.id === id)?.rho > 0 ? `.wind${windLevel}` : ''}${settings.fuel !== 1 ? `.fuel${settings.fuel}` : ''}${settings.hints ? '' : '.nohints'}${settings.autoFine ? '.auto' : ''}${buildSummary() === 'Standard' ? '' : '.b' + S.BUILD_SLOTS.map((sl) => build[sl.id]).join('-')}`;
+const bestKey = (id) => `${id}${windLevel && [...S.PLANETS, ...S.ORBIT_PLANETS].find((p) => p.id === id)?.rho > 0 ? `.wind${windLevel}` : ''}${settings.fuel !== 1 ? `.fuel${settings.fuel}` : ''}${settings.hints ? '' : '.nohints'}${settings.autoFine ? '.auto' : ''}${settings.realistic ? '.real' : ''}${buildSummary() === 'Standard' ? '' : '.b' + S.BUILD_SLOTS.map((sl) => build[sl.id]).join('-')}`;
 function best(id) { try { return JSON.parse(localStorage.getItem(`crashland.best.${id}`)); } catch { return null; } }
 function saveBest(id, v) { try { localStorage.setItem(`crashland.best.${id}`, JSON.stringify(v)); } catch { /* storage unavailable */ } }
 
@@ -457,7 +458,7 @@ function buildMenu() {
   }
   const bonus = (windLevel ? S.WIND_LEVELS[windLevel].bonus : 1) * settingsBonus(settings);
   const diff = [windLevel ? `Wind ${S.WIND_LEVELS[windLevel].name.toLowerCase()}` : '', settings.fuel !== 1 ? `Treibstoff ${S.FUEL_LEVELS[settings.fuel].name.toLowerCase()}` : '',
-    settings.hints ? '' : 'ohne Hinweise', settings.autoFine ? 'Computer an' : ''].filter(Boolean);
+    settings.hints ? '' : 'ohne Hinweise', settings.autoFine && !settings.realistic ? 'Computer an' : '', settings.realistic ? 'Lageregler realistisch' : ''].filter(Boolean);
   $('diff-btn').innerHTML = `Schwierigkeit${Math.abs(bonus - 1) > 0.001 ? ` <em>×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}</em>` : ''}<small>${diff.length ? diff.join(' · ') : 'Standard'}</small>`;
   $('base-info').hidden = startMode !== 'base' && startMode !== 'rescue';
   $('build-btn').hidden = startMode === 'rescue'; // the lander is given
@@ -651,7 +652,7 @@ function start(p, ms) {
   mode = 'flight';
   // base mission: a short fly-over of the base and the new target before the flight (tap or key skips it)
   cam.fly = mission || rescue ? 0 : null; cam.flyGo = false; // the briefing waits for its start button
-  setWarp(1); setRcs(false);
+  setWarp(1); setRcs(false); $('sas-pick').hidden = true;
   $('flyover').classList.remove('rescue');
   if (mission) {
     const c = S.CARGO[mission.type], n = loadBase(p.id).modules.length;
@@ -920,7 +921,7 @@ tap($('c-dock'), () => setRcs(!rcsMode));
 let planKey = '';
 function updatePlanChips() {
   const el = $('plan-chips'), tr = mode === 'flight' && s.status === 'flying' && s.target?.dock ? S.targetRel(s) : null;
-  const show = !!(tr?.far && !s.plan?.done && (cam.fly === null || cam.fly === undefined) && $('sas-toast').hidden);
+  const show = !!(tr?.far && !s.plan?.done && !s.settings?.realistic && (cam.fly === null || cam.fly === undefined) && $('sas-toast').hidden); // (realistic: no plans, fly it yourself)
   el.hidden = !show;
   if (!show) { planKey = ''; return; }
   const plans = [1, 2, 3].map((k) => S.meetPlan(s, k));
@@ -945,7 +946,25 @@ bindPointer($('c-rcs'), (e, r) => {
   touch.py = shape(((r.top + r.height / 2) - e.clientY) / (r.height / 2));
 }, () => { touch.px = 0; touch.py = 0; });
 const navball = createNavball($('c-rcs'));
-function cycleSas() { doAct('sas'); }
+// attitude mode: simple = tap through the modes; realistic = a picker with every mode (tap one, it applies at once)
+function cycleSas() {
+  if (!s.settings?.realistic) { doAct('sas'); return; }
+  const el = $('sas-pick');
+  if (!el.hidden) { el.hidden = true; return; }
+  const avail = S.REAL_MODES.filter((m) => !((m === 'tgt' || m === 'atgt') && !s.target) && !((m === 'nrm' || m === 'anrm') && !planet.orbit));
+  const cur = s.sas || 'off';
+  el.innerHTML = avail.map((m) => { const M = REAL_MODES[m]; return `<button data-m="${m}" class="${m === cur ? 'on' : ''}" title="${M.name}: ${M.what}"><svg viewBox="0 0 24 24" style="color:${M.col ?? 'currentColor'}">${M.ic}</svg><span>${M.name}</span></button>`; }).join('');
+  const tg = document.querySelector('#controls .toggles')?.getBoundingClientRect();
+  if (tg) el.style.bottom = `${Math.round(innerHeight - tg.top + 10)}px`;
+  el.hidden = false;
+}
+for (const ev of ['pointerdown', 'click']) $('sas-pick').addEventListener(ev, (e) => {
+  const b = e.target.closest('button[data-m]'); if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  if (ev === 'click' && e.detail !== 0) return;
+  doAct(`sas:${b.dataset.m}`); $('sas-pick').hidden = true;
+});
+addEventListener('pointerdown', (e) => { if (!$('sas-pick').hidden && !e.target.closest('#sas-pick, #c-sas')) $('sas-pick').hidden = true; }, true);
 // ---------- time warp (2×, 3×, 10×): only while nothing needs the pilot ----------
 const WARPS = [1, 2, 3, 10];
 let warp = 1;
@@ -1211,7 +1230,7 @@ renderer.setAnimationLoop(() => {
     } else if (trackAt !== null) { trackAt = null; world.setTrack(null); }
     // the track-miss readout: always (an instrument, also without hints) while the track misses the base
     const tm = planet.orbit ? S.trackMiss(s) : null, gt = tm && Math.abs(tm.miss) >= 40 && tm.ahead * s.planet.R > 2500 ? S.groundTrack(s, 4) : null;
-    $('track-chip').hidden = !gt || !$('plan-chips').hidden || !$('sas-toast').hidden || orbitMap.visible; // (the map shows the miss itself)
+    $('track-chip').hidden = !gt || !$('plan-chips').hidden || !$('sas-toast').hidden || !$('sas-pick').hidden || orbitMap.visible; // (the map shows the miss itself)
     // the view switch sits in the map card's top right corner
     if (orbitMap.visible && orbitMap.card) { const c = orbitMap.card, mv = $('map-view'); mv.style.left = `${Math.round(c.right - mv.offsetWidth - 8)}px`; mv.style.top = `${Math.round(c.top + 6)}px`; }
     if (gt) { const tg = document.querySelector('#controls .toggles')?.getBoundingClientRect(); if (tg) $('track-chip').style.bottom = `${Math.round(innerHeight - tg.top + 10)}px`; }
