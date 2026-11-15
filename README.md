@@ -326,3 +326,8 @@ A fourth start mode. Each planet has an emergency call: a lander that is not you
 - **Einfach** (default) stays as it was: Halten, Bremsen, Seite, Ziel, Landen, Aus, with the computer's dosed burns and the HUD's instructions.
 - **Realistisch** (`settings.realistic`, part of the round's settings, ×1,1 score): tapping the attitude button opens a picker with every mode (`act('sas:<mode>')`, applies at once): Stabil (hold), Prograd, Retrograd, Normal / Antinormal (orbit normal, orbit levels), Radial außen / innen, Ziel / Anti-Ziel (only with an object in orbit), Landen (tilts against the drift, no side jets), Aus. The modes only point the nose: nothing doses the thrust (no Seite / Ziel dosing, no RCS auto-approach, no automatic fine control), and the HUD drops its instructions (warnings stay), the ◇ solution marker and the plan chips. The instruments stay: navball markers (with light-blue radial out / in and the anti-target), ground track, track-miss readout, meeting marker.
 - Test: Ziel turns the nose onto the module, held thrust goes through undosed, Landen has no side-jet help in realistic.
+
+## Result panel
+
+- The result shows the stars, the points and a **Details** button (base missions: the money and Details); the breakdown sits in its own window ("Wertung": the points' parts, the bonus multiplier, the total, then every touchdown value: sink rate, drift, tilt with their grades, max. g, flight time) together with "Flug exportieren".
+- Three tiles instead of six: Landung (its worst value: sink rate, drift or tilt, so a crash shows its cause), Ziel, Treibstoff.

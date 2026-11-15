@@ -774,9 +774,8 @@ function showResult() {
   $('r-score').innerHTML = `<span class="r-stars">${'<i class="on">★</i>'.repeat(stars)}${'<i>★</i>'.repeat(3 - stars)}</span>`
     + `<span class="r-pts"><b id="r-pts">0</b>Punkte</span>`
     + (record ? (prev ? '<em class="r-best new">Neuer Bestwert</em>' : '') : prev ? `<em class="r-best">Bestwert ${prev.score.toLocaleString('de-DE')}</em>` : '')
-    // where the points come from, in one row
-    + (parts.length ? `<span class="r-parts">${parts.map(([k, v]) => `<em class="${v < 0 ? 'neg' : ''}">${v < 0 ? '−' : '+'}${Math.abs(Math.round(v)).toLocaleString('de-DE')} <small>${k}</small></em>`).join('')}${
-      Math.abs(mult - 1) > 0.001 ? `<em class="mult">×${mult.toLocaleString('de-DE', { maximumFractionDigits: 2 })} <small>Bonus</small></em>` : ''}</span>` : '');
+    // where the points come from: behind a button (like the money), the result stays short
+    + '<button id="r-score-more" class="r-more">Details</button>';
   if (record) saveBest(bestKey(planet.id), { stars, score });
   // count the points up
   const pts = $('r-pts'), t0 = performance.now();
@@ -784,7 +783,7 @@ function showResult() {
   if (score) tick();
   if (mission) {
     // base mode counts money, not points: the result shows the balance (career) or just what was built (sandbox)
-    $('r-score').innerHTML = mission.pay ? '<span id="r-money-slot"></span>' : `<span class="r-stars">${'<i class="on">★</i>'.repeat(stars)}${'<i>★</i>'.repeat(3 - stars)}</span>`;
+    $('r-score').innerHTML = (mission.pay ? '<span id="r-money-slot"></span>' : `<span class="r-stars">${'<i class="on">★</i>'.repeat(stars)}${'<i>★</i>'.repeat(3 - stars)}</span>`) + '<button id="r-score-more" class="r-more">Details</button>';
   }
   $('r-reason').hidden = ok;
   if (!ok) $('r-reason').textContent = `Aufschlag: ${s.reason}.`;
@@ -793,13 +792,24 @@ function showResult() {
   const tile = (label, val, sub, cls = '') => `<div class="r-tile"><span>${label}</span><b class="${cls}">${val}</b><small class="${cls}">${sub}</small></div>`;
   const pr = precision(s), fuelPct = Math.round((S.fuel(s) / s.fuel0) * 100);
   const gr = s.touch.grades, gName = (k) => S.GRADES[k].name.split(' ')[0];
+  // three tiles: the landing (its worst value: sink rate, drift or tilt), the aim, the fuel; the rest in the details
+  const worst = [['vy', 'Aufsetzen', `${f1(s.touch.vy)}<u>m/s</u>`], ['vx', 'Drift', `${f1(s.touch.vx)}<u>m/s</u>`], ['tilt', 'Neigung', `${Math.round(s.touch.tilt)}<u>°</u>`]]
+    .reduce((a, b) => (gr[b[0]] > gr[a[0]] ? b : a));
   $('r-tiles').innerHTML =
-    tile('Aufsetzen', `${f1(s.touch.vy)}<u>m/s</u>`, gName(gr.vy), tone(gr.vy)) +
-    tile('Drift', `${f1(s.touch.vx)}<u>m/s</u>`, gName(gr.vx), tone(gr.vx)) +
-    tile('Neigung', `${Math.round(s.touch.tilt)}<u>°</u>`, gName(gr.tilt), tone(gr.tilt)) +
+    tile(gr[worst[0]] > 0 ? worst[1] : 'Landung', gr[worst[0]] > 0 ? worst[2] : `${f1(s.touch.vy)}<u>m/s</u>`, gName(gr[worst[0]]), tone(gr[worst[0]])) +
     tile('Ziel', `${pr.d < 10 ? f1(pr.d) : Math.round(pr.d).toLocaleString('de-DE')}<u>m</u>`, pr.label, pr.tone) +
-    tile('Treibstoff', `${fuelPct}<u>%</u>`, `${Math.round(S.fuel(s))} kg übrig`, fuelPct < 10 ? 'bad' : fuelPct < 25 ? 'warn' : '') +
-    tile('Max. G', `${f1(s.maxG)}<u>g</u>`, s.spec.payload ? `Fracht max ${s.spec.payload.g} g` : s.maxG > S.G_LIMIT ? 'zu hoch' : 'Crew ok', s.maxG > S.gLimitOf(s) ? 'bad' : '');
+    tile('Treibstoff', `${fuelPct}<u>%</u>`, `${Math.round(S.fuel(s))} kg`, fuelPct < 10 ? 'bad' : fuelPct < 25 ? 'warn' : '');
+  // the details window: the points (parts, bonus, total) and every touchdown value
+  { const n = (v) => Math.round(v).toLocaleString('de-DE'), row = (k, v, cls = '') => `<tr class="${cls}"><td>${k}</td><td>${v}</td></tr>`;
+    const rows = mission ? '' : parts.map(([k, v]) => row(k, `${v < 0 ? '−' : '+'}${n(Math.abs(v))}`, v < 0 ? 'bad' : 'ok')).join('')
+      + (Math.abs(mult - 1) > 0.001 ? row('Bonus (Schwierigkeit, Wind, Basis)', `×${mult.toLocaleString('de-DE', { maximumFractionDigits: 2 })}`, 'warn') : '')
+      + `<tr class="sum"><td>Punkte</td><td>${n(score)}</td></tr>`;
+    const tv = (k, v, g) => row(k, `${v}${g !== undefined ? ` · ${gName(g)}` : ''}`, g !== undefined ? ['ok', 'warn', 'warn', 'bad'][g] : '');
+    $('score-rows').innerHTML = rows + '<tr class="head"><td colspan="2">Aufsetzen</td></tr>'
+      + tv('Sinkrate', `${f1(s.touch.vy)} m/s`, gr.vy) + tv('Drift', `${f1(s.touch.vx)} m/s`, gr.vx) + tv('Neigung', `${Math.round(s.touch.tilt)}°`, gr.tilt)
+      + tv('Max. G', `${f1(s.maxG)} g ${s.spec.payload ? `(Fracht max ${s.spec.payload.g})` : s.maxG > S.G_LIMIT ? '(zu hoch)' : '(Crew ok)'}`)
+      + tv('Flugzeit', `${Math.floor(s.t / 60)}:${String(Math.round(s.t % 60)).padStart(2, '0')}`);
+  }
   // notes only for what went wrong (or the crash's outcome); base missions: what happened to the cargo
   const notes = [];
   if (mission) {
@@ -840,6 +850,7 @@ function showResult() {
   if ($('r-money-slot')) { $('r-money-slot').outerHTML = money.replace('class="r-money', 'class="r-money big'); money = ''; }
   $('r-notes').innerHTML = money + notes.map(([t, c]) => `<em class="${c}">${t}</em>`).join('');
   $('r-money')?.addEventListener('click', () => { $('money-detail').hidden = false; });
+  $('r-score-more')?.addEventListener('click', () => { $('score-detail').hidden = false; });
   $('r-notes').hidden = !notes.length;
   // don't pop up: offer a button so the scene can be looked at first
   $('result-open').innerHTML = `<b style="color:${$('r-title').style.color}">${$('r-title').textContent}</b>${ok ? ` ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}` : ''} · Ergebnis ansehen`;
@@ -1078,6 +1089,8 @@ $('r-again').addEventListener('click', () => {
 });
 $('result-open').addEventListener('click', () => { $('result').hidden = false; $('result-open').hidden = true; $('r-again').focus(); });
 $('money-close').addEventListener('click', () => { $('money-detail').hidden = true; });
+$('score-close').addEventListener('click', () => { $('score-detail').hidden = true; });
+$('score-detail').addEventListener('click', (e) => { if (e.target === $('score-detail')) $('score-detail').hidden = true; });
 $('money-detail').addEventListener('click', (e) => { if (e.target === $('money-detail')) $('money-detail').hidden = true; });
 $('r-close').addEventListener('click', () => { $('result').hidden = true; $('result-open').hidden = false; });
 $('r-menu').addEventListener('click', showMenu);

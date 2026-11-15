@@ -862,3 +862,10 @@ body.dbg #parts .com { display: flex; }
 #sas-pick button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 #sas-pick button.on { border-color: var(--cyan); background: rgba(143,227,255,0.14); }
 .tog .badge { white-space: nowrap; }
+
+/* result: points with a details button (the breakdown in its own window), three tiles */
+#score-detail { z-index: 20; }
+.r-more { align-self: center; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,0.05); font: 600 11px var(--mono); color: var(--mute); }
+.r-more::after { content: ' ›'; }
+.money-table tr.head td { text-align: left !important; padding-top: 12px; font: 700 10px var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); border-bottom: 0; }
+.r-tiles { grid-template-columns: repeat(3, 1fr); }
