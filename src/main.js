@@ -232,6 +232,15 @@ function missionBuildFor(type, fresh = false) {
 const chip = (icon, txt, cls = '', title = '') => `<span class="ch ${cls}"${title ? ` title="${title}"` : ''}><i>${icon}</i>${txt}</span>`;
 const cargoChips = (c) => (c.crew ? chip('👩‍🚀', '4 Crew') : chip('⚖', `${c.mass} kg`, '', 'Masse') + chip('⇊', `${c.g} g`, '', 'verträgt höchstens') + chip('⤓', `${c.touch} m/s`, '', 'Aufsetzen höchstens'));
 const bonusChips = (bon) => [bon.fuel > 1 ? chip('⛽', `+${Math.round((bon.fuel - 1) * 100)} %`, 'ok', 'Treibstoff') : '', bon.solar > 1 ? chip('☀', `+${Math.round((bon.solar - 1) * 100)} %`, 'ok', 'Solar') : '', bon.score > 1 ? chip('★', `+${Math.round((bon.score - 1) * 100)} %`, 'ok', 'Punkte') : ''].join('');
+/** the scene shows planet p (flights, and the mission builder's backdrop) */
+function usePlanet(p) {
+  if (p === planet && world.ready) return;
+  planet = p;
+  const sr = S.surfaceR(p); // every planet is drawn as a sphere now; only orbit levels fly on a curved planet
+  S.setupTerrain(p); // before the ground is built from the terrain
+  world.setPlanet(p); world.ready = true; fogBase = scene.fog.far;
+  camera.far = sr ? 45000 : 6000; camera.updateProjectionMatrix();
+}
 function openMissionBuilder(p, type, ring, contract = null) {
   const base = loadBase(p.id);
   if (!type || (!contract && base.modules.some((m) => m.type === type))) return;
@@ -244,6 +253,8 @@ function openMissionBuilder(p, type, ring, contract = null) {
   missionBuild = missionBuildFor(type);
   if (career()) missionBuild = B.allowedBuild(missionBuild, built); // parts the bases have not unlocked yet
   $('menu').hidden = true; cam.pitch = 0;
+  // the backdrop: this mission's planet and its base's landing site (not the planet flown last)
+  usePlanet(p); S.setSite(B.BASE_SITES[p.id] ?? 'plain'); world.setSite(S.SITE_IDS.indexOf(B.BASE_SITES[p.id] ?? 'plain'));
   parkShip();
   const sub = `<span class="chips-row">${chip('🪐', p.name.replace(' Orbit', ''))}${cargoChips(c)}${bonusChips(bon)}${contract ? chip('📍', `neben ${S.CARGO[contract.near].name}`) : ''}</span>`;
   const ringRow = () => (type === 'beacon' || contract ? ''
@@ -604,13 +615,7 @@ function start(p, ms) {
     const base = loadBase(p.id), slot = B.freeSlot(base, 'far') ?? B.freeSlot(base, 'near');
     rescue = { sc: RS.scenario(p, rescueN(p.id)), planetId: p.id, target: base.modules.length ? (slot !== null ? B.slotPos(slot) : [44, 0]) : [0, 0] };
   }
-  if (p !== planet || !world.ready) {
-    planet = p;
-    const sr = S.surfaceR(p); // every planet is drawn as a sphere now; only orbit levels fly on a curved planet
-    S.setupTerrain(p); // before the ground is built from the terrain
-    world.setPlanet(p); world.ready = true; fogBase = scene.fog.far;
-    camera.far = sr ? 45000 : 6000; camera.updateProjectionMatrix();
-  }
+  usePlanet(p);
   debris.clear(); ship.reset();
   // a round is fully determined by its seed and the recorded inputs (replays, see tests/replay.mjs)
   const seed = (forceSeed ?? Math.floor(Math.random() * 2 ** 31)) >>> 0;
