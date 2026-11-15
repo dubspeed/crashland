@@ -207,6 +207,7 @@ function buildSettings() {
   };
   const x = (k) => `×${k.toLocaleString('de-DE')}`;
   row('fuel-select', S.FUEL_LEVELS.map((f, i) => [i, f.name, `${Math.round(f.k * 100)} % · ${x(f.bonus)}`]), settings.fuel, 'fuel');
+  row('alt-select', S.ALT_LEVELS.map((a, i) => [i, a.name, `${a.k === 1 ? 'wie gewohnt' : `${a.k.toLocaleString('de-DE')}× Höhe`} · ${x(a.bonus)}`]), settings.alt ?? 1, 'alt');
   row('hint-select', [[true, 'An', 'Tipps im HUD'], [false, 'Aus', `nur Warnungen · ${x(S.HINTS_OFF_BONUS)}`]], settings.hints, 'hints');
   row('auto-select', [[false, 'Von Hand', 'nach dem Hinweis'], [true, 'Automatisch', `Computer · ${x(S.AUTO_FINE_BONUS)}`]], settings.autoFine, 'autoFine');
   row('sasmode-select', [[false, 'Einfach', 'Bremsen · Seite · Ziel'], [true, 'Realistisch', `Pro/Retro/Normal … · ${x(S.REALISTIC_BONUS)}`]], !!settings.realistic, 'realistic');
@@ -331,9 +332,10 @@ $('build-sub').addEventListener('click', (e) => {
 });
 
 /** score multiplier of the chosen settings (wind is applied separately, only where there is air) */
-const settingsBonus = (set) => (S.FUEL_LEVELS[set.fuel]?.bonus ?? 1) * (set.hints ? 1 : S.HINTS_OFF_BONUS) * (set.autoFine && !set.realistic ? S.AUTO_FINE_BONUS : 1) * (set.realistic ? S.REALISTIC_BONUS : 1);
+const altBonus = (set, approach) => (approach ? S.ALT_LEVELS[set.alt ?? 1]?.bonus ?? 1 : 1); // the start height only exists in approach
+const settingsBonus = (set, approach = false) => altBonus(set, approach) * (S.FUEL_LEVELS[set.fuel]?.bonus ?? 1) * (set.hints ? 1 : S.HINTS_OFF_BONUS) * (set.autoFine && !set.realistic ? S.AUTO_FINE_BONUS : 1) * (set.realistic ? S.REALISTIC_BONUS : 1);
 // wind only counts where there is air to blow
-const bestKey = (id) => `${id}${windLevel && [...S.PLANETS, ...S.ORBIT_PLANETS].find((p) => p.id === id)?.rho > 0 ? `.wind${windLevel}` : ''}${settings.fuel !== 1 ? `.fuel${settings.fuel}` : ''}${settings.hints ? '' : '.nohints'}${settings.autoFine ? '.auto' : ''}${settings.realistic ? '.real' : ''}${buildSummary() === 'Standard' ? '' : '.b' + S.BUILD_SLOTS.map((sl) => build[sl.id]).join('-')}`;
+const bestKey = (id) => `${id}${windLevel && [...S.PLANETS, ...S.ORBIT_PLANETS].find((p) => p.id === id)?.rho > 0 ? `.wind${windLevel}` : ''}${settings.fuel !== 1 ? `.fuel${settings.fuel}` : ''}${startMode === '0' && (settings.alt ?? 1) !== 1 ? `.alt${settings.alt}` : ''}${settings.hints ? '' : '.nohints'}${settings.autoFine ? '.auto' : ''}${settings.realistic ? '.real' : ''}${buildSummary() === 'Standard' ? '' : '.b' + S.BUILD_SLOTS.map((sl) => build[sl.id]).join('-')}`;
 function best(id) { try { return JSON.parse(localStorage.getItem(`crashland.best.${id}`)); } catch { return null; } }
 function saveBest(id, v) { try { localStorage.setItem(`crashland.best.${id}`, JSON.stringify(v)); } catch { /* storage unavailable */ } }
 
@@ -467,8 +469,8 @@ function buildMenu() {
     const on = b.dataset.orbit === startMode;
     b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
   }
-  const bonus = (windLevel ? S.WIND_LEVELS[windLevel].bonus : 1) * settingsBonus(settings);
-  const diff = [windLevel ? `Wind ${S.WIND_LEVELS[windLevel].name.toLowerCase()}` : '', settings.fuel !== 1 ? `Treibstoff ${S.FUEL_LEVELS[settings.fuel].name.toLowerCase()}` : '',
+  const bonus = (windLevel ? S.WIND_LEVELS[windLevel].bonus : 1) * settingsBonus(settings, startMode === '0');
+  const diff = [windLevel ? `Wind ${S.WIND_LEVELS[windLevel].name.toLowerCase()}` : '', startMode === '0' && (settings.alt ?? 1) !== 1 ? `Start ${S.ALT_LEVELS[settings.alt].name.toLowerCase()}` : '', settings.fuel !== 1 ? `Treibstoff ${S.FUEL_LEVELS[settings.fuel].name.toLowerCase()}` : '',
     settings.hints ? '' : 'ohne Hinweise', settings.autoFine && !settings.realistic ? 'Computer an' : '', settings.realistic ? 'Lageregler realistisch' : ''].filter(Boolean);
   $('diff-btn').innerHTML = `Schwierigkeit${Math.abs(bonus - 1) > 0.001 ? ` <em>×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}</em>` : ''}<small>${diff.length ? diff.join(' · ') : 'Standard'}</small>`;
   $('base-info').hidden = startMode !== 'base' && startMode !== 'rescue';
@@ -686,7 +688,7 @@ function precision(st) {
 function precisionBonus(st) { const { d } = precision(st); return d <= 3 ? 300 : d <= PAD_RADIUS ? 150 : 120 * Math.exp(-(d - PAD_RADIUS) / 160); }
 
 function rate(st) {
-  const mult = (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings) * (st.settings?.base?.score ?? 1);
+  const mult = (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings, !st.planet.orbit) * (st.settings?.base?.score ?? 1);
   if (st.status !== 'landed' && st.spec.payload) return { stars: 0, score: 0, parts: [], mult: 1 }; // cargo lost
   if (st.status !== 'landed') {
     // crashed, but the crew got out: no stars, but the crew, the aim and the planet still count
@@ -762,7 +764,7 @@ function showResult() {
   const { stars, score, parts, mult } = rate(s);
   const f1 = (n) => n.toLocaleString('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
   // kicker: where, and the difficulty bonus as one figure
-  const bonus = (s.wind.speed && planet.rho > 0 ? s.wind.bonus : 1) * settingsBonus(s.settings);
+  const bonus = (s.wind.speed && planet.rho > 0 ? s.wind.bonus : 1) * settingsBonus(s.settings, !planet.orbit);
   const siteInfo = S.SITES[s.settings?.site ?? 'plain'];
   $('r-kicker').textContent = `${planet.name} · ${siteInfo.icon} ${siteInfo.name}${s.wind.speed && planet.rho > 0 ? ` · Wind ${s.wind.name}` : ''}${Math.abs(bonus - 1) > 0.001 ? ` · Bonus ×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}` : ''}`;
   const g = s.touch.grade, crash = s.touch.crash;

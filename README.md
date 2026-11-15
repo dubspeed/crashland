@@ -331,3 +331,7 @@ A fourth start mode. Each planet has an emergency call: a lander that is not you
 
 - The result shows the stars, the points and a **Details** button (base missions: the money and Details); the breakdown sits in its own window ("Wertung": the points' parts, the bonus multiplier, the total, then every touchdown value: sink rate, drift, tilt with their grades, max. g, flight time) together with "Flug exportieren".
 - Three tiles instead of six: Landung (its worst value: sink rate, drift or tilt, so a crash shows its cause), Ziel, Treibstoff.
+
+## Start height (setting "Starthöhe", approach only)
+
+`ALT_LEVELS` in sim.js: **Niedrig** (½ the planet's start height and ½ the fall speed, score ×0.9), **Normal**, **Hoch** (2× height, same fall speed, ×1.15). Only approach flights use it (`!planet.orbit`); orbit, base and rescue starts ignore it. Records are kept per height (`.alt<n>` in the best key), and replays carry it in their settings.

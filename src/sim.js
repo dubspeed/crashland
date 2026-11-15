@@ -155,7 +155,13 @@ export const FUEL_LEVELS = [
 ];
 export const HINTS_OFF_BONUS = 1.15; // score multiplier without hints
 export const AUTO_FINE_BONUS = 0.9;  // score multiplier with the automatic deorbit fine control
-export const DEFAULT_SETTINGS = { fuel: 1, hints: true, autoFine: false, realistic: false };
+export const DEFAULT_SETTINGS = { fuel: 1, hints: true, autoFine: false, realistic: false, alt: 1 };
+// approach levels: the start height (a factor on the planet's own; the same fall speed)
+export const ALT_LEVELS = [
+  { id: 'low', name: 'Niedrig', k: 0.5, bonus: 0.9 },
+  { id: 'normal', name: 'Normal', k: 1, bonus: 1 },
+  { id: 'high', name: 'Hoch', k: 2, bonus: 1.15 },
+];
 export const REALISTIC_BONUS = 1.1; // score multiplier with the realistic attitude modes (no dosing, no side-jet help)
 /** realistic attitude modes (settings.realistic): the nose along a real direction, nothing doses the thrust.
  *  hold = Stabil, retro2 = Landen (tilts against the drift, no side jets), off = Aus */
@@ -167,6 +173,12 @@ export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) 
   const set = { ...DEFAULT_SETTINGS, ...settings };
   // rescue missions: another orbit (height, distance to the pad, speed factor), part of the settings for replays
   if (set.orbit && planet.orbit) planet = { ...planet, ...set.orbit };
+  // approach levels: the chosen start height
+  // (lower: also slower, by the ratio free fall from that height would give, so it stays an easier start)
+  if (!planet.orbit && ALT_LEVELS[set.alt] && ALT_LEVELS[set.alt].k !== 1) {
+    const k = ALT_LEVELS[set.alt].k;
+    planet = { ...planet, alt: Math.round(planet.alt * k), vy: k < 1 ? Math.round(planet.vy * k) : planet.vy };
+  }
   setSite(set.site ?? 'plain'); // landing site (part of the settings, so replays get it)
   const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: (FUEL_LEVELS[set.fuel]?.k ?? 1) * (set.base?.fuel ?? 1) * (set.fuelMult ?? 1), build });
   s.settings = set;
