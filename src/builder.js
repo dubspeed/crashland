@@ -145,7 +145,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     const b = e.target.closest('.bo'); if (!b || !slot || b.disabled) return;
     choose(slot, b.dataset.id);
   });
-  $('build-done').addEventListener('click', () => { const c = ctx; close(!!c); c?.onStart?.(); });
+  $('build-done').addEventListener('click', () => { const c = ctx; close(!!c?.onStart); c?.onStart?.(); }); // (the free builder also has a context: its planets)
   $('build-reset').addEventListener('click', () => { resetBuild(); baseScale.clear(); pulse = { ids: Object.keys(SLOT_OF), t: 0 }; refresh(); });
 
   function choose(sl, id) {
