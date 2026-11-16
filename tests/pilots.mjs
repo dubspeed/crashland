@@ -11,13 +11,61 @@ export function makePilot(S, P, opt = {}) {
   const chute = opt.chute !== false;
   const altOf = (s) => S.altitude(s);
 
+  // approach layout 2 (side pads, sideways start): first steer the cross onto the pad (opt.pad: its kind) by
+  // tilting in Halten and burning, then land as usual (Landen, centring on that pad)
+  const padOf = (s) => (s.pads ? s.pads.find((p) => p.kind === (opt.pad ?? 'main')) ?? s.pads[0] : { x: 0, z: 0 });
+  function steer(s, act) {
+    if (!mem.steerInit) { mem.steerInit = true; act('panels'); }
+    const P0 = padOf(s), pr = s.pred, alt = altOf(s), h = s.y - S.terrainHeight(P0.x, P0.z);
+    const { m } = S.massProps(s);
+    // the braking burn at the end also takes the sideways speed off: aim the free-fall cross a bit past the pad
+    const vh = Math.hypot(s.vx, s.vz), vImp = Math.sqrt(s.vy * s.vy + 2 * P.g * Math.max(0, h));
+    const tb = vImp / Math.max(1, s.spec.fMax / m * 0.6 - P.g), over = vh * tb * 0.3;
+    const ux = vh > 0.5 ? s.vx / vh : 0, uz = vh > 0.5 ? s.vz / vh : 0;
+    const mx = P0.x + ux * over - (pr?.x ?? s.x), mz = P0.z + uz * over - (pr?.z ?? s.z), miss = Math.hypot(mx, mz);
+    // thick air: fall upright until the chute is safe (steering burns now would only cost the fuel the landing needs)
+    const thick = P.rho > 0.5 && chute && s.spec.ids?.has?.('chute') !== false;
+    if (thick && s.chute === 'stowed') {
+      if (s.t > 0.1 && s.q < S.CHUTE_QMAX * 0.9 && alt < 1200) act('chute');
+      return { thrust: false, rcs: Math.max(-1, Math.min(1, -s.a * 2)), rcsZ: Math.max(-1, Math.min(1, -s.b * 2)) };
+    }
+    // (hand over early enough for Landen to turn the lander upright: ~2 s per radian of tilt)
+    if (!pr || Math.min(alt, h) < S.burnAltitude(s) * 1.5 + 25 + Math.hypot(s.a, s.b) * 2 * Math.abs(s.vy) || (s.chute === 'open' && h < 260)) {
+      mem.steered = true; mem.init = true;
+      if ((opt.mode ?? 'retro2') === 'retro2') { act('sas'); act('sas'); } // hold -> retro -> retro2
+      return null;
+    }
+    // thick air: the chute as soon as it is safe; under it the pad steers the canopy towards the pad
+    if (s.chute === 'open' && thick) {
+      const cx = P0.x - (pr?.x ?? s.x), cz = P0.z - (pr?.z ?? s.z), cm = Math.hypot(cx, cz) || 1, k = Math.min(1, cm / 80);
+      return { thrust: false, rcs: -(cx / cm) * k, rcsZ: (cz / cm) * k };
+    }
+    // on target: stand upright and wait (keep watching the cross: drag and wind still move it)
+    if (miss < (mem.onT ? 10 : 5)) {
+      mem.onT = true;
+      return { thrust: false, rcs: Math.max(-1, Math.min(1, -s.a * 2)), rcsZ: Math.max(-1, Math.min(1, -s.b * 2)) };
+    }
+    mem.onT = false;
+    // tilt towards the miss, more the further off; burn once the tilt is there (the pad turns the lander)
+    const th = Math.min(0.9, 0.2 + miss / 100), ta = -th * (mx / miss), tb2 = th * (mz / miss);
+    const rcs = Math.max(-1, Math.min(1, (ta - s.a) * 2)), rcsZ = Math.max(-1, Math.min(1, (tb2 - s.b) * 2));
+    s.limit = Math.min(1, (S.G_LIMIT * 0.97 * S.G0 * m) / s.spec.fMax, 0.2 + miss / 250);
+    return { thrust: Math.hypot(ta - s.a, tb2 - s.b) < 0.12, rcs: Math.abs(rcs) < 0.05 ? 0 : rcs, rcsZ: Math.abs(rcsZ) < 0.05 ? 0 : rcsZ };
+  }
+
   function normal(s, act) {
+    if (s.pads && !mem.steered) { const r = steer(s, act); if (r) return r; }
     if (!mem.init) {
       mem.init = true;
       if ((opt.mode ?? 'retro2') === 'retro2') { act('sas'); act('sas'); } // hold -> retro -> retro2
       act('panels'); // fold for the entry
     }
-    const alt = altOf(s);
+    // side pads: height over the pad counts too (a pillar); not over it yet, stop 12 m above it and fly in
+    let alt = altOf(s);
+    if (s.pads) {
+      const P0 = padOf(s), hP = s.y - S.terrainHeight(P0.x, P0.z), dP = Math.hypot(P0.x - s.x, P0.z - s.z);
+      alt = Math.min(alt, P0.kind === 'spire' && dP > P0.r * 0.6 ? hP - 8 : hP);
+    }
     if (s.panels === 'in' && s.heatFlux < 4 && s.t > 8) act('panels');
     if (chute && P.rho > 0 && s.chute === 'stowed' && s.t > 0.1 && s.q < S.CHUTE_QMAX * 0.9 && alt < 1200) act('chute');
     if (s.chute === 'open' && alt < 150) act('chute');
@@ -27,15 +75,18 @@ export function makePilot(S, P, opt = {}) {
     if (!mem.burning && alt <= S.burnAltitude(s) * 1.3 + 10) mem.burning = true;
     let thrust = false;
     if (mem.burning) {
-      const req = s.vy < -1.5 ? (s.vy * s.vy - 2.25) / (2 * Math.max(alt - 0.5, 0.3)) + P.g : P.g * 0.95 - s.drag / m;
-      s.limit = Math.max(0.05, Math.min(1, gcap, (req * m) / s.spec.fMax / Math.max(0.5, S.upVector(s).y)));
-      thrust = true;
+      const req = s.vy < -1.5 ? (s.vy * s.vy - 2.25) / (2 * Math.max(alt - 0.5, 0.3)) + P.g : P.g * (alt < 0 ? 1.15 : 0.95) - s.drag / m;
+      const lw = Math.min(1, gcap, (req * m) / s.spec.fMax / Math.max(0.5, S.upVector(s).y));
+      s.limit = Math.max(0.05, lw);
+      thrust = lw >= 0.05 || s.vy < -2; // (on Luna the lowest setting lifts the lander: pulse instead)
     }
-    const dx = -s.x, dz = -s.z, d = Math.hypot(dx, dz);
-    const want = Math.min(1, d / 25) * (alt > 3 ? 1 : 0);
+    const P0 = padOf(s), dx = P0.x - s.x, dz = P0.z - s.z, d = Math.hypot(dx, dz);
+    // side pads (small): a ground speed that can still stop over the distance left (Landen's command scale: vmax)
+    const vmax = Math.max(1, Math.min(S.VCMD, altOf(s) * 0.2));
+    const want = (s.pads ? Math.min(1, Math.sqrt(2 * 0.8 * d) / vmax) : Math.min(1, d / 25)) * (altOf(s) > 3 ? 1 : 0);
     const mx = d > 0.5 ? (dx / d) * want : 0, mz = d > 0.5 ? (dz / d) * want : 0;
     let rcs = 0, rcsZ = 0;
-    if ((opt.mode ?? 'retro2') === 'retro2') { rcs = -mx; rcsZ = mz; }
+    if ((opt.mode ?? 'retro2') === 'retro2') { if (s.sas === 'retro2') { rcs = -mx; rcsZ = mz; } } // (not while the switch still waits: in Halten the pad turns the lander)
     else {
       const vwx = mx * 8 - s.vx, vwz = mz * 8 - s.vz;
       const ta = -Math.max(-0.3, Math.min(0.3, vwx * 0.05)), tb = Math.max(-0.3, Math.min(0.3, vwz * 0.05));

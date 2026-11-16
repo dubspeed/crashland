@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { terrainHeight, surfaceR, surfaceId, surfaceEdge, SUN } from './sim.js';
+import { terrainHeight, surfaceR, surfaceId, surfaceEdge, SUN, terrainPadList, terrainRoughOn } from './sim.js';
 import { createMoonTerrain } from './moon.js';
 
 function hash(x, z) {
@@ -92,11 +92,12 @@ export function createWorld(scene, models) {
   const _cam = new THREE.Vector3(), _up = new THREE.Vector3();
   const _cR = new THREE.Vector3(), _d = new THREE.Vector3(), _q = new THREE.Quaternion();
 
+  let sideGroup = null; // approach side pads (setSite)
   let moon = null; // orbit level terrain (GPU-displaced grid that follows the lander)
 
   function buildGround(p) {
     if (ground) { scene.remove(ground); ground.traverse((o) => { o.geometry?.dispose(); }); }
-    ground = new THREE.Group();
+    ground = new THREE.Group(); sideGroup = null;
 
     curveR = surfaceR(p);
     moon = null;
@@ -227,6 +228,10 @@ export function createWorld(scene, models) {
       beam.material.opacity = (curveR ? 0.22 : 0.12) * Math.min(1, Math.max(0, (camera.position.distanceTo(beam.getWorldPosition(_g)) - 90) / 400))
         * Math.min(1, Math.max(0, (axis - 25) / 60));
     }
+    if (sideGroup) for (const g of sideGroup.children) {
+      const b = g.userData.beam;
+      if (b) b.material.opacity = 0.32 * Math.min(1, Math.max(0, (camera.position.distanceTo(g.getWorldPosition(_g)) - 60) / 300));
+    }
     const sock = ground?.userData.sock;
     if (sock) {
       // sock lifts from hanging (0) to horizontal (strong wind) and points downwind, with a little flutter
@@ -348,7 +353,9 @@ export function createWorld(scene, models) {
     if (!rocksMesh) return;
     const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), ps = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
     let n = 0;
+    const pads = terrainPadList();
     for (const r of rockList) {
+      if (pads.some((p) => Math.hypot(r.x - p.x, r.z - p.z) < p.r + 4 + r.k)) continue;
       q.setFromAxisAngle(Y, r.rot);
       sc.set(r.k, r.k * r.sy, r.k);
       curvePoint(r.x, terrainHeight(r.x, r.z) - r.k * 0.15, r.z, ps);
@@ -359,7 +366,58 @@ export function createWorld(scene, models) {
     rocksMesh.instanceMatrix.needsUpdate = true;
     rocksMesh.computeBoundingSphere?.();
   }
-  /** landing site: the GPU relief follows the flight model's (S.setSite), the rocks too */
-  function setSite(i) { moon?.setSite(i); placeRocks(); }
+  /** landing site: the GPU relief follows the flight model's (S.setSite, S.setPads), the rocks too; obstacles =
+   *  the boulders of a rock-field pad (sim obstacles) */
+  function setSite(i, obstacles = []) {
+    moon?.setSite(i);
+    const pads = terrainPadList();
+    moon?.setPads(pads, terrainRoughOn());
+    buildSidePads(pads, obstacles);
+    placeRocks();
+  }
+  // approach side pads: smaller pads in their own colour, a light column each, boulders around the rock field
+  const PAD_COLOR = { rocks: 0xff8a3d, spire: 0x56d6ff };
+  function buildSidePads(pads, obstacles) {
+    if (sideGroup) { sideGroup.parent?.remove(sideGroup); sideGroup.traverse((o) => { if (!o.userData.shared) o.geometry?.dispose(); o.material?.dispose?.(); }); sideGroup = null; }
+    if (!ground || (!pads.length && !obstacles.length)) return;
+    sideGroup = new THREE.Group();
+    const v = new THREE.Vector3(), q = new THREE.Quaternion();
+    const put = (o, x, h, z) => { curvePoint(x, h, z, o.position); if (curveR) o.quaternion.copy(curveQuat(x, z, q)); sideGroup.add(o); return o; };
+    for (const p of pads) {
+      const col = PAD_COLOR[p.kind] ?? 0xf2c230, h = terrainHeight(p.x, p.z);
+      const g = new THREE.Group();
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(p.r, p.r + 0.6, 0.5, 8).translate(0, -0.23, 0), new THREE.MeshStandardMaterial({ color: 0x7c8088, roughness: 0.8, flatShading: true }));
+      pad.rotation.y = Math.PI / 8; pad.receiveShadow = true;
+      const mark = new THREE.MeshStandardMaterial({ color: col, roughness: 0.6, emissive: col, emissiveIntensity: 0.25 });
+      const ring = new THREE.Mesh(new THREE.RingGeometry(p.r * 0.62, p.r * 0.7, 8, 1).rotateX(-Math.PI / 2), mark);
+      ring.position.y = 0.03; ring.rotation.y = Math.PI / 8;
+      const bar1 = new THREE.Mesh(new THREE.BoxGeometry(p.r * 0.5, 0.02, 0.45), mark), bar2 = bar1.clone();
+      bar1.rotation.y = Math.PI / 4; bar2.rotation.y = -Math.PI / 4; bar1.position.y = bar2.position.y = 0.03;
+      const bh = curveR ? 2000 : 500;
+      const beam = new THREE.Mesh(new THREE.CylinderGeometry(curveR ? 4 : 1, curveR ? 4 : 1, bh, 8, 1, true).translate(0, bh / 2, 0),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+      g.add(pad, ring, bar1, bar2, beam);
+      g.userData.beam = beam;
+      put(g, p.x, h, p.z);
+    }
+    if (obstacles.length && rocksMesh) {
+      const geo = rocksMesh.geometry;
+      geo.computeBoundingSphere();
+      const r0 = geo.boundingSphere?.radius || 1;
+      const mat = rocksMesh.material.clone(); mat.color.offsetHSL(0, 0, -0.05);
+      const im = new THREE.InstancedMesh(geo, mat, obstacles.length), m = new THREE.Matrix4(), sc = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0), qq = new THREE.Quaternion();
+      obstacles.forEach((o, i) => {
+        const k = o.r / r0;
+        qq.setFromAxisAngle(Y, (o.x * 7.3 + o.z * 3.1) % 6.28);
+        curvePoint(o.x, terrainHeight(o.x, o.z) - k * 0.15, o.z, v);
+        if (curveR) qq.premultiply(curveQuat(o.x, o.z, q));
+        im.setMatrixAt(i, m.compose(v, qq, sc.set(k, k * 0.8, k)));
+      });
+      im.castShadow = true; im.receiveShadow = true;
+      im.userData.shared = true;
+      sideGroup.add(im);
+    }
+    ground.add(sideGroup);
+  }
   return { setPlanet, setSite, setSun, setTrack, update, align, toRender, setAir, stats: () => ({ tiles: moon ? moon.tiles() : 0 }) };
 }

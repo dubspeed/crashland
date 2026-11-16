@@ -180,12 +180,64 @@ export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) 
     planet = { ...planet, alt: Math.round(planet.alt * k), vy: k < 1 ? Math.round(planet.vy * k) : planet.vy };
   }
   setSite(set.site ?? 'plain'); // landing site (part of the settings, so replays get it)
+  // approach layout 2: side pads on rough ground, a start beside the pad with sideways speed
+  const lay2 = set.layout === 2 && !planet.orbit;
+  const pads = lay2 ? makePads(seed) : null;
+  setPads(pads);
+  // (half the fall speed: time to pick a pad and get there)
+  if (lay2) planet = { ...planet, vy: Math.round(planet.vy * 0.5), fuel: Math.round(planet.fuel * (1 + (APPROACH_SIDE[planet.id]?.fuel ?? 0.25))) };
   const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: (FUEL_LEVELS[set.fuel]?.k ?? 1) * (set.base?.fuel ?? 1) * (set.fuelMult ?? 1), build });
   s.settings = set;
   if (set.target && planet.orbit) s.target = makeTarget(s, set.target);
   // base flights: the modules already there (obstacles) and what they give
   if (set.base) { s.obstacles = set.base.obstacles ?? []; s.spec.solarK *= set.base.solar ?? 1; }
+  if (lay2) { s.pads = pads; s.obstacles = pads.flatMap((p) => p.rocks ?? []); sideStart(s, seed); }
   return s;
+}
+// approach layout 2: sideways speed at the start (m/s) and the extra fuel it costs (fraction of the planet's)
+export const APPROACH_SIDE = { luna: { v: 14, fuel: 0.25 }, mars: { v: 24, fuel: 0.2 }, terra: { v: 32, fuel: 0.1 }, brontes: { v: 32, fuel: 0.1 } };
+/** the pads of an approach (layout 2): the main pad at the origin, a rock field and a rock pillar 130–240 m
+ *  away (their own random stream, so the rest of the round stays as the seed always gave it) */
+function makePads(seed) {
+  const rnd = seededRandom(seed * 31 + 7);
+  const out = [{ kind: 'main', x: 0, z: 0, ...PAD_KINDS.main }];
+  const a0 = rnd() * Math.PI * 2;
+  [['rocks', 0], ['spire', 1]].forEach(([kind, i]) => {
+    const a = a0 + i * (2.2 + rnd() * 1.9), d = 130 + rnd() * 110;
+    const p = { kind, x: Math.round(Math.cos(a) * d), z: Math.round(Math.sin(a) * d), ...PAD_KINDS[kind] };
+    if (kind === 'rocks') {
+      // a ring of boulders just past the pad edge, more scattered further out (obstacles: landing on one is a crash)
+      p.rocks = [];
+      for (let j = 0; j < 22; j++) {
+        const ring = j < 10, r = ring ? 1.3 + rnd() * 1.1 : 0.9 + rnd() * 1.6;
+        const ra = (ring ? j / 10 : rnd()) * Math.PI * 2 + rnd() * 0.3, rd = ring ? p.r + r + 2.2 + rnd() * 2.5 : p.r + 9 + rnd() * 30;
+        p.rocks.push({ x: +(p.x + Math.cos(ra) * rd).toFixed(2), z: +(p.z + Math.sin(ra) * rd).toFixed(2), r: +r.toFixed(2), name: 'einem Felsblock' });
+      }
+    }
+    out.push(p);
+  });
+  return out;
+}
+/** sideways start: speed in a random direction, the start shifted so that the free fall would touch down
+ *  120–300 m past the main pad and 40–130 m to one side (the cross starts long and off: brake, steer, pick a pad) */
+function sideStart(s, seed) {
+  const rnd = seededRandom(seed * 17 + 3), v = APPROACH_SIDE[s.planet.id]?.v ?? 15;
+  const h = rnd() * Math.PI * 2, over = 120 + rnd() * 180, side = (rnd() < 0.5 ? -1 : 1) * (40 + rnd() * 90), ux = Math.cos(h), uz = Math.sin(h);
+  s.vx = ux * v; s.vz = uz * v;
+  const tx = ux * over - uz * side, tz = uz * over + ux * side; // past the pad and off to one side
+  for (let i = 0; i < 4; i++) {
+    const p = predictImpact(s);
+    if (!p) break;
+    s.x += tx - p.x; s.z += tz - p.z;
+  }
+  s.pred = predictImpact(s);
+}
+/** the pad the lander stands on (within its radius), or the nearest one; d = distance to its centre */
+export function padAt(s, x = s.x, z = s.z) {
+  const pads = s.pads ?? [{ kind: 'main', x: 0, z: 0, ...PAD_KINDS.main }];
+  let best = null;
+  for (const p of pads) { const d = Math.hypot(x - p.x, z - p.z); if (!best || d - p.r < best.d - best.pad.r) best = { pad: p, d }; }
+  return best;
 }
 export const STEP = 1 / 120;
 export const SAS_DELAY = 1.5;
@@ -856,18 +908,59 @@ function siteHeight(x, z, r) {
   if (terrainSite === 3) { const d = (x - 110) / 28; return -55 * Math.exp(-d * d) * (1 - sstep(500, 700, Math.abs(z))); }
   return 0;
 }
+// ---------- approach pads (settings.layout 2): side pads that pay more, on harder ground ----------
+export const PAD_KINDS = {
+  main: { name: 'Hauptpad', r: 12, k: 1 },
+  rocks: { name: 'Felsfeld', r: 7, k: 1.3 }, // between boulders
+  spire: { name: 'Felsnadel', r: 6, k: 1.6 }, // on top of a rock pillar
+};
+export const SPIRE_H = 32; // m the pillar stands above the ground around it
+// the extra pads that shape the ground: [{ x, z, r, kind, h0 (ground height at the pad) }]; rough = the rough
+// ground between the pads (mirrored in moon.js GLSL padTerms / rough)
+let terrainPads = [], terrainRough = 0;
+/** rough ground: bumps of a few metres every ~15 m, enough to tip a lander that misses the pads */
+function rough(x, z) {
+  return Math.sin(x * 0.39 + z * 0.11) * Math.sin(z * 0.35 - x * 0.07 + 1.1) * 0.85 + Math.sin(x * 0.83 - z * 0.61 + 0.4) * 0.35
+    + Math.sin(x * 0.23 + z * 0.53 + 2.3) * Math.sin(x * 0.61 + z * 0.17 + 0.7) * 0.8 + Math.sin(z * 0.97 + x * 0.29) * 0.25;
+}
+/** the pads' effect at (x, z): f = how much of the relief stays (0 on a pad), h = the flat pad height mixed in */
+function padTerms(x, z) {
+  let f = 1, h = 0, w = 0;
+  for (const p of terrainPads) {
+    const d = Math.hypot(x - p.x, z - p.z), k = 1 - sstep(p.r + 3, p.r + 18, d);
+    if (k <= 0) continue;
+    f = Math.min(f, 1 - k);
+    h += p.h0 * k + (p.kind === 'spire' ? SPIRE_H * (1 - sstep(p.r + 2, p.r + 15, d)) : 0); w += k;
+  }
+  return { f, h, w };
+}
+/** relief of the landing zone (no pads, no fade to the planet's own relief) */
+function zoneHeight(x, z, r) {
+  const t = Math.min(1, Math.max(0, (r - PAD_R) / 60)), blend = t * t * (3 - 2 * t);
+  return (noise(x, z) + 6) * blend + siteHeight(x, z, r) + (terrainRough ? rough(x, z) * sstep(26, 45, r) : 0);
+}
+function zoneWithPads(x, z, r) {
+  const base = zoneHeight(x, z, r);
+  if (!terrainPads.length) return base;
+  const { f, h } = padTerms(x, z);
+  return base * f + h; // (pads never overlap, so h already carries 1 - f of the pad's height)
+}
+/** extra pads (null: none), after setSite */
+export function setPads(pads) {
+  terrainRough = pads ? 1 : 0; terrainPads = [];
+  terrainPads = (pads ?? []).filter((p) => p.kind !== 'main').map((p) => ({ ...p, h0: zoneHeight(p.x, p.z, Math.hypot(p.x, p.z)) }));
+}
+export const terrainPadList = () => terrainPads;
+export const terrainRoughOn = () => terrainRough > 0;
 export function terrainHeight(x, z = 0) {
   const r = Math.hypot(x, z);
   if (terrainEdge && r > terrainEdge - 250) {
     const e = Math.min(1, (r - (terrainEdge - 250)) / 250);
     const outer = terrainR ? moonRelief(x, z, terrainR, terrainEdge, terrainId) : 0;
     if (e >= 1) return outer;
-    const t = Math.min(1, Math.max(0, (r - PAD_R) / 60)), blend = t * t * (3 - 2 * t);
-    return ((noise(x, z) + 6) * blend + siteHeight(x, z, r)) * (1 - e * e * (3 - 2 * e)) + outer;
+    return zoneWithPads(x, z, r) * (1 - e * e * (3 - 2 * e)) + outer;
   }
-  const t = Math.min(1, Math.max(0, (r - PAD_R) / 60));
-  const blend = t * t * (3 - 2 * t);
-  return (noise(x, z) + 6) * blend + siteHeight(x, z, r);
+  return zoneWithPads(x, z, r);
 }
 
 // ---------- state ----------

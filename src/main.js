@@ -91,7 +91,7 @@ function updateMarkers() {
     const minK = (44 / innerHeight) * 2 * depth * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / 7.5;
     k = Math.max(k, Math.min(minK, 400));
     // green only when it really is on the pad
-    const onPad = Math.hypot(pred.x, pred.z) <= PAD_RADIUS;
+    const onPad = onAnyPad(pred);
     impactMat.color.set(onPad ? 0x5fe0a0 : 0xffb547); beamMat.color.copy(impactMat.color);
     // the beam reaches up to the lander's height (in the cross's own scale)
     impactBeam.scale.set(1, Math.max(5, alt + 20) / k, 1);
@@ -125,7 +125,7 @@ function placePredMark() {
       }
       predMark.classList.toggle('edge', !inside);
       predMark.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`;
-      predMark.classList.toggle('on-pad', Math.hypot(s.pred.x, s.pred.z) <= PAD_RADIUS);
+      predMark.classList.toggle('on-pad', onAnyPad(s.pred));
     }
   }
   if (predMark.hidden === show) predMark.hidden = !show;
@@ -255,7 +255,7 @@ function openMissionBuilder(p, type, ring, contract = null) {
   if (career()) missionBuild = B.allowedBuild(missionBuild, built); // parts the bases have not unlocked yet
   $('menu').hidden = true; cam.pitch = 0;
   // the backdrop: this mission's planet and its base's landing site (not the planet flown last)
-  usePlanet(p); S.setSite(B.BASE_SITES[p.id] ?? 'plain'); world.setSite(S.SITE_IDS.indexOf(B.BASE_SITES[p.id] ?? 'plain'));
+  usePlanet(p); S.setSite(B.BASE_SITES[p.id] ?? 'plain'); S.setPads(null); world.setSite(S.SITE_IDS.indexOf(B.BASE_SITES[p.id] ?? 'plain'));
   parkShip();
   const sub = `<span class="chips-row">${chip('🪐', p.name.replace(' Orbit', ''))}${cargoChips(c)}${bonusChips(bon)}${contract ? chip('📍', `neben ${S.CARGO[contract.near].name}`) : ''}</span>`;
   const ringRow = () => (type === 'beacon' || contract ? ''
@@ -564,7 +564,7 @@ function showMenu() {
   buildMenu();
   debris.clear();
   showBase(null); mission = null; rescue = null; world.setTrack(null); trackAt = null; $('track-chip').hidden = true;
-  S.setSite('plain'); world.setSite(0);
+  S.setSite('plain'); S.setPads(null); world.setSite(0);
   parkShip();
 }
 /** ship parked on the pad as a backdrop (menu and builder) */
@@ -647,9 +647,10 @@ function start(p, ms) {
   } else showBase(null);
   // landing site: a base keeps its own, free flights get one from the seed (it is in the settings, so replays have it)
   const site = mission || rescue ? B.BASE_SITES[p.id] ?? 'plain' : S.SITE_IDS[seed % S.SITE_IDS.length];
-  flightSettings = { ...flightSettings, site };
+  // approach: side pads, sideways start (layout 2; old replays without it keep the old start)
+  flightSettings = { ...flightSettings, site, ...(!p.orbit && !mission && !rescue ? { layout: 2 } : {}) };
   s = S.newRound(planet, windLevel, seed, flightSettings, flightBuild);
-  world.setSite(S.SITE_IDS.indexOf(site));
+  world.setSite(S.SITE_IDS.indexOf(site), s.pads ? s.obstacles : []);
   ship.reset(s.spec);
   showOrbitObject();
   rec = { v: 1, planet: planet.id, wind: windLevel, seed, settings: { ...flightSettings }, build: { ...flightBuild }, ev: [] };
@@ -675,20 +676,27 @@ function start(p, ms) {
   ship.helpers.visible = showCom;
 }
 
-const PAD_RADIUS = 12;
+/** the cross lies on a pad (the main one, or a side pad) */
+const onAnyPad = (p) => { const a = S.padAt(s, p.x, p.z); return a.d <= a.pad.r; };
 const CONTRACT_REACH = 25; // m: a supply drop has to land next to its module
 const BASE_REACH = 60; // m from the target: closer, the base can use the cargo
+// the side pads' names on the result ("auf dem Felsfeld")
+const PAD_ON = { main: 'auf dem Pad', rocks: 'auf dem Felsfeld', spire: 'auf der Felsnadel' };
+/** distance to the nearest pad (approach layout 2: the main pad or a side pad) and how good that is */
 function precision(st) {
-  const d = Math.hypot(st.x, st.z);
-  const [label, tone] = d <= 3 ? ['Volltreffer', 'ok'] : d <= PAD_RADIUS ? ['auf dem Pad', 'ok'] : d <= 40 ? ['knapp daneben', 'warn']
+  const { pad, d } = S.padAt(st), R = pad.r;
+  const on = d <= R;
+  const [label, tone] = d <= R / 4 ? [pad.kind === 'main' ? 'Volltreffer' : `Volltreffer, ${PAD_ON[pad.kind].slice(4)}`, 'ok'] : on ? [PAD_ON[pad.kind], 'ok'] : d <= 40 ? ['knapp daneben', 'warn']
     : d <= 200 ? ['nah dran', 'warn'] : d <= 1000 ? ['daneben', 'amber'] : ['weit daneben', 'bad'];
-  return { d, label, tone };
+  return { d, label, tone, pad, on };
 }
 /** 300 for a bullseye, 150 on the pad, then fading with the distance (~70 at 100 m, ~35 at 200 m) */
-function precisionBonus(st) { const { d } = precision(st); return d <= 3 ? 300 : d <= PAD_RADIUS ? 150 : 120 * Math.exp(-(d - PAD_RADIUS) / 160); }
+function precisionBonus(st) { const { d, pad } = precision(st); return d <= pad.r / 4 ? 300 : d <= pad.r ? 150 : 120 * Math.exp(-(d - pad.r) / 160); }
+/** a side pad's multiplier, landed on it */
+function padMult(st) { const { pad, on } = precision(st); return st.status === 'landed' && on ? pad.k : 1; }
 
 function rate(st) {
-  const mult = (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings, !st.planet.orbit) * (st.settings?.base?.score ?? 1);
+  const mult = (st.planet.rho > 0 ? st.wind.bonus : 1) * settingsBonus(st.settings ?? settings, !st.planet.orbit) * (st.settings?.base?.score ?? 1) * padMult(st);
   if (st.status !== 'landed' && st.spec.payload) return { stars: 0, score: 0, parts: [], mult: 1 }; // cargo lost
   if (st.status !== 'landed') {
     // crashed, but the crew got out: no stars, but the crew, the aim and the planet still count

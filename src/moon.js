@@ -191,6 +191,9 @@ export const MOON_GLSL = /* glsl */ `
 uniform float uR;
 uniform float uEdge;
 uniform float uSite;
+uniform vec4 uPads[2];   // approach side pads: x, z, radius (0 = none), ground height h0
+uniform float uPadS[2];  // 1 = a rock pillar under the pad
+uniform float uRough;    // rough ground between the pads
 uniform vec3 uC1;
 uniform vec3 uC2;
 uniform float uStyle;
@@ -266,7 +269,22 @@ float moonHeight(vec3 dir, float spacing, bool wantCol, out vec3 col) {
   float t = clamp((d - 70.0) / 60.0, 0.0, 1.0);
   float blend = t * t * (3.0 - 2.0 * t);
   float e = clamp((d - (uEdge - 250.0)) / 250.0, 0.0, 1.0);
-  float zone = ((zoneNoise(xz.x, xz.y) + 6.0) * blend + siteHeight(xz, d)) * (1.0 - e * e * (3.0 - 2.0 * e));
+  // (same as sim.js zoneHeight / padTerms)
+  float zone = (zoneNoise(xz.x, xz.y) + 6.0) * blend + siteHeight(xz, d);
+  if (uRough > 0.5) {
+    zone += (sin(xz.x * 0.39 + xz.y * 0.11) * sin(xz.y * 0.35 - xz.x * 0.07 + 1.1) * 0.85 + sin(xz.x * 0.83 - xz.y * 0.61 + 0.4) * 0.35
+      + sin(xz.x * 0.23 + xz.y * 0.53 + 2.3) * sin(xz.x * 0.61 + xz.y * 0.17 + 0.7) * 0.8 + sin(xz.y * 0.97 + xz.x * 0.29) * 0.25) * smoothstep(26.0, 45.0, d);
+    float pf = 1.0, ph = 0.0;
+    for (int i = 0; i < 2; i++) {
+      if (uPads[i].z <= 0.0) continue;
+      float dd = length(xz - uPads[i].xy), pr = uPads[i].z, k = 1.0 - smoothstep(pr + 3.0, pr + 18.0, dd);
+      pf = min(pf, 1.0 - k);
+      ph += uPads[i].w * k + uPadS[i] * 32.0 *  // (sim.js SPIRE_H)
+         (1.0 - smoothstep(pr + 2.0, pr + 15.0, dd));
+    }
+    zone = zone * pf + ph;
+  }
+  zone *= 1.0 - e * e * (3.0 - 2.0 * e);
   float w = smoothstep(uEdge - 300.0, uEdge + 200.0, d);
   vec3 p = dir * uR;
   float hh = 60.0 * (vn(p / 4200.0 + vec3(3.0, 0.0, 1.0)) - 0.5) + 24.0 * (vn(p / 1500.0 + vec3(7.0, 0.0, 0.0)) - 0.5);
@@ -510,6 +528,7 @@ export function createMoonTerrain(THREE, R, edge, c1, c2, id) {
 
   const uniforms = {
     uCam: { value: new THREE.Vector3() }, uR: { value: R }, uEdge: { value: edge }, uSite: { value: 0 },
+    uPads: { value: [new THREE.Vector4(), new THREE.Vector4()] }, uPadS: { value: [0, 0] }, uRough: { value: 0 },
     uC1: { value: new THREE.Color(c1) }, uC2: { value: new THREE.Color(c2) },
     uStyle: { value: F.style }, uMount: { value: F.mount }, uCraterK: { value: F.craterK },
     uArcN: { value: [0, 1, 2, 3].map((i) => F.arcs[i] ? new THREE.Vector4(...F.arcs[i].n, F.arcs[i].W) : new THREE.Vector4(0, 1, 0, 1)) },
@@ -640,5 +659,10 @@ vec4 detailAt(float scale, vec3 N, vec3 w, vec3 sg) {
     geo.instanceCount = n;
     tileA.needsUpdate = true; metreA.needsUpdate = true;
   }
-  return { mesh: group, update, tiles: () => n, setSite: (i) => { uniforms.uSite.value = i; } };
+  return { mesh: group, update, tiles: () => n, setSite: (i) => { uniforms.uSite.value = i; },
+    /** approach side pads (sim.js terrainPadList) and the rough ground between them */
+    setPads: (pads, rough) => {
+      uniforms.uRough.value = rough ? 1 : 0;
+      for (let i = 0; i < 2; i++) { const p = pads[i]; uniforms.uPads.value[i].set(p?.x ?? 0, p?.z ?? 0, p?.r ?? 0, p?.h0 ?? 0); uniforms.uPadS.value[i] = p?.kind === 'spire' ? 1 : 0; }
+    } };
 }

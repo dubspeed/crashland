@@ -335,3 +335,14 @@ A fourth start mode. Each planet has an emergency call: a lander that is not you
 ## Start height (setting "Starthöhe", approach only)
 
 `ALT_LEVELS` in sim.js: **Niedrig** (½ the planet's start height and ½ the fall speed, score ×0.9), **Normal**, **Hoch** (2× height, same fall speed, ×1.15). Only approach flights use it (`!planet.orbit`); orbit, base and rescue starts ignore it. Records are kept per height (`.alt<n>` in the best key), and replays carry it in their settings.
+
+## Approach: sideways start and side pads (`settings.layout: 2`)
+
+New approach flights (main.js sets `layout: 2`; old replays without it keep the old start, so the golden replays stay valid):
+
+- **Sideways start** (`sideStart`): half the planet's fall speed, sideways speed `APPROACH_SIDE[id].v` (Luna 14, Mars 24, Terra/Brontes 32 m/s) in a random direction, the start shifted so the free-fall cross lies 120–300 m past the main pad and 40–130 m to one side. Extra fuel `APPROACH_SIDE[id].fuel`.
+- **Three pads** (`makePads`, own random stream from the seed): the main pad (×1), a **Felsfeld** 130–240 m away (r 7 m, ×1.3) ringed and scattered with 22 boulders (`s.obstacles`: touching down on one is a crash), and a **Felsnadel** (r 6 m, ×1.6) on a 32 m rock pillar (`SPIRE_H`).
+- **Rough ground** between the pads (`rough()`, from 26–45 m around the main pad): with standard legs ~40 % of off-pad spots tip the lander, ~50 % damage the legs; wide legs ~13 %.
+- Terrain in both languages: `zoneHeight` / `padTerms` in sim.js and the same in moon.js GLSL (`uPads`, `uPadS`, `uRough`); `world.setSite(i, obstacles)` draws the side pads (own colour, light column) and the boulders.
+- Score: `padAt(s)` finds the pad; landing on a side pad multiplies the score by its `k`; the result names it ("auf dem Felsfeld").
+- Test pilot (`tests/pilots.mjs` `steer`): tilts and burns in Halten until the free-fall cross (aimed a bit past the pad) sits on the chosen pad (`opt.pad`), on thick-air planets first under the steered canopy, then Landen with a speed command that can still stop over the distance left. `tests/pads.test.mjs`: Luna every pad × 3 seeds, Mars each pad once, Terra rock field and safe landings.
