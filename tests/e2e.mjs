@@ -3,6 +3,7 @@
 // speed, with the HUD messages logged, the orbit map opened once, console errors collected, and the
 // exported flight replayed in node, which must end identically.
 //   npm run e2e            (builds, serves dist/ on a free port, needs Playwright with Chromium)
+//   npm run e2e -- terra luna-orbit   (only these levels; E2E_JOBS=n pages at once, default 3)
 import { spawn } from 'node:child_process';
 import { readFileSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -40,7 +41,10 @@ const pilotSrc = readFileSync(new URL('./pilots.mjs', import.meta.url), 'utf8').
 
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader'] });
 let failures = 0;
-for (const [id, wind, seed, expect, settings = {}, forbid = []] of CASES) {
+// a selection: npm run e2e -- terra luna-orbit (level ids; default all); E2E_JOBS pages at once (default 3)
+const only = process.argv.slice(2), JOBS = Math.max(1, +process.env.E2E_JOBS || 3);
+const cases = only.length ? CASES.filter(([id]) => only.includes(id)) : CASES;
+async function runCase([id, wind, seed, expect, settings = {}, forbid = []]) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
@@ -95,9 +99,19 @@ for (const [id, wind, seed, expect, settings = {}, forbid = []] of CASES) {
   const again = summary(replay(res.rec));
   if (JSON.stringify(again) !== JSON.stringify(r)) problems.push(`replay differs: ${JSON.stringify(again)} vs ${JSON.stringify(r)}`);
   failures += problems.length ? 1 : 0;
-  console.log(`${problems.length ? 'FAIL' : 'ok  '} ${(id + (Object.keys(settings).length ? ' ' + JSON.stringify(settings) : '')).padEnd(14)} ${r.status} ${Math.hypot(r.x, r.z).toFixed(1)} m, ${r.t.toFixed(0)} s sim in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${res.rec.ev.length} events${problems.length ? '\n     ' + problems.join('\n     ') : ''}`);
-  console.log('     HUD: ' + res.alerts.map(([t, a]) => `${t}s ${a}`).join(' → ').slice(0, 600));
+  const lines = [];
+  lines.push(`${problems.length ? 'FAIL' : 'ok  '} ${(id + (Object.keys(settings).length ? ' ' + JSON.stringify(settings) : '')).padEnd(14)} ${r.status} ${Math.hypot(r.x, r.z).toFixed(1)} m, ${r.t.toFixed(0)} s sim in ${((Date.now() - t0) / 1000).toFixed(0)} s, ${res.rec.ev.length} events${problems.length ? '\n     ' + problems.join('\n     ') : ''}`);
+  lines.push('     HUD: ' + res.alerts.map(([t, a]) => `${t}s ${a}`).join(' → ').slice(0, 600));
+  console.log(lines.join('\n')); // (one block per level: the levels run side by side)
 }
+// a few pages side by side (each level is its own page; the sim is deterministic, only the wall time is shared)
+const queue = [...cases];
+await Promise.all(Array.from({ length: Math.min(JOBS, queue.length) }, async () => {
+  while (queue.length) {
+    const c = queue.shift();
+    try { await runCase(c); } catch (e) { failures++; console.log(`FAIL ${c[0]}: ${e.message.split('\n')[0]}`); }
+  }
+}));
 await browser.close();
 stop();
 console.log(failures ? `\n${failures} level(s) failed` : '\nall levels ok');

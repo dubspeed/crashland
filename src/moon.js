@@ -25,10 +25,12 @@ function vn(x, y, z) {
   const fx = x - ix, fy = y - iy, fz = z - iz;
   const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy), uz = fz * fz * (3 - 2 * fz);
   const X = ix + 2048, Y = iy + 2048, Z = iz + 2048;
-  const L = (a, b, t) => a * (1 - t) + b * t;
-  const v = (i, j, k) => u01(h3(X + i, Y + j, Z + k));
-  return L(L(L(v(0, 0, 0), v(1, 0, 0), ux), L(v(0, 1, 0), v(1, 1, 0), ux), uy),
-           L(L(v(0, 0, 1), v(1, 0, 1), ux), L(v(0, 1, 1), v(1, 1, 1), ux), uy), uz);
+  // (written out: no closures per call; the same arithmetic as lerp(a, b, t) = a * (1 - t) + b * t)
+  const v000 = u01(h3(X, Y, Z)), v100 = u01(h3(X + 1, Y, Z)), v010 = u01(h3(X, Y + 1, Z)), v110 = u01(h3(X + 1, Y + 1, Z));
+  const v001 = u01(h3(X, Y, Z + 1)), v101 = u01(h3(X + 1, Y, Z + 1)), v011 = u01(h3(X, Y + 1, Z + 1)), v111 = u01(h3(X + 1, Y + 1, Z + 1));
+  const a0 = v000 * (1 - ux) + v100 * ux, a1 = v010 * (1 - ux) + v110 * ux, a2 = v001 * (1 - ux) + v101 * ux, a3 = v011 * (1 - ux) + v111 * ux;
+  const b0 = a0 * (1 - uy) + a1 * uy, b1 = a2 * (1 - uy) + a3 * uy;
+  return b0 * (1 - uz) + b1 * uz;
 }
 const ridge = (n) => { const q = 2 * n - 1, r = 1 - Math.sqrt(q * q + 0.01); return r * r; }; // rounded crest
 
@@ -181,8 +183,8 @@ export function moonRelief(x, z, R, edge, id = 'luna-orbit') {
   const w = smooth(edge - 300, edge + 200, d);
   if (w <= 0) return 0;
   if (featuresKey !== id + R) { features = moonFeatures(id, R); featuresKey = id + R; }
-  const [dx, dy, dz] = flatDir(x, z, R);
-  relief(dx, dy, dz, R, features, tmp);
+  const l = x / R, b = z / R, cb = Math.cos(b); // (flatDir, without the array)
+  relief(cb * Math.sin(l), cb * Math.cos(l), Math.sin(b), R, features, tmp);
   return tmp.h * w;
 }
 

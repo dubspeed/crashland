@@ -6,21 +6,9 @@ import * as B from '../src/base.js';
 import * as R from '../src/rescue.js';
 import { makePilot } from './pilots.mjs';
 import { recordPilot, replay, summary } from './replay-lib.mjs';
+import { FULL } from './rescue-lib.mjs';
 
-for (const P of S.ORBIT_PLANETS) {
-  test(`rescue on ${P.id}: every offered lander and orbit lands`, () => {
-    for (const [l, o] of R.combos(P.id)) {
-      const L = R.LANDERS[l], set = { orbit: R.orbitFor(P, o), fuelMult: L.fuelK, site: B.BASE_SITES[P.id], target: R.targetFor(o) }, PP = { ...P, ...set.orbit };
-      const { s } = recordPilot(PP, 0, 5, makePilot(S, PP, { dropShield: 'hint', apMax: R.ORBITS[o].aero ? P.aero.land : 0 }), 4000, set, L.build);
-      const label = `${P.id} ${l} ${o}`;
-      assert.equal(s.status, 'landed', `${label}: ${s.reason}`);
-      assert.ok(Math.hypot(s.x, s.z) < 150, `${label}: ${Math.hypot(s.x, s.z).toFixed(0)} m off`);
-      assert.equal(Object.keys(s.lost).length, 0, `${label}: lost ${Object.keys(s.lost)}`);
-      assert.ok(S.fuel(s) > 5, `${label}: dry`);
-      if (R.ORBITS[o].module) assert.ok(s.target.docked, `${label}: module not docked`);
-    }
-  });
-}
+// (the flights per planet: rescue-<planet>.test.mjs, via rescue-lib.mjs)
 
 test('rescue scenarios: deterministic, varied, and the orbit override replays', () => {
   const P = S.ORBIT_PLANETS[0];
@@ -38,7 +26,8 @@ test('rescue scenarios: deterministic, varied, and the orbit override replays', 
 
 test('meeting plans: from 4-8 km ahead / behind, higher / lower, a plan, the approach and docking work', () => {
   const P = S.ORBIT_PLANETS[0], L = R.LANDERS.shuttle;
-  for (const [phase, up] of [[0.55, 150], [0.6, -170], [-0.45, 120], [-0.4, -100]]) {
+  // (fast run: one of the four; FULL=1: all)
+  for (const [phase, up] of [[0.55, 150], [0.6, -170], [-0.45, 120], [-0.4, -100]].slice(0, FULL ? 4 : 1)) {
     const set = { orbit: R.orbitFor(P, 'module'), fuelMult: L.fuelK, site: B.BASE_SITES[P.id], target: { type: 'module', phase, up } }, PP = { ...P, ...set.orbit };
     const s0 = S.newRound(P, 0, 5, set, L.build);
     const plans = [1, 2, 3].map((k) => S.meetPlan(s0, k));

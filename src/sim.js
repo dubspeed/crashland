@@ -888,7 +888,7 @@ function noise(x, z) {
 // orbit level: the landing-zone relief fades out to the smooth sphere beyond this radius (null = endless relief)
 let terrainEdge = null, terrainR = 0, terrainId = '';
 /** orbit level: landing-zone relief fades out at `r`, the planet's own relief (radius R, layout `id`) takes over */
-export function setTerrainEdge(r, R = 0, id = 'luna-orbit') { terrainEdge = r; terrainR = R; terrainId = id; }
+export function setTerrainEdge(r, R = 0, id = 'luna-orbit') { terrainEdge = r; terrainR = R; terrainId = id; clearTerrainCache(); }
 // ---------- landing sites: the shape of the land around the pad (the pad itself stays flat) ----------
 export const SITES = {
   plain: { name: 'Ebene', icon: '▬' },
@@ -898,7 +898,7 @@ export const SITES = {
 };
 export const SITE_IDS = Object.keys(SITES);
 let terrainSite = 0;
-export function setSite(id) { terrainSite = Math.max(0, SITE_IDS.indexOf(id)); }
+export function setSite(id) { terrainSite = Math.max(0, SITE_IDS.indexOf(id)); clearTerrainCache(); }
 export const currentSite = () => SITE_IDS[terrainSite];
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 /** height the site adds at (x, z), r = distance from the pad (mirrored in moon.js GLSL siteHeight) */
@@ -947,12 +947,24 @@ function zoneWithPads(x, z, r) {
 }
 /** extra pads (null: none), after setSite */
 export function setPads(pads) {
-  terrainRough = pads ? 1 : 0; terrainPads = [];
+  terrainRough = pads ? 1 : 0; terrainPads = []; clearTerrainCache();
   terrainPads = (pads ?? []).filter((p) => p.kind !== 'main').map((p) => ({ ...p, h0: zoneHeight(p.x, p.z, Math.hypot(p.x, p.z)) }));
+  clearTerrainCache();
 }
 export const terrainPadList = () => terrainPads;
 export const terrainRoughOn = () => terrainRough > 0;
+// the same points are asked for several times per step (the feet: altitude, contact, controller): a small
+// ring of exact (x, z) hits; cleared whenever the terrain changes (site, pads, planet)
+const TH_N = 16, thX = new Float64Array(TH_N).fill(NaN), thZ = new Float64Array(TH_N), thH = new Float64Array(TH_N);
+let thI = 0;
+function clearTerrainCache() { thX.fill(NaN); }
 export function terrainHeight(x, z = 0) {
+  for (let i = 0; i < TH_N; i++) if (thX[i] === x && thZ[i] === z) return thH[i];
+  const h = terrainHeightRaw(x, z);
+  thX[thI] = x; thZ[thI] = z; thH[thI] = h; thI = (thI + 1) % TH_N;
+  return h;
+}
+function terrainHeightRaw(x, z) {
   const r = Math.hypot(x, z);
   if (terrainEdge && r > terrainEdge - 250) {
     const e = Math.min(1, (r - (terrainEdge - 250)) / 250);
@@ -1048,29 +1060,41 @@ export function predictImpact(s, path = null) {
   let lastQ = Infinity;
   let x = s.x, y = s.y, z = s.z, vx = s.vx, vy = s.vy, vz = s.vz, t = 0;
   const h = s.planet.orbit ? 0.2 : 0.1;
+  const P = s.planet, air = P.rho > 0, orb = !!(P.orbit && P.R), R = P.R;
   for (let i = 0, n = s.planet.orbit ? 2000 : 1200; i < n; i++) {
     if (path && i % 5 === 0) path.push(x, y);
     const ground = s.planet.orbit && y > 600 ? -1e9 : terrainHeight(x, z);
     if (y <= ground) { if (path) path.push(x, y); return { x, z, t }; }
     const alt = ground < -1e8 ? y : y - ground;
-    const w = windAt(s, alt, s.t + t);
-    const rx = vx - w.x, rz = vz - w.z, v = Math.hypot(rx, vy, rz);
-    const rho = s.planet.rho * Math.exp(-Math.max(0, y) / s.planet.H);
-    const q = 0.5 * rho * v * v;
-    const qRate = lastQ === Infinity ? 0 : (q - lastQ) / h;
-    // (where the canopy is never safe at terminal speed, Brontes, the HUD asks you to brake with the engine
-    // below the chute altitude until it is safe, then open it)
-    if (planChute && chuteK === 0 && vy < -10 && alt < CHUTE_MAX_ALT(s.planet) && q + Math.max(0, qRate) * 3 <= CHUTE_QMAX * CHUTE_SAFE) chuteK = 1;
-    lastQ = q;
-    // ...and until then the braking burn the HUD asks for (current thrust limit, against the airflow)
-    const Fd = q * BODY_CDA + Math.min(q * s.spec.chuteCda * chuteK, chuteK > 0 ? s.spec.chuteFmax : 0);
-    // the braking burn at the thrust the HUD recommends (crew-safe together with the air drag)
-    const brake = planChute && mustBrake && chuteK === 0 && vy < -10 && alt < CHUTE_MAX_ALT(s.planet)
-      ? Math.max(0.05 * s.spec.fMax / m, Math.min(s.spec.fMax / m, gSafe - Fd / m)) : 0; // not the current limiter
-    const k = v > 0.01 ? -Fd / v / m - brake / v : 0;
-    const cv = curvature(s.planet, y, vx, vy, vz, z);
-    vx += (k * rx + (cv ? cv.ax : 0)) * h; vy += (k * vy - (cv ? cv.gy : s.planet.g)) * h; vz += (k * rz + (cv ? cv.az : 0)) * h;
-    x += vx * (cv ? cv.kx : 1) * h; y += vy * h; z += vz * (cv ? cv.k : 1) * h; t += h;
+    // air drag (and the planned chute / braking burn); in vacuum all of it is exactly zero
+    let k = 0, rx = vx, rz = vz;
+    if (air) {
+      const w = windAt(s, alt, s.t + t);
+      rx = vx - w.x; rz = vz - w.z;
+      const v = Math.hypot(rx, vy, rz);
+      const rho = s.planet.rho * Math.exp(-Math.max(0, y) / s.planet.H);
+      const q = 0.5 * rho * v * v;
+      const qRate = lastQ === Infinity ? 0 : (q - lastQ) / h;
+      // (where the canopy is never safe at terminal speed, Brontes, the HUD asks you to brake with the engine
+      // below the chute altitude until it is safe, then open it)
+      if (planChute && chuteK === 0 && vy < -10 && alt < CHUTE_MAX_ALT(s.planet) && q + Math.max(0, qRate) * 3 <= CHUTE_QMAX * CHUTE_SAFE) chuteK = 1;
+      lastQ = q;
+      // ...and until then the braking burn the HUD asks for (current thrust limit, against the airflow)
+      const Fd = q * BODY_CDA + Math.min(q * s.spec.chuteCda * chuteK, chuteK > 0 ? s.spec.chuteFmax : 0);
+      // the braking burn at the thrust the HUD recommends (crew-safe together with the air drag)
+      const brake = planChute && mustBrake && chuteK === 0 && vy < -10 && alt < CHUTE_MAX_ALT(s.planet)
+        ? Math.max(0.05 * s.spec.fMax / m, Math.min(s.spec.fMax / m, gSafe - Fd / m)) : 0; // not the current limiter
+      k = v > 0.01 ? -Fd / v / m - brake / v : 0;
+    }
+    // curvature (as curvature(), written out: no object per step)
+    let gy = P.g, ax = 0, az = 0, kx = 1, kz = 1;
+    if (orb) {
+      const r = R + y, tb = Math.tan(z / R), kk = R / r;
+      gy = P.g * (R / r) ** 2 - (vx * vx + vz * vz) / r; ax = (-vx * vy + vx * vz * tb) / r; az = (-vz * vy - vx * vx * tb) / r;
+      kz = kk; kx = kk / Math.cos(z / R);
+    }
+    vx += (k * rx + ax) * h; vy += (k * vy - gy) * h; vz += (k * rz + az) * h;
+    x += vx * kx * h; y += vy * h; z += vz * kz * h; t += h;
   }
   return null;
 }

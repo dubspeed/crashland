@@ -12,5 +12,5 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm test
+      - run: npm run test:full # every rescue combination (npm test flies a selection)
       - run: npm run build

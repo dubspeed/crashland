@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import * as S from '../src/sim.js';
 import { makePilot } from './pilots.mjs';
 import { recordPilot, replay, summary } from './replay-lib.mjs';
+import { FULL } from './env.mjs';
 
 const mass = (build, P = S.PLANETS[0]) => { const s = S.createState(P, { build, rnd: () => 0.5, windHeading: 0 }); return { s, m: S.massProps(s).m, dry: S.massProps(s).m - s.fuel0 }; };
 const ALL = S.BUILD_SLOTS.flatMap((sl) => sl.options.filter((o) => o.id !== S.DEFAULT_BUILD[sl.id]).map((o) => ({ [sl.id]: o.id })));
@@ -37,14 +38,15 @@ test('without a chute the chute button does nothing; without panels nothing char
 
 test('every build lands where the builder shows no warning (and the warnings flag what fails)', () => {
   const levels = [...S.PLANETS.slice(0, 3), ...S.ORBIT_PLANETS];
-  for (const b of ALL) {
+  // (fast run: each build on one level, the levels in turn; FULL=1: every build on every level)
+  ALL.forEach((b, i) => {
     const w = S.buildWarnings(b, levels);
-    for (const P of levels) {
+    for (const P of FULL ? levels : [levels[i % levels.length]]) {
       if (w.per[P.id]) continue; // warned: may be a challenge the test pilot can't do
       const { s } = recordPilot(P, 0, 5, makePilot(S, P, { dropShield: 'hint' }), 600, {}, b);
       assert.equal(s.status, 'landed', `${P.id} ${JSON.stringify(b)}: ${s.reason}`);
     }
-  }
+  });
   // the classic challenges are flagged
   const all = [...S.PLANETS, ...S.ORBIT_PLANETS];
   assert.ok(S.buildWarnings({ solar: 'none' }, all).list.some((x) => /Kein Solar/.test(x.text)));
