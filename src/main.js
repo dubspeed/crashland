@@ -230,7 +230,7 @@ function missionBuildFor(type, fresh = false) {
 }
 // short chips with icons instead of sentences (cards and briefing)
 const chip = (icon, txt, cls = '', title = '') => `<span class="ch ${cls}"${title ? ` title="${title}"` : ''}><i>${icon}</i>${txt}</span>`;
-const cargoChips = (c) => (c.crew ? chip('👩‍🚀', '4 Crew') : chip('⚖', `${c.mass} kg`, '', 'Masse') + chip('⇊', `${c.g} g`, '', 'verträgt höchstens') + chip('⤓', `${c.touch} m/s`, '', 'Aufsetzen höchstens'));
+const cargoChips = (c) => (c.crew ? chip('👩‍🚀', '4 Crew') : chip('⚖', `${c.mass} kg`, '', 'Masse') + chip('', `max ${c.g} g`, '', 'verträgt höchstens diese Beschleunigung') + chip('', `≤ ${c.touch} m/s`, '', 'Aufsetzen höchstens so schnell'));
 const bonusChips = (bon) => [bon.fuel > 1 ? chip('⛽', `+${Math.round((bon.fuel - 1) * 100)} %`, 'ok', 'Treibstoff') : '', bon.solar > 1 ? chip('☀', `+${Math.round((bon.solar - 1) * 100)} %`, 'ok', 'Solar') : '', bon.score > 1 ? chip('★', `+${Math.round((bon.score - 1) * 100)} %`, 'ok', 'Punkte') : ''].join('');
 /** the scene shows planet p (flights, and the mission builder's backdrop) */
 function usePlanet(p) {
@@ -299,13 +299,15 @@ function openMissionBuilder(p, type, ring, contract = null) {
       const budget = `<div class="bb-money"><h4>Budget · Cr</h4>`
         + line('Konto', k(cc.money))
         + line('Lander', `−${k(cost.total)}`, ok ? 'cost' : 'bad', `${b.payload ? `Kern ${E.cr(E.CARGO_CORE)}` : `Kapsel ${E.cr(E.PRICES.capsule[b.capsule] ?? 0)}`}${parts ? `, ${parts}` : ''}, Treibstoff ${E.cr(cost.fuel)}`)
-        + `<small class="bb-sub">Teile ${k(cost.parts)} · Treibstoff ${k(cost.fuel)}</small>`
+        + `<small class="bb-sub">Teile\u00a0${k(cost.parts)} · Treibstoff\u00a0${k(cost.fuel)}</small>`
         + line('Danach', k(cc.money - cost.total), ok ? '' : 'bad')
         + line('Prämie', `+${k(fee)}`, 'ok')
         + line('Gewinn ≈', sign(profit), profit >= 0 ? 'ok' : 'bad', `wenn die Fracht heil ankommt: Prämie + Bergung der Landestufe (${Math.round(E.RECOVER.landed * 100)} % der Teile)${econ.income ? ' + Basis-Einnahmen' : ''} − Lander (ohne Präzisionsbonus und Resttreibstoff)`)
         + (broke ? `<button class="link loan">Notkredit +${E.cr(E.LOAN)}</button>` : '') + '</div>';
       // folded: just the account and what the lander costs
-      const brief = `<span class="bb-k" title="Konto"><i>💰</i><b>${k(cc.money)}</b></span><span class="bb-k" title="Lander: Teile ${k(cost.parts)}, Treibstoff ${k(cost.fuel)} (Cr)"><i>Lander</i><b class="${ok ? 'cost' : 'bad'}">−${k(cost.total)}</b></span>`;
+      // folded: what the flight earns (the figure that decides), red when it cannot be paid
+      const brief = ok ? `<span class="bb-k" title="Gewinn, wenn die Fracht heil ankommt (Cr)"><i>Gewinn</i><b class="${profit >= 0 ? 'ok' : 'bad'}">${sign(profit)}</b></span>`
+        : `<span class="bb-k" title="Konto ${k(cc.money)} Cr"><i>Lander</i><b class="bad">−${k(cost.total)}</b><small>zu teuer</small></span>`;
       return {
         sub: `${sub}<span class="chips-row">${ringRow()}</span>`, budget, brief,
         canStart: ok, startLabel: ok ? 'Start ▶' : 'Zu teuer',
@@ -321,14 +323,12 @@ function approachRows(p) {
   const seg = (k, opts, cur) => `<span class="ring-seg">${opts.map(([v, name, note]) => `<button class="ringsel aset${v === cur ? ' on' : ''}" data-k="${k}" data-v="${v}"${note ? ` title="${note}"` : ''}>${name}</button>`).join('')}</span>`;
   const row = (icon, label, html) => `<span class="aset-row"><i title="${label}">${icon}</i><small>${label}</small>${html}</span>`;
   const x = (k) => `×${k.toLocaleString('de-DE')}`;
-  const bonus = (p.rho > 0 && windLevel ? S.WIND_LEVELS[windLevel].bonus : 1) * settingsBonus(settings, true);
   return '<span class="aset-box">'
     + row('📏', 'Starthöhe', seg('alt', S.ALT_LEVELS.map((a, i) => [i, a.name, `${a.k === 1 ? 'wie gewohnt' : `${a.k.toLocaleString('de-DE')}× Höhe`} · ${x(a.bonus)}`]), settings.alt ?? 1))
     + row('↗', 'Anflug', seg('drift', [[1, 'Seitlich', 'mit Seitwärtsfahrt, das Kreuz liegt daneben'], [0, 'Gerade', `von oben wie früher · ${x(S.STRAIGHT_BONUS)}`]], settings.drift === false ? 0 : 1))
     + row('⛰', 'Gelände', seg('site', APPROACH_SITES, settings.siteSel ?? 'rand'))
     + (p.rho > 0 ? row('🌬', 'Wind', seg('wind', S.WIND_LEVELS.map((w, i) => [i, w.name, i ? x(w.bonus) : '']), windLevel)) : '')
     + row('⛽', 'Treibstoff', seg('fuel', S.FUEL_LEVELS.map((f, i) => [i, f.name, `${Math.round(f.k * 100)} % · ${x(f.bonus)}`]), settings.fuel))
-    + `<span class="aset-row aset-sum">${chip('×', bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 }), Math.abs(bonus - 1) > 0.001 ? 'ok' : '', 'Punkte-Faktor dieser Einstellungen')}</span>`
     + '</span>';
 }
 let approachP = null; // the planet of an open approach briefing
@@ -350,7 +350,11 @@ function openApproach(p) {
       if (approachOpen.size) { for (const sl of approachOpen) build[sl] = 'none'; approachOpen.clear(); try { localStorage.setItem('crashland.build', JSON.stringify(build)); } catch { /* storage unavailable */ } }
       start(p);
     },
-    status: () => ({ sub: approachRows(p), canStart: true, startLabel: 'Start ▶' }),
+    // (the score factor of these settings in the folded line)
+    status: () => {
+      const bonus = (p.rho > 0 && windLevel ? S.WIND_LEVELS[windLevel].bonus : 1) * settingsBonus(settings, true);
+      return { sub: approachRows(p), brief: `<span class="bb-k" title="Punkte-Faktor dieser Einstellungen"><i>Punkte</i><b class="${bonus > 1.001 ? 'ok' : bonus < 0.999 ? 'cost' : ''}">×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}</b></span>`, canStart: true, startLabel: 'Start ▶' };
+    },
   });
 }
 function setApproach(k, v) {

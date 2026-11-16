@@ -955,3 +955,35 @@ body:not(.dbg) #c-com { display: none; } /* centre of mass: debug mode only */
 .bb-more:hover { color: var(--ink); }
 .bd-budget.open .bb-brief { padding-bottom: 6px; margin-bottom: 2px; border-bottom: 1px solid var(--glass-edge); }
 .bd-planets:empty { display: none; }
+
+/* design review round: overflow menu, quieter builder, touch targets */
+.bd-head { position: relative; }
+.bd-more-wrap { position: relative; }
+#build-more { min-width: 40px; min-height: 36px; font-size: 18px; line-height: 1; padding: 4px 10px; }
+.bd-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; display: flex; flex-direction: column; min-width: 210px; padding: 5px; border-radius: 11px; border: 1px solid var(--glass-edge); background: rgba(16,20,28,0.96); box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
+.bd-menu[hidden] { display: none; }
+.bd-mi { display: flex !important; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px; border: 0; border-radius: 8px; background: none; color: var(--ink); font: 600 13px var(--display); text-align: left; }
+.bd-mi[hidden] { display: none !important; }
+.bd-mi:hover { background: rgba(255,255,255,0.06); }
+.bd-mi svg { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+.bd-mi span { display: inline !important; }
+.bd-mi small { display: block; font: 500 10px var(--mono); color: var(--mute); }
+#build-clear.bd-mi { color: #ff9d94; }
+#build-done.missing:disabled { opacity: 1; background: var(--amber); border-color: var(--amber); color: #1d1200; }
+.bd-opts:empty { min-height: 0; }
+.bs.open:not(.req)::after { content: none; }
+.bo.bo-lock { min-height: 0; text-align: left; }
+/* briefing: text labels on the phone too, taller segments */
+.ring-seg .ringsel { min-height: 34px; }
+.aset-row { flex-wrap: nowrap; }
+@media (max-width: 560px) {
+  .aset-row > small { display: inline; width: 58px; flex: none; font-size: 9px; letter-spacing: 0.02em; }
+  .aset-row > i { display: none; }
+  .ring-seg { flex: 1; min-width: 0; }
+  .ring-seg .ringsel { flex: 1; min-height: 36px; padding: 2px 4px; font-size: 11px; }
+}
+.home-btn { height: 36px; min-width: 40px; justify-content: center; color: rgba(255,255,255,0.62); background: rgba(0,0,0,0.3); }
+.home-btn svg { width: 17px; height: 17px; }
+.bd-slots { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; } /* one row, however many slots */
+.bd-planets[hidden] { display: none; }
+#builder.mission .bd-slots, #builder:not(.mission) .bd-slots { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }

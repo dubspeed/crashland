@@ -38,6 +38,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   const view = { tgt: new THREE.Vector3(0, 2.8, 0), dist: 17, zoom: 1, pitch: 0.28 };
 
   // ---------- figures ----------
+  const nb = (s) => s.replace(/(\d) (kN|s|kg|m²|%|Crew|Düsen)/g, '$1\u00a0$2'); // (a number never wraps away from its unit)
   const f = (n, d = 0) => n.toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
   const dryMass = (spec) => spec.comps.reduce((a, c) => a + c.mass, 0);
   const figures = (build0) => {
@@ -111,7 +112,8 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
         const need = ctx.dvNeed(r.p, r.dry);
         if (!need) return '';
         const cls = Number.isNaN(r.dv) ? '' : r.dv >= need * 1.25 ? 'ok' : r.dv >= need ? 'warn' : 'bad';
-        return `<span class="bb-k" title="Δv: vorhanden / nötig"><i>Δv</i><b class="${cls}">${Number.isNaN(r.dv) ? '—' : f(r.dv)}</b><small>/ ${f(need)}</small></span>`;
+        const mark = Number.isNaN(r.dv) ? '—' : r.dv >= need * 1.25 ? '✓' : r.dv >= need ? 'knapp' : '✗';
+        return `<span class="bb-k" title="Δv ${Number.isNaN(r.dv) ? '—' : f(r.dv)} von ${f(need)} m/s nötig"><i>Δv</i><b class="${cls}">${mark}</b></span>`;
       }).join('');
       dvCard = now.per.map((r) => {
         const need = ctx.dvNeed(r.p, r.dry);
@@ -152,10 +154,11 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     $('build-budget').innerHTML = briefLine + (details ? budget + dvCard : '');
     $('build-budget').hidden = false;
     $('build-budget').classList.toggle('open', details && !!(budget || dvCard));
-    $('build-gauges').hidden = !details;
+    $('build-gauges').hidden = !details; $('build-planets').hidden = !details; // (the per-planet bars belong to the details too)
     const miss = missing();
+    $('build-done').classList.remove('missing');
     if (miss.length && ctx?.onStart) {
-      $('build-done').disabled = true;
+      $('build-done').disabled = true; $('build-done').classList.add('missing');
       $('build-done').innerHTML = miss.length === 1 ? `${S.BUILD_SLOTS.find((x) => x.id === miss[0]).short} fehlt` : `${miss.length} fehlen`;
       $('build-done').title = `Fehlt noch: ${miss.map((sl) => S.BUILD_SLOTS.find((x) => x.id === sl).name).join(', ')}`;
     }
@@ -172,7 +175,13 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   }
   function renderOptions() {
     const box = $('build-opts');
-    if (!slot) { box.innerHTML = '<p class="bo-hint">Tippe auf ein Bauteil am Lander oder unten auf ein Symbol.</p>'; return; }
+    if (!slot) {
+      // the hint only until the first part was picked (then the tray stays as small as its content)
+      let seen = false; try { seen = localStorage.getItem('crashland.bhint') === '1'; } catch { /* show it */ }
+      box.innerHTML = seen ? '' : '<p class="bo-hint">Tippe auf ein Bauteil am Lander oder unten auf ein Symbol.</p>';
+      return;
+    }
+    try { localStorage.setItem('crashland.bhint', '1'); } catch { /* storage unavailable */ }
     const build = getBuild(), sl = S.BUILD_SLOTS.find((x) => x.id === slot);
     const cur = figures(build);
     const planets = planetsNow(), wCur = S.buildWarnings(build, planets, getFuelK(), refBuild());
@@ -181,7 +190,8 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     const locked = sl.options.filter((o) => o.id !== 'none' && ctx?.locked?.(slot, o.id));
     const byModule = {};
     for (const o of locked) (byModule[ctx.locked(slot, o.id)] ??= []).push(o.name);
-    const lockNote = locked.length ? `<div class="bo bo-lock" title="Teile werden freigeschaltet, sobald das Modul auf einer deiner Basen steht"><b>🔒 ${locked.length} weitere</b><small>${Object.entries(byModule).map(([m, n]) => `${n.join(', ')}: mit ${m}`).join(' · ')}</small><span class="bo-b"><em class="b-cur">Modul auf einer Basis bauen</em></span></div>` : '';
+    const lockText = Object.entries(byModule).map(([m, n]) => `${n.join(', ')}: mit ${m}`).join(' · ');
+    const lockNote = locked.length ? `<button class="bo bo-lock${lockOpen ? ' open' : ''}" title="${lockText} – das Modul auf einer Basis bauen"><b>🔒 ${locked.length} weitere</b>${lockOpen ? `<small>${lockText}</small><span class="bo-b"><em class="b-cur">Modul auf einer Basis bauen</em></span>` : ''}</button>` : '';
     const shown = sl.options.filter((o) => o.id !== 'none' && !locked.includes(o));
     if (isOpen(slot) || build[slot] === 'none') {
       // empty slot: what each part weighs and costs (no comparison yet)
@@ -189,7 +199,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
       box.innerHTML = shown.map((o) => {
         const sp = S.makeSpec({ ...base, [slot]: o.id }), m = sp.comps.filter((c) => SLOT_OF[c.id] === slot).reduce((a, c) => a + c.mass, 0);
         const price = ctx?.priceOf?.(slot, o.id);
-        return `<button class="bo" data-id="${o.id}"><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b">${m ? `<em>${f(m)} kg</em>` : ''}${price !== undefined && price !== null ? `<em class="b-price">${price}</em>` : ''}</span></button>`;
+        return `<button class="bo" data-id="${o.id}"><b>${o.name}</b><small>${nb(o.desc.replace(/ · [+−]\d+ kg/, '')) || '&nbsp;'}</small><span class="bo-b">${m ? `<em>${f(m)} kg</em>` : ''}${price !== undefined && price !== null ? `<em class="b-price">${price}</em>` : ''}</span></button>`;
       }).join('') + lockNote;
       return;
     }
@@ -203,24 +213,31 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
       const cant = Object.values(w.per).filter((x) => x === 'bad').length;
       const warnBadge = cant > cantCur ? `<em class="b-bad">⚠ ${cant} zu schwach</em>` : flagged(w) > flagged(wCur) ? '<em class="b-warn">⚠ knapper</em>' : '';
       const canOff = !!ctx?.open || sl.options.some((x) => x.id === 'none');
-      const badges = o.id === build[slot] ? `<em class="b-cur">${canOff ? 'gewählt · nochmal: weg' : 'gewählt'}</em>${cant ? `<em class="b-bad">⚠ ${cant} zu schwach</em>` : ''}`
+      const badges = o.id === build[slot] ? `<em class="b-cur" title="${canOff ? 'nochmal tippen: abbauen' : ''}">gewählt</em>${cant ? `<em class="b-bad">⚠ ${cant} zu schwach</em>` : ''}`
         : `${warnBadge}${ctx?.badge ? ctx.badge(build, { ...build, [slot]: o.id }) : ''}${Math.abs(dm) > 0.5 ? `<em class="${dm < 0 ? 'b-up' : 'b-down'}">${dm > 0 ? '+' : '−'}${f(Math.abs(dm))} kg</em>` : ''}${Math.abs(dv) > 0.005 ? `<em class="${dv > 0 ? 'b-up' : 'b-down'}">Δv ${dv > 0 ? '+' : '−'}${f(Math.abs(dv) * 100)} %</em>` : ''}`;
       // career: a part the bases have not unlocked yet
       const lock = ctx?.locked?.(slot, o.id);
-      if (lock) return `<button class="bo locked" data-id="${o.id}" disabled><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b"><em class="b-lock" title="kommt mit dem Modul ${lock}">🔒 ${lock}</em></span></button>`;
-      return `<button class="bo${o.id === build[slot] ? ' on' : ''}" data-id="${o.id}" aria-pressed="${o.id === build[slot]}"><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b">${badges}</span></button>`;
+      if (lock) return `<button class="bo locked" data-id="${o.id}" disabled><b>${o.name}</b><small>${nb(o.desc.replace(/ · [+−]\d+ kg/, '')) || '&nbsp;'}</small><span class="bo-b"><em class="b-lock" title="kommt mit dem Modul ${lock}">🔒 ${lock}</em></span></button>`;
+      return `<button class="bo${o.id === build[slot] ? ' on' : ''}" data-id="${o.id}" aria-pressed="${o.id === build[slot]}"><b>${o.name}</b><small>${nb(o.desc.replace(/ · [+−]\d+ kg/, '')) || '&nbsp;'}</small><span class="bo-b">${badges}</span></button>`;
     }).join('') + lockNote;
   }
   $('build-slots').addEventListener('click', (e) => {
     const b = e.target.closest('.bs'); if (!b) return;
     select(slot === b.dataset.slot ? null : b.dataset.slot);
   });
+  let lockOpen = false;
   $('build-opts').addEventListener('click', (e) => {
+    if (e.target.closest('.bo-lock')) { lockOpen = !lockOpen; renderOptions(); return; }
     const b = e.target.closest('.bo'); if (!b || !slot || b.disabled) return;
     choose(slot, b.dataset.id);
   });
   $('build-back').addEventListener('click', () => close(false)); // back to the menu, nothing started
   $('build-done').addEventListener('click', () => { const c = ctx; close(!!c?.onStart); c?.onStart?.(); }); // (the free builder also has a context: its planets)
+  // the header's overflow menu (Entwürfe, Leeren, Standard)
+  const menu = (open) => { $('build-menu').hidden = !open; $('build-more').setAttribute('aria-expanded', String(open)); };
+  $('build-more').addEventListener('click', (e) => { e.stopPropagation(); menu($('build-menu').hidden); });
+  $('build-menu').addEventListener('click', () => menu(false)); // (the item's own handler runs too)
+  document.addEventListener('click', (e) => { if (!$('build-menu').hidden && !e.target.closest('.bd-more-wrap')) menu(false); });
   $('build-budget').addEventListener('click', (e) => {
     if (!e.target.closest('.bb-more')) return;
     details = !details;
@@ -476,7 +493,8 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     tmp.set(view.tgt.x, view.tgt.y + (box.isEmpty() ? 0 : size.y * 0.5), view.tgt.z).project(camera);
     const x = (tmp.x * 0.5 + 0.5) * innerWidth, y = (-tmp.y * 0.5 + 0.5) * innerHeight;
     tag.hidden = false;
-    const html = `${sl.name}<b>${isOpen(slot) ? 'leer' : built ? o.name : 'nicht verbaut'}</b>`;
+    if (isOpen(slot) || !built) { tag.hidden = true; return; } // (the dashed slot and the ghost say it already)
+    const html = `${sl.name}<b>${o.name}</b>`;
     if (tag.innerHTML !== html) tag.innerHTML = html;
     tag.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
   }
@@ -484,7 +502,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   function open(context = null) {
     active = true; slot = null; hover = null; view.zoom = 1; std = null; ctx = context;
     root.hidden = false;
-    $('build-designs').hidden = true; $('build-designs-btn').setAttribute('aria-expanded', 'false'); designNote = '';
+    $('build-designs').hidden = true; $('build-designs-btn').setAttribute('aria-expanded', 'false'); designNote = ''; menu(false);
     $('build-title').textContent = ctx?.title ?? 'Lander bauen';
     $('build-sub').hidden = !ctx?.sub; $('build-sub').innerHTML = ctx?.sub ?? '';
     $('build-done').innerHTML = ctx?.onStart ? 'Start ▶' : 'Fertig';
