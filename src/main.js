@@ -295,6 +295,8 @@ function openMissionBuilder(p, type, ring, contract = null) {
       // the money as its own small table (cost of what is built so far, the account after, fee, profit)
       const line = (label, v, cls = '', title = '') => `<span class="bb-l"${title ? ` title="${title}"` : ''}>${label}</span><b class="bb-v ${cls}">${v}</b>`;
       const k = (v) => E.cr(v).replace(' Cr', ''); // (the unit once, in the heading)
+      // (while required parts are missing there is no flight to earn anything with: the cost so far)
+      const building = ['engine', 'tanks', 'battery', 'legs'].some((sl) => editMission?.open?.has(sl));
       const sign = (v) => `${v >= 0 ? '+' : '−'}${k(Math.abs(v))}`;
       const budget = `<div class="bb-money"><h4>Budget · Cr</h4>`
         + line('Konto', k(cc.money))
@@ -302,12 +304,13 @@ function openMissionBuilder(p, type, ring, contract = null) {
         + `<small class="bb-sub">Teile\u00a0${k(cost.parts)} · Treibstoff\u00a0${k(cost.fuel)}</small>`
         + line('Danach', k(cc.money - cost.total), ok ? '' : 'bad')
         + line('Prämie', `+${k(fee)}`, 'ok')
-        + line('Gewinn ≈', sign(profit), profit >= 0 ? 'ok' : 'bad', `wenn die Fracht heil ankommt: Prämie + Bergung der Landestufe (${Math.round(E.RECOVER.landed * 100)} % der Teile)${econ.income ? ' + Basis-Einnahmen' : ''} − Lander (ohne Präzisionsbonus und Resttreibstoff)`)
+        + (building ? line('Gewinn ≈', '—', '', 'erst wenn der Lander fertig ist') : '') + (building ? '' : line('Gewinn ≈', sign(profit), profit >= 0 ? 'ok' : 'bad', `wenn die Fracht heil ankommt: Prämie + Bergung der Landestufe (${Math.round(E.RECOVER.landed * 100)} % der Teile)${econ.income ? ' + Basis-Einnahmen' : ''} − Lander (ohne Präzisionsbonus und Resttreibstoff)`))
         + (broke ? `<button class="link loan">Notkredit +${E.cr(E.LOAN)}</button>` : '') + '</div>';
       // folded: just the account and what the lander costs
       // folded: what the flight earns (the figure that decides), red when it cannot be paid
-      const brief = ok ? `<span class="bb-k" title="Gewinn, wenn die Fracht heil ankommt (Cr)"><i>Gewinn</i><b class="${profit >= 0 ? 'ok' : 'bad'}">${sign(profit)}</b></span>`
-        : `<span class="bb-k" title="Konto ${k(cc.money)} Cr"><i>Lander</i><b class="bad">−${k(cost.total)}</b><small>zu teuer</small></span>`;
+      const brief = !ok ? `<span class="bb-k" title="Konto ${k(cc.money)} Cr"><i>Kosten</i><b class="bad">−${k(cost.total)}</b><small>zu teuer</small></span>`
+        : building ? `<span class="bb-k" title="was der Lander bisher kostet: Teile ${k(cost.parts)}, Treibstoff ${k(cost.fuel)} (Cr)"><i>Kosten</i><b class="cost">−${k(cost.total)}</b></span>`
+        : `<span class="bb-k" title="Prämie ${k(fee)} − Lander ${k(cost.total)} + Bergung (Cr), wenn die Fracht heil ankommt"><i>Gewinn bei Lieferung</i><b class="${profit >= 0 ? 'ok' : 'bad'}">${sign(profit)}</b></span>`;
       return {
         sub: `${sub}<span class="chips-row">${ringRow()}</span>`, budget, brief,
         canStart: ok, startLabel: ok ? 'Start ▶' : 'Zu teuer',
