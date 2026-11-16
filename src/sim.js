@@ -155,7 +155,9 @@ export const FUEL_LEVELS = [
 ];
 export const HINTS_OFF_BONUS = 1.15; // score multiplier without hints
 export const AUTO_FINE_BONUS = 0.9;  // score multiplier with the automatic deorbit fine control
-export const DEFAULT_SETTINGS = { fuel: 1, hints: true, autoFine: false, realistic: false, alt: 1 };
+export const DEFAULT_SETTINGS = { fuel: 1, hints: true, autoFine: false, realistic: false, alt: 1, drift: true };
+/** approach: straight in (no sideways speed, the old start) instead of the sideways start: a bit easier */
+export const STRAIGHT_BONUS = 0.9;
 // approach levels: the start height (a factor on the planet's own; the same fall speed)
 export const ALT_LEVELS = [
   { id: 'low', name: 'Niedrig', k: 0.5, bonus: 0.9 },
@@ -185,13 +187,15 @@ export function newRound(planet, wind = 0, seed = 1, settings = {}, build = {}) 
   const pads = lay2 ? makePads(seed) : null;
   setPads(pads);
   // (half the fall speed: time to pick a pad and get there)
-  if (lay2) planet = { ...planet, vy: Math.round(planet.vy * 0.5), fuel: Math.round(planet.fuel * (1 + (APPROACH_SIDE[planet.id]?.fuel ?? 0.25))) };
+  // (settings.drift false: straight in, the planet's own start, the pads still there)
+  const side = lay2 && set.drift !== false;
+  if (side) planet = { ...planet, vy: Math.round(planet.vy * 0.5), fuel: Math.round(planet.fuel * (1 + (APPROACH_SIDE[planet.id]?.fuel ?? 0.25))) };
   const s = createState(planet, { wind, rnd, windHeading: rnd() * Math.PI * 2, fuelK: (FUEL_LEVELS[set.fuel]?.k ?? 1) * (set.base?.fuel ?? 1) * (set.fuelMult ?? 1), build });
   s.settings = set;
   if (set.target && planet.orbit) s.target = makeTarget(s, set.target);
   // base flights: the modules already there (obstacles) and what they give
   if (set.base) { s.obstacles = set.base.obstacles ?? []; s.spec.solarK *= set.base.solar ?? 1; }
-  if (lay2) { s.pads = pads; s.obstacles = pads.flatMap((p) => p.rocks ?? []); sideStart(s, seed); }
+  if (lay2) { s.pads = pads; s.obstacles = pads.flatMap((p) => p.rocks ?? []); if (side) sideStart(s, seed); }
   return s;
 }
 // approach layout 2: sideways speed at the start (m/s) and the extra fuel it costs (fraction of the planet's)

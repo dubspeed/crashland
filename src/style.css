@@ -869,3 +869,23 @@ body.dbg #parts .com { display: flex; }
 .r-more::after { content: ' ›'; }
 .money-table tr.head td { text-align: left !important; padding-top: 12px; font: 700 10px var(--display); letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); border-bottom: 0; }
 .r-tiles { grid-template-columns: repeat(3, 1fr); }
+
+/* approach briefing: this flight's parameters under the title */
+.aset-box { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+.aset-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.aset-row > i { font-style: normal; width: 18px; text-align: center; }
+.aset-row > small { width: 64px; font: 600 10px var(--mono); color: var(--mute); text-transform: uppercase; letter-spacing: 0.04em; }
+.aset-sum { margin-top: 2px; }
+@media (max-width: 560px) { .aset-row > small { display: none; } .ring-seg .ringsel { padding: 2px 7px; } }
+/* builder: back to the menu */
+.bd-back { padding: 4px 10px; font-size: 18px; line-height: 1; margin-right: 2px; }
+/* flight: back to the menu, small and faint (two taps) */
+.home-btn { position: absolute; z-index: 30; top: calc(6px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; height: 26px; padding: 0 7px; border-radius: 13px; border: 1px solid transparent;
+  background: rgba(0,0,0,0.18); color: rgba(255,255,255,0.45); font: 700 11px var(--display); cursor: pointer; }
+.home-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.home-btn span { display: none; }
+.home-btn:hover { color: rgba(255,255,255,0.8); }
+.home-btn.armed { color: var(--amber); border-color: var(--amber); background: rgba(0,0,0,0.5); }
+.home-btn.armed span { display: inline; }
+@media (max-width: 560px) { .home-btn { left: calc(50% + 30px); } } /* phone: between the energy bar and the crew */

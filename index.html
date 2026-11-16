@@ -19,6 +19,7 @@
     <div id="flyover" hidden></div>
     <div id="pred-mark" hidden aria-hidden="true"><svg viewBox="-16 -16 32 32"><path d="M-9 -9L9 9M9 -9L-9 9" stroke="rgba(0,0,0,0.75)" stroke-width="7" stroke-linecap="round"/><path d="M-9 -9L9 9M9 -9L-9 9" stroke="#ffb547" stroke-width="3.6" stroke-linecap="round"/><circle r="13" fill="none" stroke="#ffb547" stroke-width="1.5" stroke-dasharray="3 3" opacity="0.8"/></svg><i class="arrow"></i></div>
     <div id="ship-mark" hidden aria-hidden="true"><svg viewBox="0 0 24 28"><path d="M3 3 L21 3 L12 24 Z" fill="rgba(143,227,255,0.25)" stroke="#8fe3ff" stroke-width="3" stroke-linejoin="round"/></svg></div>
+    <button id="home-btn" class="home-btn" title="Hauptmenü (zweimal tippen)" aria-label="Hauptmenü, zweimal tippen"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 5l8 6.5M6.5 10v8.5h11V10"/></svg><span>Menü?</span></button>
     <header id="top">
       <span class="brand">CRASHLAND</span>
       <span id="planet-tag"></span>
@@ -137,7 +138,6 @@
         <div class="wind-row"><span class="wind-label">🌬 Wind</span><div id="wind-select" role="radiogroup" aria-label="Windstärke (nur mit Atmosphäre)"></div></div>
         <p class="wind-note">nur mit Atmosphäre – auf Luna immer windstill</p>
         <div class="wind-row"><span class="wind-label">⛽ Treibstoff</span><div id="fuel-select" class="opt-select" role="radiogroup" aria-label="Treibstoffvorrat"></div></div>
-        <div class="wind-row"><span class="wind-label" title="nur im Anflug: Höhe beim Start">📏 Starthöhe</span><div id="alt-select" class="opt-select" role="radiogroup" aria-label="Starthöhe im Anflug"></div></div>
         <div class="wind-row"><span class="wind-label">💡 Hinweise</span><div id="hint-select" class="opt-select" role="radiogroup" aria-label="Hinweise im HUD"></div></div>
         <div class="wind-row"><span class="wind-label" title="Feinregelung nach dem Bremsmanöver auf Terra und Brontes aus dem Orbit">🎯 Feinregelung</span><div id="auto-select" class="opt-select" role="radiogroup" aria-label="Feinregelung nach dem Deorbit"></div></div>
         <div class="wind-row"><span class="wind-label" title="Einfach: Bremsen, Seite, Ziel mit Computer-Dosierung und Hinweisen. Realistisch: Prograd, Retrograd, Normal, Radial, Ziel – nur Ausrichtung, Schub selbst, keine Anweisungen">🧭 Lageregler</span><div id="sasmode-select" class="opt-select" role="radiogroup" aria-label="Lageregler einfach oder realistisch"></div></div>
@@ -148,7 +148,7 @@
 
   <div id="builder" hidden>
     <div id="build-top" class="bd-panel bd-top">
-      <div class="bd-head"><h2 id="build-title">Lander bauen</h2><button id="build-reset" class="bd-btn">Standard</button><button id="build-done" class="bd-btn primary">Fertig</button></div>
+      <div class="bd-head"><button id="build-back" class="bd-btn bd-back" title="Zurück zum Hauptmenü" aria-label="Zurück zum Hauptmenü">‹</button><h2 id="build-title">Lander bauen</h2><button id="build-reset" class="bd-btn">Standard</button><button id="build-done" class="bd-btn primary">Fertig</button></div>
       <p id="build-sub" class="bd-sub" hidden></p>
       <div id="build-gauges" class="bd-gauges" aria-live="polite"></div>
       <div id="build-planets" class="bd-planets"></div>

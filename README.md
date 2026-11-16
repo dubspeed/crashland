@@ -350,3 +350,9 @@ New approach flights (main.js sets `layout: 2`; old replays without it keep the 
 ## Speed of the flight model (tests)
 
 `terrainHeight` keeps the last 16 exact (x, z) answers (the feet are asked several times per step; cleared by `setSite` / `setPads` / `setTerrainEdge`), `vn` and `moonRelief` allocate nothing, and `predictImpact` writes the curvature out and skips the air terms in vacuum. All bit-identical: the golden snapshot is unchanged.
+
+## Approach briefing and the way back to the menu
+
+- Tapping an approach planet opens the lander builder as a briefing ("Anflug · Luna", Start ▶). Under the title this flight's parameters (`approachRows`): Starthöhe (`ALT_LEVELS`), Anflug Seitlich / Gerade (`settings.drift`; Gerade = the planet's own start without sideways speed, pads still there, ×`STRAIGHT_BONUS` 0.9), Gelände (Zufall or a site, `settings.siteSel`), Wind (planets with air), Treibstoff, and the resulting score factor. They are the saved settings, so the next approach starts the same way; the Starthöhe row left the global difficulty panel, and the menu's "Lander bauen" button is hidden in approach mode (the briefing builds).
+- Records per height and per "Gerade" (`.alt<n>`, `.straight` in the best key).
+- Back to the menu: `‹` in the builder head (free building, mission and approach briefings), and a faint ⌂ at the top of the flight HUD that needs a second tap within 2.5 s ("Menü?"); M / Esc as before.

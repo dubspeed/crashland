@@ -207,7 +207,6 @@ function buildSettings() {
   };
   const x = (k) => `×${k.toLocaleString('de-DE')}`;
   row('fuel-select', S.FUEL_LEVELS.map((f, i) => [i, f.name, `${Math.round(f.k * 100)} % · ${x(f.bonus)}`]), settings.fuel, 'fuel');
-  row('alt-select', S.ALT_LEVELS.map((a, i) => [i, a.name, `${a.k === 1 ? 'wie gewohnt' : `${a.k.toLocaleString('de-DE')}× Höhe`} · ${x(a.bonus)}`]), settings.alt ?? 1, 'alt');
   row('hint-select', [[true, 'An', 'Tipps im HUD'], [false, 'Aus', `nur Warnungen · ${x(S.HINTS_OFF_BONUS)}`]], settings.hints, 'hints');
   row('auto-select', [[false, 'Von Hand', 'nach dem Hinweis'], [true, 'Automatisch', `Computer · ${x(S.AUTO_FINE_BONUS)}`]], settings.autoFine, 'autoFine');
   row('sasmode-select', [[false, 'Einfach', 'Bremsen · Seite · Ziel'], [true, 'Realistisch', `Pro/Retro/Normal … · ${x(S.REALISTIC_BONUS)}`]], !!settings.realistic, 'realistic');
@@ -282,6 +281,49 @@ function openMissionBuilder(p, type, ring, contract = null) {
     badge: career() ? (b, alt) => { const d = E.partsPrice(alt) - E.partsPrice(b); return Math.abs(d) >= 100 ? `<em class="${d < 0 ? 'b-up' : 'b-down'}">${d > 0 ? '+' : '−'}${E.cr(Math.abs(d))}</em>` : ''; } : null,
   });
 }
+// ---------- approach briefing: the lander and this flight's parameters, then Start ----------
+// (the parameters are the saved settings: the next approach starts the same way)
+const APPROACH_SITES = [['rand', 'Zufall'], ...S.SITE_IDS.map((id) => [id, S.SITES[id].name])];
+function approachRows(p) {
+  const seg = (k, opts, cur) => `<span class="ring-seg">${opts.map(([v, name, note]) => `<button class="ringsel aset${v === cur ? ' on' : ''}" data-k="${k}" data-v="${v}"${note ? ` title="${note}"` : ''}>${name}</button>`).join('')}</span>`;
+  const row = (icon, label, html) => `<span class="aset-row"><i title="${label}">${icon}</i><small>${label}</small>${html}</span>`;
+  const x = (k) => `×${k.toLocaleString('de-DE')}`;
+  const bonus = (p.rho > 0 && windLevel ? S.WIND_LEVELS[windLevel].bonus : 1) * settingsBonus(settings, true);
+  return '<span class="aset-box">'
+    + row('📏', 'Starthöhe', seg('alt', S.ALT_LEVELS.map((a, i) => [i, a.name, `${a.k === 1 ? 'wie gewohnt' : `${a.k.toLocaleString('de-DE')}× Höhe`} · ${x(a.bonus)}`]), settings.alt ?? 1))
+    + row('↗', 'Anflug', seg('drift', [[1, 'Seitlich', 'mit Seitwärtsfahrt, das Kreuz liegt daneben'], [0, 'Gerade', `von oben wie früher · ${x(S.STRAIGHT_BONUS)}`]], settings.drift === false ? 0 : 1))
+    + row('⛰', 'Gelände', seg('site', APPROACH_SITES, settings.siteSel ?? 'rand'))
+    + (p.rho > 0 ? row('🌬', 'Wind', seg('wind', S.WIND_LEVELS.map((w, i) => [i, w.name, i ? x(w.bonus) : '']), windLevel)) : '')
+    + row('⛽', 'Treibstoff', seg('fuel', S.FUEL_LEVELS.map((f, i) => [i, f.name, `${Math.round(f.k * 100)} % · ${x(f.bonus)}`]), settings.fuel))
+    + `<span class="aset-row aset-sum">${chip('×', bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 }), Math.abs(bonus - 1) > 0.001 ? 'ok' : '', 'Punkte-Faktor dieser Einstellungen')}</span>`
+    + '</span>';
+}
+let approachP = null; // the planet of an open approach briefing
+function openApproach(p) {
+  approachP = p;
+  $('menu').hidden = true; cam.pitch = 0;
+  usePlanet(p);
+  const site = settings.siteSel && settings.siteSel !== 'rand' ? settings.siteSel : 'plain';
+  S.setSite(site); S.setPads(null); world.setSite(S.SITE_IDS.indexOf(site));
+  parkShip();
+  builder.open({
+    title: `Anflug · ${p.name}`,
+    planets: [p],
+    onStart: () => { approachP = null; start(p); },
+    status: () => ({ sub: approachRows(p), canStart: true, startLabel: 'Start ▶' }),
+  });
+}
+function setApproach(k, v) {
+  if (k === 'wind') { windLevel = +v; try { localStorage.setItem('crashland.wind', v); } catch { /* storage unavailable */ } }
+  else if (k === 'site') {
+    settings.siteSel = v;
+    const site = v !== 'rand' ? v : 'plain'; // (the backdrop shows the chosen site)
+    S.setSite(site); world.setSite(S.SITE_IDS.indexOf(site));
+  } else settings[k] = k === 'drift' ? v === '1' : +v;
+  try { localStorage.setItem('crashland.settings', JSON.stringify(settings)); } catch { /* storage unavailable */ }
+  builder.refresh();
+}
+
 function setBuild(slot, id) {
   if (editMission) {
     missionBuild[slot] = id;
@@ -303,7 +345,7 @@ const builder = createBuilder({
   setBuild,
   resetBuild: () => { if (editMission) { missionBuild = missionBuildFor(editMission.type, true); setBuild('engine', missionBuild.engine); } else { build = { ...S.DEFAULT_BUILD }; setBuild('engine', 'std'); } },
   getFuelK: () => (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * (editMission?.fuel ?? 1),
-  onClose: (starting) => { editMission = null; if (!starting) { $('menu').hidden = false; buildMenu(); } },
+  onClose: (starting) => { editMission = null; approachP = null; if (!starting) showMenu(); },
 });
 // free building: only the planets of the chosen start mode in the figures
 $('build-btn').addEventListener('click', () => { $('menu').hidden = true; cam.pitch = 0; builder.open({ planets: startMode === '0' ? S.PLANETS : S.ORBIT_PLANETS }); });
@@ -324,6 +366,8 @@ $('reset-bases').addEventListener('click', () => resetGame('bases'));
 $('reset-all').addEventListener('click', () => resetGame('all'));
 // emergency credit in the briefing (only offered when even the cheapest lander is too expensive)
 $('build-sub').addEventListener('click', (e) => {
+  const as = e.target.closest('.aset');
+  if (as && approachP) { setApproach(as.dataset.k, as.dataset.v); return; }
   const rs = e.target.closest('.ringsel');
   if (rs && editMission) { editMission.pick.ring = rs.dataset.ring; builder.refresh(); return; }
   if (!e.target.closest('.loan')) return;
@@ -333,9 +377,9 @@ $('build-sub').addEventListener('click', (e) => {
 
 /** score multiplier of the chosen settings (wind is applied separately, only where there is air) */
 const altBonus = (set, approach) => (approach ? S.ALT_LEVELS[set.alt ?? 1]?.bonus ?? 1 : 1); // the start height only exists in approach
-const settingsBonus = (set, approach = false) => altBonus(set, approach) * (S.FUEL_LEVELS[set.fuel]?.bonus ?? 1) * (set.hints ? 1 : S.HINTS_OFF_BONUS) * (set.autoFine && !set.realistic ? S.AUTO_FINE_BONUS : 1) * (set.realistic ? S.REALISTIC_BONUS : 1);
+const settingsBonus = (set, approach = false) => altBonus(set, approach) * (approach && set.drift === false ? S.STRAIGHT_BONUS : 1) * (S.FUEL_LEVELS[set.fuel]?.bonus ?? 1) * (set.hints ? 1 : S.HINTS_OFF_BONUS) * (set.autoFine && !set.realistic ? S.AUTO_FINE_BONUS : 1) * (set.realistic ? S.REALISTIC_BONUS : 1);
 // wind only counts where there is air to blow
-const bestKey = (id) => `${id}${windLevel && [...S.PLANETS, ...S.ORBIT_PLANETS].find((p) => p.id === id)?.rho > 0 ? `.wind${windLevel}` : ''}${settings.fuel !== 1 ? `.fuel${settings.fuel}` : ''}${startMode === '0' && (settings.alt ?? 1) !== 1 ? `.alt${settings.alt}` : ''}${settings.hints ? '' : '.nohints'}${settings.autoFine ? '.auto' : ''}${settings.realistic ? '.real' : ''}${buildSummary() === 'Standard' ? '' : '.b' + S.BUILD_SLOTS.map((sl) => build[sl.id]).join('-')}`;
+const bestKey = (id) => `${id}${windLevel && [...S.PLANETS, ...S.ORBIT_PLANETS].find((p) => p.id === id)?.rho > 0 ? `.wind${windLevel}` : ''}${settings.fuel !== 1 ? `.fuel${settings.fuel}` : ''}${startMode === '0' && (settings.alt ?? 1) !== 1 ? `.alt${settings.alt}` : ''}${startMode === '0' && settings.drift === false ? '.straight' : ''}${settings.hints ? '' : '.nohints'}${settings.autoFine ? '.auto' : ''}${settings.realistic ? '.real' : ''}${buildSummary() === 'Standard' ? '' : '.b' + S.BUILD_SLOTS.map((sl) => build[sl.id]).join('-')}`;
 function best(id) { try { return JSON.parse(localStorage.getItem(`crashland.best.${id}`)); } catch { return null; } }
 function saveBest(id, v) { try { localStorage.setItem(`crashland.best.${id}`, JSON.stringify(v)); } catch { /* storage unavailable */ } }
 
@@ -470,11 +514,11 @@ function buildMenu() {
     b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
   }
   const bonus = (windLevel ? S.WIND_LEVELS[windLevel].bonus : 1) * settingsBonus(settings, startMode === '0');
-  const diff = [windLevel ? `Wind ${S.WIND_LEVELS[windLevel].name.toLowerCase()}` : '', startMode === '0' && (settings.alt ?? 1) !== 1 ? `Start ${S.ALT_LEVELS[settings.alt].name.toLowerCase()}` : '', settings.fuel !== 1 ? `Treibstoff ${S.FUEL_LEVELS[settings.fuel].name.toLowerCase()}` : '',
+  const diff = [windLevel ? `Wind ${S.WIND_LEVELS[windLevel].name.toLowerCase()}` : '', startMode === '0' && (settings.alt ?? 1) !== 1 ? `Start ${S.ALT_LEVELS[settings.alt].name.toLowerCase()}` : '', startMode === '0' && settings.drift === false ? 'gerade' : '', settings.fuel !== 1 ? `Treibstoff ${S.FUEL_LEVELS[settings.fuel].name.toLowerCase()}` : '',
     settings.hints ? '' : 'ohne Hinweise', settings.autoFine && !settings.realistic ? 'Computer an' : '', settings.realistic ? 'Lageregler realistisch' : ''].filter(Boolean);
   $('diff-btn').innerHTML = `Schwierigkeit${Math.abs(bonus - 1) > 0.001 ? ` <em>×${bonus.toLocaleString('de-DE', { maximumFractionDigits: 2 })}</em>` : ''}<small>${diff.length ? diff.join(' · ') : 'Standard'}</small>`;
   $('base-info').hidden = startMode !== 'base' && startMode !== 'rescue';
-  $('build-btn').hidden = startMode === 'rescue'; // the lander is given
+  $('build-btn').hidden = startMode === 'rescue' || startMode === '0'; // rescue: the lander is given; approach: built in its briefing
   if (startMode === 'base' || startMode === 'rescue') {
     const c = loadCareer();
     $('base-info').innerHTML = `<span class="eco-row"><span class="eco-seg"><button data-eco="career" class="${career() ? 'on' : ''}">Karriere</button><button data-eco="sandbox" class="${career() ? '' : 'on'}">Sandbox</button></span>`
@@ -529,7 +573,7 @@ function buildMenu() {
       <span class="pname"><b>${p.name.replace(' Orbit', '')}</b><span class="g">${(p.g / S.G0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} g</span></span>
       <p>${p.text}</p>
       <span class="chips-row">${chip('🌫', p.rho > 0 ? p.atmo : 'keine Luft', '', 'Atmosphäre')}${rec ? chip('★', `${rec.stars} · ${rec.score.toLocaleString('de-DE')}`, 'ok', 'Bestwert') : ''}</span>`;
-    b.addEventListener('click', () => start(p));
+    b.addEventListener('click', () => (startMode === '0' ? openApproach(p) : start(p)));
     wrap.append(b);
   }
 }
@@ -646,7 +690,8 @@ function start(p, ms) {
     showBase(base, rescue.target);
   } else showBase(null);
   // landing site: a base keeps its own, free flights get one from the seed (it is in the settings, so replays have it)
-  const site = mission || rescue ? B.BASE_SITES[p.id] ?? 'plain' : S.SITE_IDS[seed % S.SITE_IDS.length];
+  const pickSite = !p.orbit && settings.siteSel && settings.siteSel !== 'rand' ? settings.siteSel : null; // (approach: chosen in the briefing)
+  const site = mission || rescue ? B.BASE_SITES[p.id] ?? 'plain' : pickSite ?? S.SITE_IDS[seed % S.SITE_IDS.length];
   // approach: side pads, sideways start (layout 2; old replays without it keep the old start)
   flightSettings = { ...flightSettings, site, ...(!p.orbit && !mission && !rescue ? { layout: 2 } : {}) };
   s = S.newRound(planet, windLevel, seed, flightSettings, flightBuild);
@@ -1109,6 +1154,14 @@ $('score-detail').addEventListener('click', (e) => { if (e.target === $('score-d
 $('money-detail').addEventListener('click', (e) => { if (e.target === $('money-detail')) $('money-detail').hidden = true; });
 $('r-close').addEventListener('click', () => { $('result').hidden = true; $('result-open').hidden = false; });
 $('r-menu').addEventListener('click', showMenu);
+// back to the menu during a flight: small and out of the way; the first tap arms it, the second leaves
+let homeArm = 0;
+$('home-btn').addEventListener('click', () => {
+  if (mode === 'menu') return;
+  if (performance.now() - homeArm < 2500) { homeArm = 0; $('home-btn').classList.remove('armed'); showMenu(); return; }
+  homeArm = performance.now(); $('home-btn').classList.add('armed');
+  setTimeout(() => { if (performance.now() - homeArm >= 2400) $('home-btn').classList.remove('armed'); }, 2500);
+});
 // flight export (replay file): download, or copy if downloads are blocked
 $('r-export').addEventListener('click', async () => {
   const json = JSON.stringify(flightRecord());
