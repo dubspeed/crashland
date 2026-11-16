@@ -987,3 +987,16 @@ body:not(.dbg) #c-com { display: none; } /* centre of mass: debug mode only */
 .bd-slots { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; } /* one row, however many slots */
 .bd-planets[hidden] { display: none; }
 #builder.mission .bd-slots, #builder:not(.mission) .bd-slots { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+
+/* HUD after the design review: less standing data, labels on the phone strips, room for the compass */
+#power.calm .pw-flow { display: none; }
+.face .nm small { display: none; } /* (each one's g limit: in the crew sheet, not in flight) */
+@media (min-width: 521px) and (min-height: 521px) {
+  #flight #nav { padding-right: 78px; } /* the compass sits top right in the panel */
+  #controls .tog { min-height: 44px; min-width: 44px; }
+}
+@media (max-width: 520px), (max-height: 520px) {
+  #flight .bar.fuel { overflow: visible; }
+  #flight .bar.fuel::before { content: '⛽'; position: absolute; left: max(6px, env(safe-area-inset-left, 0px)); top: 7px; font-size: 10px; line-height: 1; opacity: 0.85; text-shadow: 0 1px 3px #000; }
+  #burn-label { display: block !important; position: absolute; top: calc(100% + 4px); left: -2px; width: 60px; margin: 0; font-size: 9.5px; letter-spacing: 0.02em; text-align: left; text-shadow: 0 1px 3px #000, 0 0 6px #000; }
+}

@@ -471,6 +471,8 @@ export function createHud() {
       const mmss = (x) => `${Math.floor(x / 60)}:${String(Math.floor(x % 60)).padStart(2, '0')}`;
       // phone: the bar alone says it, charging (stripes run right, ▲) or draining (stripes run left, ▼)
       const dir = net > 0.01 && bat < 99.5 ? 'chg' : net < -0.01 ? (bat / -net < 60 ? 'drain bad' : 'drain') : '';
+      // the in / out rates only when power matters (below half, or running out within a minute)
+      $('power').classList.toggle('calm', bat >= 50 && !(net < -0.01 && bat / -net < 60));
       const bar = $('pw-fill').parentElement;
       if (bar.dataset.d !== dir) { bar.dataset.d = dir; bar.className = `pw-bar ${dir}`; const d = $('pw-dir'); d.textContent = dir.startsWith('chg') ? '▲' : dir ? '▼' : ''; d.className = `pw-dir ${dir}`; }
       const el = $('pw-net');

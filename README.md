@@ -373,3 +373,11 @@ New approach flights (main.js sets `layout: 2`; old replays without it keep the 
 - The centre-of-mass button (C) only in debug mode (F3 / `?debug`).
 - New players start with the realistic attitude modes; settings were already saved (`crashland.settings`), so a choice made once stays.
 - Folded by default: one line with the key figures (mission: account, lander cost, Δv available / needed; otherwise the mass) and "Details ▾"; unfolded the budget table, the engine figures and the part gauges (mass, thrust, Isp, …). Remembered in `crashland.bdetails`.
+
+### After the UI design review
+
+- Builder header: ‹ · title · ⋯ (Entwürfe, Leeren, Standard-Lander) · Start; missing parts make Start a filled amber "n fehlen".
+- Folded line: profit (mission, career) or the score factor (approach) and "Δv ✓ / knapp / ✗" (numbers in the tooltip and the details); the per-planet bars belong to the details too.
+- The tap hint only until the first part was picked (`crashland.bhint`); no "nochmal: weg" text, no "leer" label in 3D, "+" only on required empty slots, the lock card short ("🔒 3 weitere", tap for which module brings them); cargo chips in words ("max 12 g", "≤ 12 m/s"); numbers never wrap away from their units.
+- Briefing on the phone: text labels instead of emoji, segments 36 px high, one slot row.
+- HUD: energy in/out rates only below 50 % or when running out within a minute; no per-crew g limits under the faces; the compass keeps its corner (iPad); buttons 44 px (iPad); phone: ⛽ at the fuel hairline, the burn time under the burn strip; the home button a bit larger and less faint.
