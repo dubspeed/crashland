@@ -49,7 +49,7 @@ test('every build lands where the builder shows no warning (and the warnings fla
   });
   // the classic challenges are flagged
   const all = [...S.PLANETS, ...S.ORBIT_PLANETS];
-  assert.ok(S.buildWarnings({ solar: 'none' }, all).list.some((x) => /Kein Solar/.test(x.text)));
+  assert.ok(S.buildWarnings({ solar: 'none' }, all).list.some((x) => /Ohne Solarpaneele/.test(x.text)));
   assert.ok(S.buildWarnings({ engine: 'mini', capsule: 'hab', tanks: 'huge' }, all).list.some((x) => x.level === 'bad' && /zu schwach/.test(x.text)));
   assert.equal(S.buildWarnings({}, all).list.length, 0);
 });

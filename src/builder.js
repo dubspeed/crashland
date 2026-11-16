@@ -21,7 +21,7 @@ const ICON = {
 };
 const icon = (id) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round">${ICON[id]}</svg>`;
 
-export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, resetBuild, getFuelK, onClose }) {
+export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, resetBuild, clearBuild, openSlot, getFuelK, onClose }) {
   const $ = (id) => document.getElementById(id);
   const root = $('builder');
   let active = false, slot = null, hover = null, pulse = { ids: [], t: 1 };
@@ -79,8 +79,10 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     return `<div class="g-bar${cls}"><i style="width:${pos(v).toFixed(1)}%"></i><b style="left:${pos(s).toFixed(1)}%"></b></div>`;
   };
 
+  let dvCard = '';
   function renderFigures() {
     const build = getBuild();
+    dvCard = '';
     const now = figures(build);
     std ??= figures(refBuild());
     const sp = now.spec, ss = std.spec;
@@ -99,16 +101,20 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     // a planet the builder warns about gets a ⚠ (red: cannot land there at all)
     const warn = S.buildWarnings(effBuild(build), planetsNow(), getFuelK(), refBuild());
     if (ctx?.dvNeed) {
-      // mission: Δv against what the flight takes (tick = needed, green from 25 % reserve), thrust-to-weight
-      $('build-planets').innerHTML = now.per.map((r) => {
+      // mission: Δv against what the flight takes (tick = needed, green from 25 % reserve), thrust-to-weight;
+      // in the mission card next to the budget, not between the part figures
+      $('build-planets').innerHTML = '';
+      dvCard = now.per.map((r) => {
         const need = ctx.dvNeed(r.p, r.dry);
         if (!need) return '';
         if (Number.isNaN(r.dv)) return `<div class="bp need"><span class="bp-n">Δv ${r.p.name.replace(' Orbit', '')}</span><div class="g-bar empty"></div><span class="bp-v"><span class="dv">—</span><small>/ ${f(need)} m/s</small></span></div>`;
         const cls = r.dv >= need * 1.25 ? ' up' : r.dv >= need ? ' warn' : ' down';
         const twr = r.twr < 1 ? 'bad' : r.twr < 1.3 ? 'warn' : '';
         return `<div class="bp need" title="Δv ${f(r.dv)} m/s, nötig etwa ${f(need)} m/s (grün ab 25 % Reserve); Schub/Gewicht ${f(r.twr, 1)}"><span class="bp-n">Δv ${r.p.name.replace(' Orbit', '')}</span><div class="g-bar${cls}"><i style="width:${Math.min(100, (r.dv / (need * 2)) * 100).toFixed(1)}%"></i><b style="left:50%"></b></div>`
-          + `<span class="bp-v"><span class="dv">${f(r.dv)}</span><small>/ ${f(need)} m/s</small>${Number.isNaN(r.twr) ? '' : `<small class="${twr}" title="Schub/Gewicht">${f(r.twr, 1)}g</small>`}</span></div>`;
+          + `<span class="bp-v"><span class="dv">${f(r.dv)}</span><small>/ ${f(need)} m/s</small></span>`
+          + (Number.isNaN(r.twr) ? '' : `<span class="bb-twr ${twr}" title="Schub/Gewicht: ab 1,3 genug Reserve">Schub ${f(r.twr, 1)}× Gewicht</span>`) + '</div>';
       }).join('');
+      dvCard = `<div class="bb-dv"><h4>Antrieb</h4>${dvCard}</div>`;
     } else $('build-planets').innerHTML = now.per.map((r, i) => {
       const s0 = std.per[i].dv, k = r.dv / s0;
       const cls = k > 1.02 ? ' up' : k < 0.98 ? ' down' : '';
@@ -118,14 +124,20 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
         + `<span class="bp-v"><span class="dv">${f(r.dv)}</span><small class="${twr}" title="Schub/Gewicht">${f(r.twr, 1)}g</small></span></div>`;
     }).join('');
     // what is odd about this build (it can still be flown: a challenge)
-    $('build-warn').innerHTML = warn.list.map((x) => `<em class="${x.level}">⚠ ${x.text}</em>`).join('');
-    $('build-warn').hidden = !warn.list.length;
+    // (nothing about empty slots yet: no power warning before there is a battery, no thrust one before an engine)
+    // (Δv in a mission: the need display says it better; engine / tanks / battery warnings once those are in)
+    const list = warn.list.filter((x) => !(x.topic === 'dv' && ctx?.dvNeed) && !(x.topic === 'dv' && isOpen('tanks')) && !(x.topic && isOpen(x.topic)));
+    $('build-warn').innerHTML = list.map((x) => `<em class="${x.level}">⚠ ${x.text}</em>`).join('');
+    $('build-warn').hidden = !list.length;
     // mission briefing extras (money): the line under the title and whether Start is possible
+    let budget = '';
     if (ctx?.status) {
       const st = ctx.status(build);
+      budget = st.budget ?? '';
       $('build-sub').innerHTML = st.sub; $('build-sub').hidden = false;
       $('build-done').disabled = !st.canStart; $('build-done').innerHTML = st.startLabel;
     }
+    $('build-budget').innerHTML = budget + dvCard; $('build-budget').hidden = !(budget || dvCard);
     const miss = missing();
     if (miss.length && ctx?.onStart) {
       $('build-done').disabled = true;
@@ -139,7 +151,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   function renderSlots() {
     const build = getBuild();
     $('build-slots').innerHTML = S.BUILD_SLOTS.filter((sl) => !ctx?.hideSlots?.includes(sl.id)).map((sl) => {
-      const changed = build[sl.id] !== refBuild()[sl.id], open = isOpen(sl.id);
+      const changed = build[sl.id] !== refBuild()[sl.id], open = isOpen(sl.id) || build[sl.id] === 'none';
       return `<button class="bs${slot === sl.id ? ' on' : ''}${changed && !open ? ' mod' : ''}${open ? ` open${REQUIRED.includes(sl.id) ? ' req' : ''}` : ''}" data-slot="${sl.id}" aria-pressed="${slot === sl.id}" title="${sl.name}">${icon(sl.id)}<span>${sl.short ?? sl.name}</span></button>`;
     }).join('');
   }
@@ -150,19 +162,23 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     const cur = figures(build);
     const planets = planetsNow(), wCur = S.buildWarnings(build, planets, getFuelK(), refBuild());
     const flagged = (w) => Object.values(w.per).filter(Boolean).length, cantCur = Object.values(wCur.per).filter((x) => x === 'bad').length;
-    if (isOpen(slot)) {
+    // parts that are not unlocked yet: not as cards, one note says what brings them
+    const locked = sl.options.filter((o) => o.id !== 'none' && ctx?.locked?.(slot, o.id));
+    const byModule = {};
+    for (const o of locked) (byModule[ctx.locked(slot, o.id)] ??= []).push(o.name);
+    const lockNote = locked.length ? `<div class="bo bo-lock" title="Teile werden freigeschaltet, sobald das Modul auf einer deiner Basen steht"><b>🔒 ${locked.length} weitere</b><small>${Object.entries(byModule).map(([m, n]) => `${n.join(', ')}: mit ${m}`).join(' · ')}</small><span class="bo-b"><em class="b-cur">Modul auf einer Basis bauen</em></span></div>` : '';
+    const shown = sl.options.filter((o) => o.id !== 'none' && !locked.includes(o));
+    if (isOpen(slot) || build[slot] === 'none') {
       // empty slot: what each part weighs and costs (no comparison yet)
       const base = effBuild(build);
-      box.innerHTML = sl.options.map((o) => {
-        const lock = ctx?.locked?.(slot, o.id);
-        if (lock) return `<button class="bo locked" data-id="${o.id}" disabled><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b"><em class="b-lock">🔒 ${lock}</em></span></button>`;
+      box.innerHTML = shown.map((o) => {
         const sp = S.makeSpec({ ...base, [slot]: o.id }), m = sp.comps.filter((c) => SLOT_OF[c.id] === slot).reduce((a, c) => a + c.mass, 0);
         const price = ctx?.priceOf?.(slot, o.id);
         return `<button class="bo" data-id="${o.id}"><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b">${m ? `<em>${f(m)} kg</em>` : ''}${price !== undefined && price !== null ? `<em class="b-price">${price}</em>` : ''}</span></button>`;
-      }).join('');
+      }).join('') + lockNote;
       return;
     }
-    box.innerHTML = sl.options.map((o) => {
+    box.innerHTML = shown.map((o) => {
       const alt = o.id === build[slot] ? cur : figures({ ...build, [slot]: o.id });
       // what this choice would change, as small badges against the current build
       const dm = alt.dry - cur.dry;
@@ -171,13 +187,14 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
       const w = o.id === build[slot] ? wCur : S.buildWarnings({ ...build, [slot]: o.id }, planets, getFuelK(), refBuild());
       const cant = Object.values(w.per).filter((x) => x === 'bad').length;
       const warnBadge = cant > cantCur ? `<em class="b-bad">⚠ ${cant} zu schwach</em>` : flagged(w) > flagged(wCur) ? '<em class="b-warn">⚠ knapper</em>' : '';
-      const badges = o.id === build[slot] ? `<em class="b-cur">gewählt</em>${cant ? `<em class="b-bad">⚠ ${cant} zu schwach</em>` : ''}`
+      const canOff = !!ctx?.open || sl.options.some((x) => x.id === 'none');
+      const badges = o.id === build[slot] ? `<em class="b-cur">${canOff ? 'gewählt · nochmal: weg' : 'gewählt'}</em>${cant ? `<em class="b-bad">⚠ ${cant} zu schwach</em>` : ''}`
         : `${warnBadge}${ctx?.badge ? ctx.badge(build, { ...build, [slot]: o.id }) : ''}${Math.abs(dm) > 0.5 ? `<em class="${dm < 0 ? 'b-up' : 'b-down'}">${dm > 0 ? '+' : '−'}${f(Math.abs(dm))} kg</em>` : ''}${Math.abs(dv) > 0.005 ? `<em class="${dv > 0 ? 'b-up' : 'b-down'}">Δv ${dv > 0 ? '+' : '−'}${f(Math.abs(dv) * 100)} %</em>` : ''}`;
       // career: a part the bases have not unlocked yet
       const lock = ctx?.locked?.(slot, o.id);
       if (lock) return `<button class="bo locked" data-id="${o.id}" disabled><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b"><em class="b-lock" title="kommt mit dem Modul ${lock}">🔒 ${lock}</em></span></button>`;
       return `<button class="bo${o.id === build[slot] ? ' on' : ''}" data-id="${o.id}" aria-pressed="${o.id === build[slot]}"><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b">${badges}</span></button>`;
-    }).join('');
+    }).join('') + lockNote;
   }
   $('build-slots').addEventListener('click', (e) => {
     const b = e.target.closest('.bs'); if (!b) return;
@@ -189,6 +206,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   });
   $('build-back').addEventListener('click', () => close(false)); // back to the menu, nothing started
   $('build-done').addEventListener('click', () => { const c = ctx; close(!!c?.onStart); c?.onStart?.(); }); // (the free builder also has a context: its planets)
+  $('build-clear').addEventListener('click', () => { clearBuild?.(); baseScale.clear(); select(null); refresh(); });
   $('build-reset').addEventListener('click', () => { resetBuild(); baseScale.clear(); pulse = { ids: Object.keys(SLOT_OF), t: 0 }; refresh(); });
 
   // ---------- saved designs (localStorage, shared by every builder: free, approach, missions) ----------
@@ -252,7 +270,12 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   $('build-designs').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'dz-name') $('dz-save').click(); });
 
   function choose(sl, id) {
-    if (getBuild()[sl] === id && !isOpen(sl)) return;
+    if (getBuild()[sl] === id && !isOpen(sl)) {
+      // tapped again: take it off
+      if (openSlot?.(sl)) { pulse = { ids: PARTS_OF[sl], t: 0 }; refresh(); return; }
+      if (S.BUILD_SLOTS.find((x) => x.id === sl).options.some((o) => o.id === 'none')) { setBuild(sl, 'none'); baseScale.clear(); refresh(); }
+      return;
+    }
     setBuild(sl, id); baseScale.clear();
     pulse = { ids: PARTS_OF[sl], t: 0 };
     refresh();
@@ -444,6 +467,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     $('build-title').textContent = ctx?.title ?? 'Lander bauen';
     $('build-sub').hidden = !ctx?.sub; $('build-sub').innerHTML = ctx?.sub ?? '';
     $('build-done').innerHTML = ctx?.onStart ? 'Start ▶' : 'Fertig';
+    $('build-clear').hidden = !ctx?.open; // (clearing needs empty slots: missions and the approach briefing)
     root.classList.toggle('mission', !!ctx?.onStart);
     document.body.classList.add('building');
     refresh();

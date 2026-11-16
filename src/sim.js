@@ -836,13 +836,13 @@ export function buildWarnings(build, planets, fuelK = 1, ref = DEFAULT_BUILD) {
     if (chuteLoad) heavy.push(p.name);
   }
   const names = (l) => [...new Set(l.map((n) => n.replace(' Orbit', '')))].join(', ');
-  if (weak.length) out.push({ level: 'bad', text: `Triebwerk zu schwach für ${names(weak)}` });
-  if (short.length) out.push({ level: 'warn', text: `Weniger Δv als der Standard-Lander: ${names(short)} wird knapp` });
-  if (heavy.length) out.push({ level: 'warn', text: `Schwer für den Schirm: auf ${names(heavy)} schneller unten, mehr Bremsen nötig` });
+  if (weak.length) out.push({ level: 'bad', topic: 'engine', text: `Triebwerk zu schwach für ${names(weak)}` });
+  if (short.length) out.push({ level: 'warn', topic: 'dv', text: `Weniger Δv als der Standard-Lander: ${names(short)} wird knapp` });
+  if (heavy.length) out.push({ level: 'warn', topic: 'chute', text: `Schwer für den Schirm: auf ${names(heavy)} schneller unten, mehr Bremsen nötig` });
   const use = 0.2 + 0.1; // base load with attitude hold, %/s of the standard battery
   const mins = (BAT_CAP * spec.batK) / use / 60;
-  if (!spec.solarK) out.push({ level: mins < 3 ? 'bad' : 'warn', text: `Kein Solar: Batterie reicht ~${String(Math.round(mins * 10) / 10).replace('.', ',')} min` });
-  else if (spec.batK < 1 && spec.solarK < 1) out.push({ level: 'warn', text: 'Wenig Strom: kleine Batterie und kleine Paneele' });
+  if (!spec.solarK) out.push({ level: mins < 3 ? 'bad' : 'warn', topic: 'battery', text: `Ohne Solarpaneele: der Akku hält nur ~${String(Math.round(mins * 10) / 10).replace('.', ',')} min` });
+  else if (spec.batK < 1 && spec.solarK < 1) out.push({ level: 'warn', topic: 'battery', text: 'Wenig Strom: kleine Batterie und kleine Paneele' });
   const thick = planets.filter((p) => p.rho > 0.5); // (only where the builder's planets have thick air)
   if (!spec.ids.has('chute') && thick.length) out.push({ level: 'warn', text: `Ohne Schirm: ${names(thick.map((p) => p.name))} sehr schwer` });
   return { list: out, per };

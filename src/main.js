@@ -192,7 +192,7 @@ function buildWindSelect() {
   box.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => setWind(+b.dataset.i)));
 }
 // difficulty settings besides the wind (start menu, remembered)
-let settings = { ...S.DEFAULT_SETTINGS };
+let settings = { ...S.DEFAULT_SETTINGS, realistic: true }; // (new players: the realistic attitude modes; saved settings win)
 try { Object.assign(settings, JSON.parse(localStorage.getItem('crashland.settings') || '{}')); } catch { /* defaults */ }
 function setSetting(k, v) {
   settings[k] = v;
@@ -292,10 +292,20 @@ function openMissionBuilder(p, type, ring, contract = null) {
       const profit = fee + cost.parts * E.RECOVER.landed + econ.income - cost.total;
       const parts = S.BUILD_SLOTS.filter((sl) => sl.id !== 'capsule' && !editMission?.open?.has(sl.id) && (E.PRICES[sl.id]?.[b[sl.id]] ?? 0) > 0)
         .map((sl) => `${sl.short ?? sl.name} ${E.cr(E.PRICES[sl.id][b[sl.id]])}`).join(', ');
+      // the money as its own small table (cost of what is built so far, the account after, fee, profit)
+      const line = (label, v, cls = '', title = '') => `<span class="bb-l"${title ? ` title="${title}"` : ''}>${label}</span><b class="bb-v ${cls}">${v}</b>`;
+      const k = (v) => E.cr(v).replace(' Cr', ''); // (the unit once, in the heading)
+      const sign = (v) => `${v >= 0 ? '+' : '−'}${k(Math.abs(v))}`;
+      const budget = `<div class="bb-money"><h4>Budget · Cr</h4>`
+        + line('Konto', k(cc.money))
+        + line('Lander', `−${k(cost.total)}`, ok ? 'cost' : 'bad', `${b.payload ? `Kern ${E.cr(E.CARGO_CORE)}` : `Kapsel ${E.cr(E.PRICES.capsule[b.capsule] ?? 0)}`}${parts ? `, ${parts}` : ''}, Treibstoff ${E.cr(cost.fuel)}`)
+        + `<small class="bb-sub">Teile ${k(cost.parts)} · Treibstoff ${k(cost.fuel)}</small>`
+        + line('Danach', k(cc.money - cost.total), ok ? '' : 'bad')
+        + line('Prämie', `+${k(fee)}`, 'ok')
+        + line('Gewinn ≈', sign(profit), profit >= 0 ? 'ok' : 'bad', `wenn die Fracht heil ankommt: Prämie + Bergung der Landestufe (${Math.round(E.RECOVER.landed * 100)} % der Teile)${econ.income ? ' + Basis-Einnahmen' : ''} − Lander (ohne Präzisionsbonus und Resttreibstoff)`)
+        + (broke ? `<button class="link loan">Notkredit +${E.cr(E.LOAN)}</button>` : '') + '</div>';
       return {
-        sub: `${sub}<span class="chips-row">${ringRow()}${chip('💰', E.cr(cc.money).replace(' Cr', ''), '', 'Konto')}${chip('−', E.cr(cost.total).replace(' Cr', ''), ok ? 'cost' : 'bad', `Kosten: ${b.payload ? `Kern ${E.cr(E.CARGO_CORE)}` : `Kapsel ${E.cr(E.PRICES.capsule[b.capsule] ?? 0)}`}${parts ? `, ${parts}` : ''}, Treibstoff ${E.cr(cost.fuel)}`)}${chip('=', E.cr(cc.money - cost.total).replace(' Cr', ''), ok ? '' : 'bad', 'Konto nach dem Start')}</span>`
-          + `<span class="chips-row">${chip('+', E.cr(fee).replace(' Cr', ''), 'ok', 'Prämie bei Lieferung')}${chip('≈', `${profit >= 0 ? '+' : '−'}${E.cr(Math.abs(profit)).replace(' Cr', '')}`, profit >= 0 ? 'ok' : 'bad', `Gewinn, wenn die Fracht heil ankommt: Prämie + Bergung der Landestufe (${Math.round(E.RECOVER.landed * 100)} % der Teile)${econ.income ? ' + Basis-Einnahmen' : ''} − Kosten (ohne Präzisionsbonus und Resttreibstoff)`)}`
-          + (broke ? `<button class="link loan">Notkredit +${E.cr(E.LOAN)}</button>` : '') + '</span>',
+        sub: `${sub}<span class="chips-row">${ringRow()}</span>`, budget,
         canStart: ok, startLabel: ok ? 'Start ▶' : 'Zu teuer',
       };
     },
@@ -320,8 +330,9 @@ function approachRows(p) {
     + '</span>';
 }
 let approachP = null; // the planet of an open approach briefing
+const approachOpen = new Set(); // its empty slots (Leeren, or a part tapped off)
 function openApproach(p) {
-  approachP = p;
+  approachP = p; approachOpen.clear();
   $('menu').hidden = true; cam.pitch = 0;
   usePlanet(p);
   const site = settings.siteSel && settings.siteSel !== 'rand' ? settings.siteSel : 'plain';
@@ -330,7 +341,13 @@ function openApproach(p) {
   builder.open({
     title: `Anflug · ${p.name}`,
     planets: [p],
-    onStart: () => { approachP = null; start(p); },
+    open: approachOpen,
+    onStart: () => {
+      approachP = null;
+      // an empty optional slot flies without that part (required ones block Start)
+      if (approachOpen.size) { for (const sl of approachOpen) build[sl] = 'none'; approachOpen.clear(); try { localStorage.setItem('crashland.build', JSON.stringify(build)); } catch { /* storage unavailable */ } }
+      start(p);
+    },
     status: () => ({ sub: approachRows(p), canStart: true, startLabel: 'Start ▶' }),
   });
 }
@@ -366,6 +383,7 @@ function setBuild(slot, id) {
     parkShip();
     return;
   }
+  approachOpen.delete(slot);
   build[slot] = id;
   try { localStorage.setItem('crashland.build', JSON.stringify(build)); } catch { /* storage unavailable */ }
   if (mode === 'menu') parkShip();
@@ -377,7 +395,9 @@ const builder = createBuilder({
   S, ship, camera, canvas: renderer.domElement,
   getBuild: () => (editMission ? missionBuild : build),
   setBuild,
-  resetBuild: () => { if (editMission) { missionBuild = missionBuildFor(editMission.type, true); editMission.open?.clear(); setBuild('engine', missionBuild.engine); } else { build = { ...S.DEFAULT_BUILD }; setBuild('engine', 'std'); } },
+  openSlot: (slot) => { const o = editMission?.open ?? (approachP ? approachOpen : null); if (o) { o.add(slot); parkShip(); return true; } return false; },
+  clearBuild: () => { const o = editMission?.open ?? (approachP ? approachOpen : null); if (o) { for (const sl of S.BUILD_SLOTS) if (sl.id !== 'capsule') o.add(sl.id); parkShip(); } },
+  resetBuild: () => { if (editMission) { missionBuild = missionBuildFor(editMission.type, true); editMission.open?.clear(); setBuild('engine', missionBuild.engine); } else { build = { ...S.DEFAULT_BUILD }; approachOpen.clear(); setBuild('engine', 'std'); } },
   getFuelK: () => (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * (editMission?.fuel ?? 1),
   onClose: (starting) => { editMission = null; approachP = null; if (!starting) showMenu(); },
 });
@@ -971,7 +991,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyP') doAct('chute');
   if (e.code === 'KeyE') doAct('panels');
   if (e.code === 'KeyJ') doAct('shield');
-  if (e.code === 'KeyC') toggleCom();
+  if (e.code === 'KeyC' && dbg.on) toggleCom(); // centre of mass: a debugging aid
   if (e.code === 'KeyG' && !$('c-dock').hidden) setRcs(!rcsMode);
   if (e.code === 'Period' || e.code === 'Comma') stepWarp(e.code === 'Period' ? (warp === 10 ? 0 : 1) : -1);
 });
@@ -1118,8 +1138,9 @@ $('hud').addEventListener('touchend', swallow, { passive: false });
 $('c-com').classList.toggle('on', showCom);
 // ---------- debug overlay: F3, ?debug, or three taps on the title (phone) ----------
 const dbg = { on: false, frames: 0, acc: 0, worst: 0, steps: 0, at: 0 };
-function setDebug(on) { dbg.on = on; $('debug').hidden = !on; document.body.classList.toggle('dbg', on); try { localStorage.setItem('crashland.debug', on ? '1' : ''); } catch { /* storage unavailable */ } }
+function setDebug(on) { if (!on && showCom) toggleCom(); dbg.on = on; $('debug').hidden = !on; document.body.classList.toggle('dbg', on); try { localStorage.setItem('crashland.debug', on ? '1' : ''); } catch { /* storage unavailable */ } }
 try { if (new URLSearchParams(location.search).has('debug') || localStorage.getItem('crashland.debug')) setDebug(true); } catch { /* ignore */ }
+if (!dbg.on && showCom) toggleCom(); // (the centre-of-mass marker is only offered in debug mode)
 let taps = [];
 for (const el of document.querySelectorAll('.brand, #menu h1')) {
   el.addEventListener('pointerdown', () => {

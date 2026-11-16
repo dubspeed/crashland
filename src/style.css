@@ -918,3 +918,27 @@ body.dbg #parts .com { display: flex; }
 #build-designs-btn svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; }
 #build-done { white-space: nowrap; }
 @media (max-width: 560px) { #build-designs-btn span { display: none; } #build-designs-btn { padding: 6px 9px; } }
+/* builder: the mission card (budget | engine against the need), the lock note, clearing */
+.bd-budget { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 10px; margin: 2px 0 10px; padding: 8px 10px; border-radius: 10px; background: rgba(0,0,0,0.22); border: 1px solid var(--glass-edge); }
+.bd-budget h4 { grid-column: 1 / -1; margin: 0 0 3px; font: 700 9.5px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); }
+.bb-money { display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; align-content: start; }
+.bb-l { font: 500 11px var(--mono); color: var(--mute); }
+.bb-v { font: 700 11.5px var(--mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--ink); }
+.bb-v.ok { color: var(--ok); } .bb-v.bad { color: var(--bad); } .bb-v.cost { color: var(--amber); }
+.bb-sub { grid-column: 1 / -1; margin: -1px 0 2px; font: 500 9.5px var(--mono); color: var(--mute); text-align: right; opacity: 0.8; }
+.bb-money .loan { grid-column: 1 / -1; justify-self: start; margin-top: 3px; }
+.bb-dv { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.bb-dv .bp.need { display: grid; }
+.bb-twr { grid-column: 1 / -1; font: 600 10px var(--mono); color: var(--ok); }
+.bb-twr.warn { color: var(--warn); } .bb-twr.bad { color: var(--bad); }
+.bd-budget:has(.bb-dv):not(:has(.bb-money)) { grid-template-columns: 1fr; }
+.bo.bo-lock { border-style: dashed; opacity: 0.75; cursor: default; }
+.bo.bo-lock small { white-space: normal; }
+#build-clear { display: inline-flex; align-items: center; gap: 5px; }
+#build-clear[hidden] { display: none; }
+#build-clear svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+@media (max-width: 560px) { #build-clear span { display: none; } #build-clear { padding: 6px 9px; } .bd-budget { gap: 8px; padding: 7px 8px; } }
+body:not(.dbg) #c-com { display: none; } /* centre of mass: debug mode only */
+#build-reset { display: inline-flex; align-items: center; gap: 5px; }
+#build-reset svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 560px) { #build-reset span { display: none; } #build-reset { padding: 6px 9px; } .bd-head { gap: 6px; } .bd-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }

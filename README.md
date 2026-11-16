@@ -363,3 +363,12 @@ New approach flights (main.js sets `layout: 2`; old replays without it keep the 
 - **Budget** (career): account, cost of what is built so far (tap for the parts; no tanks yet = no fuel), the account after the start, the fee, and the expected profit if the cargo arrives intact: fee + recovery of the descent stage (`RECOVER.landed`) + base income − cost (precision bonus and leftover fuel not counted).
 - **Δv needed** (`S.dvNeed(planet, dry)`, `DV_NEED`): what the test pilot uses on a base mission (Luna ~205 m/s, Mars ~300, Terra 140 + 15 per tonne over 3 t, Brontes 145 + 28 per tonne: the chute). The builder shows "Δv available / needed" with a bar (tick = needed; green from 25 % reserve, amber just enough, red short) and the thrust-to-weight. `tests/dvneed.test.mjs`.
 - **Saved designs** (`crashland.designs`, up to 30, shared by every builder): "Entwürfe" saves the lander under a name, loads one (in the career a part not unlocked yet is skipped and named), deletes; in a mission the lander last flown with that cargo is offered as "Zuletzt: <cargo>".
+
+### Builder feedback round
+
+- Budget and Δv in their own card under the cargo line (`#build-budget`: "Budget · Cr" table on the left — account, lander with parts/fuel, after, fee, profit; "Antrieb" on the right — Δv available / needed and thrust-to-weight). The status callback returns `budget`, the builder adds the Δv part.
+- No "Keiner" cards: tapping the chosen part again takes it off (missions and the approach briefing: the slot is empty again; free building: "none" where the slot has it). "Leeren" (bin) empties every slot down to the cargo; "Standard" (↺) fills everything.
+- Parts not unlocked yet are no longer cards: one dashed note "🔒 n weitere" names them and the module that brings them.
+- Warnings carry a `topic` and stay quiet about empty slots (no power warning before there is a battery, no Δv-vs-standard warning in a mission: the need display says it). "Ohne Solarpaneele: der Akku hält nur ~x min".
+- The centre-of-mass button (C) only in debug mode (F3 / `?debug`).
+- New players start with the realistic attitude modes; settings were already saved (`crashland.settings`), so a choice made once stays.
