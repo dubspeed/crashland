@@ -808,6 +808,15 @@ export function makeSpec(build = {}) {
   };
 }
 
+/** Δv a base mission from orbit takes on this planet (what the test pilot uses with the missions' orbit, which
+ *  misses the base a little): on Terra and Brontes more for a heavier lander (it hangs faster under the chute
+ *  and has to brake more). dry = lander mass without fuel (kg), cargo included. null: no figure for that planet */
+export const DV_NEED = { 'luna-orbit': [205, 0], 'mars-orbit': [300, 0], 'terra-orbit': [140, 15], 'brontes-orbit': [145, 28] };
+export function dvNeed(p, dry) {
+  const n = DV_NEED[p.id];
+  return n ? Math.round(n[0] + n[1] * Math.max(0, dry / 1000 - 3)) : null;
+}
+
 /** what a build can't do (or only barely), per planet and overall, for the builder's warnings.
  *  Built lander, full tanks: twr < 1 means it cannot stop a fall at all there. */
 export function buildWarnings(build, planets, fuelK = 1, ref = DEFAULT_BUILD) {
@@ -834,7 +843,8 @@ export function buildWarnings(build, planets, fuelK = 1, ref = DEFAULT_BUILD) {
   const mins = (BAT_CAP * spec.batK) / use / 60;
   if (!spec.solarK) out.push({ level: mins < 3 ? 'bad' : 'warn', text: `Kein Solar: Batterie reicht ~${String(Math.round(mins * 10) / 10).replace('.', ',')} min` });
   else if (spec.batK < 1 && spec.solarK < 1) out.push({ level: 'warn', text: 'Wenig Strom: kleine Batterie und kleine Paneele' });
-  if (!spec.ids.has('chute')) out.push({ level: 'warn', text: 'Ohne Schirm: Terra und Brontes sehr schwer' });
+  const thick = planets.filter((p) => p.rho > 0.5); // (only where the builder's planets have thick air)
+  if (!spec.ids.has('chute') && thick.length) out.push({ level: 'warn', text: `Ohne Schirm: ${names(thick.map((p) => p.name))} sehr schwer` });
   return { list: out, per };
 }
 

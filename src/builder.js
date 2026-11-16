@@ -5,6 +5,8 @@ import * as THREE from 'three';
 
 // which build slot a part belongs to (capsule, frame and computer are fixed)
 const SLOT_OF = { capsule: 'capsule', engine: 'engine', tankL: 'tanks', tankR: 'tanks', battery: 'battery', solarL: 'solar', solarR: 'solar', chute: 'chute', shield: 'shield', legs: 'legs' };
+// the slots a lander cannot fly without (an empty one blocks Start)
+const REQUIRED = ['engine', 'tanks', 'battery', 'legs'];
 const PARTS_OF = { capsule: ['capsule'], engine: ['engine'], tanks: ['tankL', 'tankR'], solar: ['solarL', 'solarR'], battery: ['battery'], chute: ['chute'], shield: ['shield'], legs: ['legs'] };
 // slot icons (24×24, stroke = currentColor)
 const ICON = {
@@ -27,19 +29,28 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   let ctx = null;
   const planetsNow = () => ctx?.planets ?? [...S.PLANETS, ...S.ORBIT_PLANETS];
   const refBuild = () => ctx?.ref ?? S.DEFAULT_BUILD;
+  // building up from the cargo (ctx.open: the slots still empty): the required ones block Start, an empty
+  // optional one (solar, chute, shield) flies as "none"
+  const isOpen = (sl) => !!ctx?.open?.has(sl);
+  const effBuild = (b) => { if (!ctx?.open?.size) return b; const e = { ...b }; for (const sl of ctx.open) if (!REQUIRED.includes(sl)) e[sl] = 'none'; return e; };
+  const missing = () => REQUIRED.filter(isOpen);
+  const partOpen = (id) => isOpen(SLOT_OF[id]);
   const view = { tgt: new THREE.Vector3(0, 2.8, 0), dist: 17, zoom: 1, pitch: 0.28 };
 
   // ---------- figures ----------
   const f = (n, d = 0) => n.toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
   const dryMass = (spec) => spec.comps.reduce((a, c) => a + c.mass, 0);
-  const figures = (build) => {
+  const figures = (build0) => {
+    const build = effBuild(build0);
     const spec = S.makeSpec(build);
+    const openMass = spec.comps.reduce((a, c) => a + (partOpen(c.id) ? c.mass : 0), 0);
+    const noDv = isOpen('engine') || isOpen('tanks');
     const per = planetsNow().map((p) => {
       const st = S.createState(p, { build, fuelK: getFuelK(), rnd: () => 0.5, windHeading: 0 });
       const m0 = S.massProps(st).m, fuel = st.fuel0;
-      return { p, dv: spec.isp * S.G0 * Math.log(m0 / (m0 - fuel)), twr: spec.fMax / (m0 * p.g) };
+      return { p, dv: noDv ? NaN : spec.isp * S.G0 * Math.log(m0 / (m0 - fuel)), twr: isOpen('engine') ? NaN : spec.fMax / (m0 * p.g), dry: m0 - fuel };
     });
-    return { spec, dry: dryMass(spec), per };
+    return { spec, dry: dryMass(spec) - openMass, per };
   };
   // landing tolerance (sink rate, drift, tilt) against the standard legs
   const std0 = S.makeSpec(S.DEFAULT_BUILD).land;
@@ -63,7 +74,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   // one bar: fill from the range's lower end (with a floor so the minimum is still visible), tick = standard
   const bar = (v, k, s, better) => {
     const [lo, hi] = range[k];
-    const pos = (x) => (hi > lo ? 12 + ((x - lo) / (hi - lo)) * 88 : 100);
+    const pos = (x) => (hi > lo ? Math.max(0, Math.min(100, 12 + ((x - lo) / (hi - lo)) * 88)) : 100); // (a bare cargo is lighter than any lander)
     const cls = Math.abs(v - s) < 1e-6 ? '' : (v > s) === better ? ' up' : ' down';
     return `<div class="g-bar${cls}"><i style="width:${pos(v).toFixed(1)}%"></i><b style="left:${pos(s).toFixed(1)}%"></b></div>`;
   };
@@ -74,18 +85,31 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     std ??= figures(refBuild());
     const sp = now.spec, ss = std.spec;
     const g = (label, val, barHtml) => `<div class="g"><span class="g-l">${label}</span>${barHtml}<span class="g-v">${val}</span></div>`;
+    const empty = '<div class="g-bar empty"></div>';
+    const og = (sl, label, val, barHtml) => (isOpen(sl) ? g(label, '—', empty) : g(label, val, barHtml));
     $('build-gauges').innerHTML =
       g('Masse', `${f(now.dry / 1000, 2)} t`, bar(now.dry, 'dry', std.dry, false)) +
-      g('Schub', `${f(sp.fMax / 1000)} kN`, bar(sp.fMax, 'fMax', ss.fMax, true)) +
-      g('Isp', `${sp.isp} s`, bar(sp.isp, 'isp', ss.isp, true)) +
-      g('Solar', sp.solarK ? `×${f(sp.solarK, 2)}` : '—', bar(sp.solarK, 'solar', ss.solarK, true)) +
-      g('Batterie', `×${f(sp.batK, 1)}`, bar(sp.batK, 'bat', ss.batK, true)) +
-      g('Schirm', sp.ids.has('chute') ? `${f(sp.chuteCda)} m²` : '—', bar(sp.ids.has('chute') ? sp.chuteCda : 0, 'chute', ss.chuteCda, true)) +
-      g('Landung', `${f(landK(sp) * 100)} %`, bar(landK(sp), 'land', 1, true));
+      og('engine', 'Schub', `${f(sp.fMax / 1000)} kN`, bar(sp.fMax, 'fMax', ss.fMax, true)) +
+      og('engine', 'Isp', `${sp.isp} s`, bar(sp.isp, 'isp', ss.isp, true)) +
+      og('solar', 'Solar', sp.solarK ? `×${f(sp.solarK, 2)}` : '—', bar(sp.solarK, 'solar', ss.solarK, true)) +
+      og('battery', 'Batterie', `×${f(sp.batK, 1)}`, bar(sp.batK, 'bat', ss.batK, true)) +
+      og('chute', 'Schirm', sp.ids.has('chute') ? `${f(sp.chuteCda)} m²` : '—', bar(sp.ids.has('chute') ? sp.chuteCda : 0, 'chute', ss.chuteCda, true)) +
+      og('legs', 'Landung', `${f(landK(sp) * 100)} %`, bar(landK(sp), 'land', 1, true));
     // per planet: Δv against the standard lander (tick at 2/3), thrust-to-weight as a coloured figure;
     // a planet the builder warns about gets a ⚠ (red: cannot land there at all)
-    const warn = S.buildWarnings(build, planetsNow(), getFuelK(), refBuild());
-    $('build-planets').innerHTML = now.per.map((r, i) => {
+    const warn = S.buildWarnings(effBuild(build), planetsNow(), getFuelK(), refBuild());
+    if (ctx?.dvNeed) {
+      // mission: Δv against what the flight takes (tick = needed, green from 25 % reserve), thrust-to-weight
+      $('build-planets').innerHTML = now.per.map((r) => {
+        const need = ctx.dvNeed(r.p, r.dry);
+        if (!need) return '';
+        if (Number.isNaN(r.dv)) return `<div class="bp need"><span class="bp-n">Δv ${r.p.name.replace(' Orbit', '')}</span><div class="g-bar empty"></div><span class="bp-v"><span class="dv">—</span><small>/ ${f(need)} m/s</small></span></div>`;
+        const cls = r.dv >= need * 1.25 ? ' up' : r.dv >= need ? ' warn' : ' down';
+        const twr = r.twr < 1 ? 'bad' : r.twr < 1.3 ? 'warn' : '';
+        return `<div class="bp need" title="Δv ${f(r.dv)} m/s, nötig etwa ${f(need)} m/s (grün ab 25 % Reserve); Schub/Gewicht ${f(r.twr, 1)}"><span class="bp-n">Δv ${r.p.name.replace(' Orbit', '')}</span><div class="g-bar${cls}"><i style="width:${Math.min(100, (r.dv / (need * 2)) * 100).toFixed(1)}%"></i><b style="left:50%"></b></div>`
+          + `<span class="bp-v"><span class="dv">${f(r.dv)}</span><small>/ ${f(need)} m/s</small>${Number.isNaN(r.twr) ? '' : `<small class="${twr}" title="Schub/Gewicht">${f(r.twr, 1)}g</small>`}</span></div>`;
+      }).join('');
+    } else $('build-planets').innerHTML = now.per.map((r, i) => {
       const s0 = std.per[i].dv, k = r.dv / s0;
       const cls = k > 1.02 ? ' up' : k < 0.98 ? ' down' : '';
       const twr = r.twr < 1 ? 'bad' : r.twr < 1.3 ? 'warn' : '';
@@ -102,6 +126,12 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
       $('build-sub').innerHTML = st.sub; $('build-sub').hidden = false;
       $('build-done').disabled = !st.canStart; $('build-done').innerHTML = st.startLabel;
     }
+    const miss = missing();
+    if (miss.length && ctx?.onStart) {
+      $('build-done').disabled = true;
+      $('build-done').innerHTML = miss.length === 1 ? `${S.BUILD_SLOTS.find((x) => x.id === miss[0]).short} fehlt` : `${miss.length} fehlen`;
+      $('build-done').title = `Fehlt noch: ${miss.map((sl) => S.BUILD_SLOTS.find((x) => x.id === sl).name).join(', ')}`;
+    }
     return now;
   }
 
@@ -109,8 +139,8 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   function renderSlots() {
     const build = getBuild();
     $('build-slots').innerHTML = S.BUILD_SLOTS.filter((sl) => !ctx?.hideSlots?.includes(sl.id)).map((sl) => {
-      const changed = build[sl.id] !== refBuild()[sl.id];
-      return `<button class="bs${slot === sl.id ? ' on' : ''}${changed ? ' mod' : ''}" data-slot="${sl.id}" aria-pressed="${slot === sl.id}" title="${sl.name}">${icon(sl.id)}<span>${sl.short ?? sl.name}</span></button>`;
+      const changed = build[sl.id] !== refBuild()[sl.id], open = isOpen(sl.id);
+      return `<button class="bs${slot === sl.id ? ' on' : ''}${changed && !open ? ' mod' : ''}${open ? ` open${REQUIRED.includes(sl.id) ? ' req' : ''}` : ''}" data-slot="${sl.id}" aria-pressed="${slot === sl.id}" title="${sl.name}">${icon(sl.id)}<span>${sl.short ?? sl.name}</span></button>`;
     }).join('');
   }
   function renderOptions() {
@@ -120,6 +150,18 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     const cur = figures(build);
     const planets = planetsNow(), wCur = S.buildWarnings(build, planets, getFuelK(), refBuild());
     const flagged = (w) => Object.values(w.per).filter(Boolean).length, cantCur = Object.values(wCur.per).filter((x) => x === 'bad').length;
+    if (isOpen(slot)) {
+      // empty slot: what each part weighs and costs (no comparison yet)
+      const base = effBuild(build);
+      box.innerHTML = sl.options.map((o) => {
+        const lock = ctx?.locked?.(slot, o.id);
+        if (lock) return `<button class="bo locked" data-id="${o.id}" disabled><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b"><em class="b-lock">🔒 ${lock}</em></span></button>`;
+        const sp = S.makeSpec({ ...base, [slot]: o.id }), m = sp.comps.filter((c) => SLOT_OF[c.id] === slot).reduce((a, c) => a + c.mass, 0);
+        const price = ctx?.priceOf?.(slot, o.id);
+        return `<button class="bo" data-id="${o.id}"><b>${o.name}</b><small>${o.desc.replace(/ · [+−]\d+ kg/, '') || '&nbsp;'}</small><span class="bo-b">${m ? `<em>${f(m)} kg</em>` : ''}${price !== undefined && price !== null ? `<em class="b-price">${price}</em>` : ''}</span></button>`;
+      }).join('');
+      return;
+    }
     box.innerHTML = sl.options.map((o) => {
       const alt = o.id === build[slot] ? cur : figures({ ...build, [slot]: o.id });
       // what this choice would change, as small badges against the current build
@@ -149,8 +191,68 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   $('build-done').addEventListener('click', () => { const c = ctx; close(!!c?.onStart); c?.onStart?.(); }); // (the free builder also has a context: its planets)
   $('build-reset').addEventListener('click', () => { resetBuild(); baseScale.clear(); pulse = { ids: Object.keys(SLOT_OF), t: 0 }; refresh(); });
 
+  // ---------- saved designs (localStorage, shared by every builder: free, approach, missions) ----------
+  const DKEY = 'crashland.designs';
+  const loadDesigns = () => { try { return JSON.parse(localStorage.getItem(DKEY)) || []; } catch { return []; } };
+  const storeDesigns = (l) => { try { localStorage.setItem(DKEY, JSON.stringify(l)); } catch { /* storage unavailable */ } };
+  const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const optName = (sl, id) => S.BUILD_SLOTS.find((x) => x.id === sl).options.find((o) => o.id === id)?.name ?? id;
+  // a design flown with the current cargo (or capsule): mass, and in the career what it costs
+  const summary = (b) => {
+    const cur = getBuild(), full = { ...b, payload: cur.payload, ...(cur.payload ? {} : { capsule: ctx?.hideSlots?.includes('capsule') ? cur.capsule : b.capsule }) };
+    const info = ctx?.designInfo?.(full);
+    return `${optName('engine', b.engine)} · Tanks ${optName('tanks', b.tanks)} · ${f(dryMass(S.makeSpec(full)) / 1000, 1)} t${info ? ` · ${info}` : ''}`;
+  };
+  let designNote = '';
+  function renderDesigns() {
+    const box = $('build-designs');
+    if (box.hidden) return;
+    const list = loadDesigns(), extra = ctx?.lastDesign ? [ctx.lastDesign] : [];
+    const row = (d, i, own) => `<div class="dz"><button class="dz-load" data-i="${i}" data-own="${own ? 1 : 0}"><b>${esc(d.name)}</b><small>${summary(d.b)}</small></button>${own ? `<button class="dz-del" data-i="${i}" title="${esc(d.name)} löschen" aria-label="${esc(d.name)} löschen">×</button>` : ''}</div>`;
+    const canSave = !missing().length;
+    let n = list.length + 1; while (list.some((d) => d.name === `Lander ${n}`)) n++;
+    box.innerHTML = `<div class="dz-save"><input id="dz-name" maxlength="24" placeholder="Name" value="Lander ${n}" aria-label="Name des Landers"><button id="dz-save" class="bd-btn"${canSave ? '' : ' disabled'}>${canSave ? 'Speichern' : 'Erst fertig bauen'}</button></div>`
+      + (designNote ? `<p class="dz-note">${designNote}</p>` : '')
+      + extra.map((d) => row(d, 0, false)).join('') + list.map((d, i) => row(d, i, true)).join('')
+      + (list.length || extra.length ? '' : '<p class="bo-hint">Noch nichts gespeichert.</p>');
+  }
+  function loadDesign(b) {
+    const skipped = [];
+    for (const sl of S.BUILD_SLOTS) {
+      if (ctx?.hideSlots?.includes(sl.id) || b[sl.id] === undefined) continue;
+      const lock = ctx?.locked?.(sl.id, b[sl.id]);
+      if (lock) { skipped.push(`${sl.short ?? sl.name} ${optName(sl.id, b[sl.id])} (🔒 ${lock})`); continue; }
+      setBuild(sl.id, b[sl.id]);
+    }
+    baseScale.clear(); pulse = { ids: Object.keys(SLOT_OF), t: 0 };
+    designNote = skipped.length ? `Noch nicht freigeschaltet, bleibt wie es war: ${skipped.join(', ')}` : '';
+    if (!skipped.length) { $('build-designs').hidden = true; $('build-designs-btn').setAttribute('aria-expanded', 'false'); }
+    refresh();
+  }
+  $('build-designs-btn').addEventListener('click', () => {
+    const box = $('build-designs'); box.hidden = !box.hidden; designNote = '';
+    $('build-designs-btn').setAttribute('aria-expanded', String(!box.hidden));
+    renderDesigns();
+  });
+  $('build-designs').addEventListener('click', (e) => {
+    const t = e.target;
+    if (t.closest('#dz-save')) {
+      const name = ($('dz-name').value || '').trim().slice(0, 24) || 'Lander';
+      const b = { ...effBuild(getBuild()) }; delete b.payload;
+      const list = loadDesigns().filter((d) => d.name !== name);
+      list.unshift({ name, b }); storeDesigns(list.slice(0, 30));
+      designNote = `„${esc(name)}“ gespeichert.`;
+      renderDesigns(); return;
+    }
+    const del = t.closest('.dz-del');
+    if (del) { const list = loadDesigns(); list.splice(+del.dataset.i, 1); storeDesigns(list); designNote = ''; renderDesigns(); return; }
+    const ld = t.closest('.dz-load');
+    if (ld) loadDesign(ld.dataset.own === '1' ? loadDesigns()[+ld.dataset.i].b : ctx.lastDesign.b);
+  });
+  $('build-designs').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'dz-name') $('dz-save').click(); });
+
   function choose(sl, id) {
-    if (getBuild()[sl] === id) return;
+    if (getBuild()[sl] === id && !isOpen(sl)) return;
     setBuild(sl, id); baseScale.clear();
     pulse = { ids: PARTS_OF[sl], t: 0 };
     refresh();
@@ -164,22 +266,25 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   }
   function refresh() {
     $('build-opts').classList.remove('enter'); // a choice re-renders the cards without sliding them in again
-    renderFigures(); renderSlots(); renderOptions(); updateGhosts();
+    renderFigures(); renderSlots(); renderOptions(); updateGhosts(); renderDesigns();
   }
 
   // ---------- 3D: ghosts for parts that are not built in, picking, highlight ----------
   const ghostMat = new THREE.MeshBasicMaterial({ color: 0x6fe3ff, transparent: true, opacity: 0.16, depthWrite: false, wireframe: true });
   const ghosts = {};
-  for (const id of ['chute', 'shield', 'solarL', 'solarR']) {
+  for (const id of ['chute', 'shield', 'solarL', 'solarR', 'engine', 'tankL', 'tankR', 'battery', 'legs']) {
     const g = ship.parts[id].clone(true);
     g.traverse((m) => { if (m.isMesh) { m.material = ghostMat; m.castShadow = false; } });
     g.userData = { ghostOf: id };
     ghosts[id] = g;
   }
   function updateGhosts() {
-    const spec = S.makeSpec(getBuild());
+    const spec = S.makeSpec(effBuild(getBuild()));
+    // an empty slot: its part only as a ghost (the real one hidden until it is chosen)
+    for (const [id, o] of Object.entries(ship.parts)) if (SLOT_OF[id] && o.parent === ship.group) o.visible = !(active && partOpen(id));
     for (const [id, g] of Object.entries(ghosts)) {
-      const show = active && !spec.ids.has(id);
+      const opt = ['chute', 'shield', 'solarL', 'solarR'].includes(id);
+      const show = active && (partOpen(id) || (opt && !spec.ids.has(id)));
       if (show && g.parent !== ship.group) ship.group.add(g);
       if (!show && g.parent) g.parent.remove(g);
       if (show) {
@@ -327,7 +432,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     tmp.set(view.tgt.x, view.tgt.y + (box.isEmpty() ? 0 : size.y * 0.5), view.tgt.z).project(camera);
     const x = (tmp.x * 0.5 + 0.5) * innerWidth, y = (-tmp.y * 0.5 + 0.5) * innerHeight;
     tag.hidden = false;
-    const html = `${sl.name}<b>${built ? o.name : 'nicht verbaut'}</b>`;
+    const html = `${sl.name}<b>${isOpen(slot) ? 'leer' : built ? o.name : 'nicht verbaut'}</b>`;
     if (tag.innerHTML !== html) tag.innerHTML = html;
     tag.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
   }
@@ -335,6 +440,7 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   function open(context = null) {
     active = true; slot = null; hover = null; view.zoom = 1; std = null; ctx = context;
     root.hidden = false;
+    $('build-designs').hidden = true; $('build-designs-btn').setAttribute('aria-expanded', 'false'); designNote = '';
     $('build-title').textContent = ctx?.title ?? 'Lander bauen';
     $('build-sub').hidden = !ctx?.sub; $('build-sub').innerHTML = ctx?.sub ?? '';
     $('build-done').innerHTML = ctx?.onStart ? 'Start ▶' : 'Fertig';

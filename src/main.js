@@ -249,8 +249,11 @@ function openMissionBuilder(p, type, ring, contract = null) {
   ring = contract ? null : type === 'beacon' ? 'center' : ring ?? (B.freeSlot(base, 'near') !== null ? 'near' : 'far');
   const pay = E.PLANET_PAY[p.id] ?? 1;
   const pick = { ring }; // survives the briefing closing (Start)
-  editMission = { planet: p, type, pick, fuel: bon.fuel };
+  // start from the cargo alone: every slot empty (the last lander for this cargo is one tap away under Entwürfe)
+  editMission = { planet: p, type, pick, fuel: bon.fuel, open: new Set(S.BUILD_SLOTS.map((sl) => sl.id).filter((id) => id !== 'capsule')) };
+  const last = missionBuildFor(type), hadLast = (() => { try { return !!localStorage.getItem(`crashland.mbuild.${type}`); } catch { return false; } })();
   missionBuild = missionBuildFor(type);
+  const open = editMission.open;
   if (career()) missionBuild = B.allowedBuild(missionBuild, built); // parts the bases have not unlocked yet
   $('menu').hidden = true; cam.pitch = 0;
   // the backdrop: this mission's planet and its base's landing site (not the planet flown last)
@@ -263,17 +266,35 @@ function openMissionBuilder(p, type, ring, contract = null) {
     title: contract ? `Versorgung · ${c.name}` : c.name,
     sub,
     planets: [p], ref: missionBuildFor(type, true), hideSlots: ['capsule'],
-    onStart: () => start(p, { type, ring: pick.ring, contract }),
+    open: editMission.open,
+    dvNeed: (pl, dry) => S.dvNeed(pl, dry),
+    priceOf: career() ? (slot, opt) => E.cr(E.PRICES[slot]?.[opt] ?? 0) : null,
+    designInfo: career() ? (b) => E.cr(missionCost(b, p, base, bon).total) : null,
+    lastDesign: hadLast ? { name: `Zuletzt: ${c.name}`, b: last } : null,
+    onStart: () => {
+      // an empty optional slot flies without that part (the builder is closed already: write the lander directly)
+      if (open.size) {
+        for (const sl of open) missionBuild[sl] = 'none';
+        const save = { ...missionBuild }; delete save.payload;
+        try { localStorage.setItem(`crashland.mbuild.${type}`, JSON.stringify(save)); } catch { /* storage unavailable */ }
+      }
+      start(p, { type, ring: pick.ring, contract });
+    },
     locked: career() ? (slot, opt) => { const m = B.unlockedBy(slot, opt); return m && !built.has(m) ? S.CARGO[m].name : null; } : null,
     // the line under the title: limits, the slot choice, and in the career what it costs
     status: (b) => {
       if (!career()) return { sub: `${sub}<span class="chips-row">${ringRow()}</span>`, canStart: true, startLabel: 'Start ▶' };
       const cc = loadCareer(), econ = E.baseEconomy(base.modules), fk = (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * bon.fuel;
-      const cost = E.flightCost(b, p, fk, econ.fuelPrice), ok = cc.money >= cost.total;
+      const cost = missionCost(b, p, base, bon), ok = cc.money >= cost.total;
       const broke = cc.money < E.cheapestCost(type, p, fk, econ.fuelPrice);
       const fee = E.FEES[type] * (B.RINGS[pick.ring]?.bonus ?? 1) * pay;
+      // delivered and landed: the fee, the descent stage's recovery and the base's income, minus the flight
+      const profit = fee + cost.parts * E.RECOVER.landed + econ.income - cost.total;
+      const parts = S.BUILD_SLOTS.filter((sl) => sl.id !== 'capsule' && !editMission?.open?.has(sl.id) && (E.PRICES[sl.id]?.[b[sl.id]] ?? 0) > 0)
+        .map((sl) => `${sl.short ?? sl.name} ${E.cr(E.PRICES[sl.id][b[sl.id]])}`).join(', ');
       return {
-        sub: `${sub}<span class="chips-row">${ringRow()}${chip('−', E.cr(cost.total).replace(' Cr', ''), ok ? 'cost' : 'bad', `Kosten: Teile ${E.cr(cost.parts)}, Treibstoff ${E.cr(cost.fuel)}`)}${chip('+', E.cr(fee).replace(' Cr', ''), 'ok', 'Prämie bei Lieferung')}${chip('💰', E.cr(cc.money).replace(' Cr', ''), '', 'Konto')}`
+        sub: `${sub}<span class="chips-row">${ringRow()}${chip('💰', E.cr(cc.money).replace(' Cr', ''), '', 'Konto')}${chip('−', E.cr(cost.total).replace(' Cr', ''), ok ? 'cost' : 'bad', `Kosten: ${b.payload ? `Kern ${E.cr(E.CARGO_CORE)}` : `Kapsel ${E.cr(E.PRICES.capsule[b.capsule] ?? 0)}`}${parts ? `, ${parts}` : ''}, Treibstoff ${E.cr(cost.fuel)}`)}${chip('=', E.cr(cc.money - cost.total).replace(' Cr', ''), ok ? '' : 'bad', 'Konto nach dem Start')}</span>`
+          + `<span class="chips-row">${chip('+', E.cr(fee).replace(' Cr', ''), 'ok', 'Prämie bei Lieferung')}${chip('≈', `${profit >= 0 ? '+' : '−'}${E.cr(Math.abs(profit)).replace(' Cr', '')}`, profit >= 0 ? 'ok' : 'bad', `Gewinn, wenn die Fracht heil ankommt: Prämie + Bergung der Landestufe (${Math.round(E.RECOVER.landed * 100)} % der Teile)${econ.income ? ' + Basis-Einnahmen' : ''} − Kosten (ohne Präzisionsbonus und Resttreibstoff)`)}`
           + (broke ? `<button class="link loan">Notkredit +${E.cr(E.LOAN)}</button>` : '') + '</span>',
         canStart: ok, startLabel: ok ? 'Start ▶' : 'Zu teuer',
       };
@@ -324,8 +345,21 @@ function setApproach(k, v) {
   builder.refresh();
 }
 
+/** a mission flight's cost with what is built so far: empty optional slots fly without, empty required ones
+ *  (engine, tanks, battery, legs) are not counted yet (no tanks: no fuel) */
+function missionCost(b, p, base, bon) {
+  const open = editMission?.open ?? new Set(), e = { ...b };
+  for (const sl of open) if (['solar', 'chute', 'shield'].includes(sl)) e[sl] = 'none';
+  const econ = E.baseEconomy(base.modules), fk = (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * bon.fuel;
+  const c = E.flightCost(e, p, fk, econ.fuelPrice);
+  let parts = c.parts;
+  for (const sl of open) if (!['solar', 'chute', 'shield'].includes(sl)) parts -= E.PRICES[sl]?.[e[sl]] ?? 0;
+  const fuel = open.has('tanks') ? 0 : c.fuel;
+  return { parts, fuel, total: parts + fuel };
+}
 function setBuild(slot, id) {
   if (editMission) {
+    editMission.open?.delete(slot);
     missionBuild[slot] = id;
     const save = { ...missionBuild }; delete save.payload;
     try { localStorage.setItem(`crashland.mbuild.${editMission.type}`, JSON.stringify(save)); } catch { /* storage unavailable */ }
@@ -343,7 +377,7 @@ const builder = createBuilder({
   S, ship, camera, canvas: renderer.domElement,
   getBuild: () => (editMission ? missionBuild : build),
   setBuild,
-  resetBuild: () => { if (editMission) { missionBuild = missionBuildFor(editMission.type, true); setBuild('engine', missionBuild.engine); } else { build = { ...S.DEFAULT_BUILD }; setBuild('engine', 'std'); } },
+  resetBuild: () => { if (editMission) { missionBuild = missionBuildFor(editMission.type, true); editMission.open?.clear(); setBuild('engine', missionBuild.engine); } else { build = { ...S.DEFAULT_BUILD }; setBuild('engine', 'std'); } },
   getFuelK: () => (S.FUEL_LEVELS[settings.fuel]?.k ?? 1) * (editMission?.fuel ?? 1),
   onClose: (starting) => { editMission = null; approachP = null; if (!starting) showMenu(); },
 });
