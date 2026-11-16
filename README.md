@@ -372,3 +372,4 @@ New approach flights (main.js sets `layout: 2`; old replays without it keep the 
 - Warnings carry a `topic` and stay quiet about empty slots (no power warning before there is a battery, no Δv-vs-standard warning in a mission: the need display says it). "Ohne Solarpaneele: der Akku hält nur ~x min".
 - The centre-of-mass button (C) only in debug mode (F3 / `?debug`).
 - New players start with the realistic attitude modes; settings were already saved (`crashland.settings`), so a choice made once stays.
+- Folded by default: one line with the key figures (mission: account, lander cost, Δv available / needed; otherwise the mass) and "Details ▾"; unfolded the budget table, the engine figures and the part gauges (mass, thrust, Isp, …). Remembered in `crashland.bdetails`.

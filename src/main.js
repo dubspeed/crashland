@@ -304,8 +304,10 @@ function openMissionBuilder(p, type, ring, contract = null) {
         + line('Prämie', `+${k(fee)}`, 'ok')
         + line('Gewinn ≈', sign(profit), profit >= 0 ? 'ok' : 'bad', `wenn die Fracht heil ankommt: Prämie + Bergung der Landestufe (${Math.round(E.RECOVER.landed * 100)} % der Teile)${econ.income ? ' + Basis-Einnahmen' : ''} − Lander (ohne Präzisionsbonus und Resttreibstoff)`)
         + (broke ? `<button class="link loan">Notkredit +${E.cr(E.LOAN)}</button>` : '') + '</div>';
+      // folded: just the account and what the lander costs
+      const brief = `<span class="bb-k" title="Konto"><i>💰</i><b>${k(cc.money)}</b></span><span class="bb-k" title="Lander: Teile ${k(cost.parts)}, Treibstoff ${k(cost.fuel)} (Cr)"><i>Lander</i><b class="${ok ? 'cost' : 'bad'}">−${k(cost.total)}</b></span>`;
       return {
-        sub: `${sub}<span class="chips-row">${ringRow()}</span>`, budget,
+        sub: `${sub}<span class="chips-row">${ringRow()}</span>`, budget, brief,
         canStart: ok, startLabel: ok ? 'Start ▶' : 'Zu teuer',
       };
     },

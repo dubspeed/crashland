@@ -79,10 +79,13 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     return `<div class="g-bar${cls}"><i style="width:${pos(v).toFixed(1)}%"></i><b style="left:${pos(s).toFixed(1)}%"></b></div>`;
   };
 
-  let dvCard = '';
+  let dvCard = '', dvBrief = '';
+  // the details (the whole budget, the engine figures, the part gauges) fold away; one line stays
+  let details = false;
+  try { details = localStorage.getItem('crashland.bdetails') === '1'; } catch { /* default: folded */ }
   function renderFigures() {
     const build = getBuild();
-    dvCard = '';
+    dvCard = ''; dvBrief = '';
     const now = figures(build);
     std ??= figures(refBuild());
     const sp = now.spec, ss = std.spec;
@@ -104,6 +107,12 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
       // mission: Δv against what the flight takes (tick = needed, green from 25 % reserve), thrust-to-weight;
       // in the mission card next to the budget, not between the part figures
       $('build-planets').innerHTML = '';
+      dvBrief = now.per.map((r) => {
+        const need = ctx.dvNeed(r.p, r.dry);
+        if (!need) return '';
+        const cls = Number.isNaN(r.dv) ? '' : r.dv >= need * 1.25 ? 'ok' : r.dv >= need ? 'warn' : 'bad';
+        return `<span class="bb-k" title="Δv: vorhanden / nötig"><i>Δv</i><b class="${cls}">${Number.isNaN(r.dv) ? '—' : f(r.dv)}</b><small>/ ${f(need)}</small></span>`;
+      }).join('');
       dvCard = now.per.map((r) => {
         const need = ctx.dvNeed(r.p, r.dry);
         if (!need) return '';
@@ -130,14 +139,20 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     $('build-warn').innerHTML = list.map((x) => `<em class="${x.level}">⚠ ${x.text}</em>`).join('');
     $('build-warn').hidden = !list.length;
     // mission briefing extras (money): the line under the title and whether Start is possible
-    let budget = '';
+    let budget = '', brief = '';
     if (ctx?.status) {
       const st = ctx.status(build);
-      budget = st.budget ?? '';
+      budget = st.budget ?? ''; brief = st.brief ?? '';
       $('build-sub').innerHTML = st.sub; $('build-sub').hidden = false;
       $('build-done').disabled = !st.canStart; $('build-done').innerHTML = st.startLabel;
     }
-    $('build-budget').innerHTML = budget + dvCard; $('build-budget').hidden = !(budget || dvCard);
+    // one line: the key figures (money, Δv) or the mass, and the toggle; unfolded: the cards and the gauges
+    const briefLine = `<div class="bb-brief">${brief || dvBrief ? brief + dvBrief : `<span class="bb-k"><i>Masse</i><b>${f(now.dry / 1000, 2)} t</b></span>`}`
+      + `<button class="bb-more" aria-expanded="${details}">${details ? 'Weniger ▴' : 'Details ▾'}</button></div>`;
+    $('build-budget').innerHTML = briefLine + (details ? budget + dvCard : '');
+    $('build-budget').hidden = false;
+    $('build-budget').classList.toggle('open', details && !!(budget || dvCard));
+    $('build-gauges').hidden = !details;
     const miss = missing();
     if (miss.length && ctx?.onStart) {
       $('build-done').disabled = true;
@@ -206,6 +221,12 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
   });
   $('build-back').addEventListener('click', () => close(false)); // back to the menu, nothing started
   $('build-done').addEventListener('click', () => { const c = ctx; close(!!c?.onStart); c?.onStart?.(); }); // (the free builder also has a context: its planets)
+  $('build-budget').addEventListener('click', (e) => {
+    if (!e.target.closest('.bb-more')) return;
+    details = !details;
+    try { localStorage.setItem('crashland.bdetails', details ? '1' : '0'); } catch { /* storage unavailable */ }
+    renderFigures();
+  });
   $('build-clear').addEventListener('click', () => { clearBuild?.(); baseScale.clear(); select(null); refresh(); });
   $('build-reset').addEventListener('click', () => { resetBuild(); baseScale.clear(); pulse = { ids: Object.keys(SLOT_OF), t: 0 }; refresh(); });
 

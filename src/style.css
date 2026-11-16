@@ -942,3 +942,16 @@ body:not(.dbg) #c-com { display: none; } /* centre of mass: debug mode only */
 #build-reset { display: inline-flex; align-items: center; gap: 5px; }
 #build-reset svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 @media (max-width: 560px) { #build-reset span { display: none; } #build-reset { padding: 6px 9px; } .bd-head { gap: 6px; } .bd-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+
+/* builder: the folded key line and the details toggle */
+.bd-budget { display: block; }
+.bd-budget.open { display: grid; }
+.bb-brief { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.bb-k { display: inline-flex; align-items: baseline; gap: 5px; font: 700 12.5px var(--mono); font-variant-numeric: tabular-nums; }
+.bb-k i { font: 500 10.5px var(--mono); font-style: normal; color: var(--mute); }
+.bb-k small { font: 500 10.5px var(--mono); color: var(--mute); }
+.bb-k b.ok { color: var(--ok); } .bb-k b.warn { color: var(--warn); } .bb-k b.bad { color: var(--bad); } .bb-k b.cost { color: var(--amber); }
+.bb-more { margin-left: auto; padding: 3px 9px; border-radius: 7px; border: 1px solid var(--glass-edge); background: rgba(255,255,255,0.04); color: var(--mute); font: 600 10.5px var(--mono); }
+.bb-more:hover { color: var(--ink); }
+.bd-budget.open .bb-brief { padding-bottom: 6px; margin-bottom: 2px; border-bottom: 1px solid var(--glass-edge); }
+.bd-planets:empty { display: none; }
