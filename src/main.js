@@ -288,31 +288,23 @@ function openMissionBuilder(p, type, ring, contract = null) {
       const cost = missionCost(b, p, base, bon), ok = cc.money >= cost.total;
       const broke = cc.money < E.cheapestCost(type, p, fk, econ.fuelPrice);
       const fee = E.FEES[type] * (B.RINGS[pick.ring]?.bonus ?? 1) * pay;
-      // delivered and landed: the fee, the descent stage's recovery and the base's income, minus the flight
-      const profit = fee + cost.parts * E.RECOVER.landed + econ.income - cost.total;
       const parts = S.BUILD_SLOTS.filter((sl) => sl.id !== 'capsule' && !editMission?.open?.has(sl.id) && (E.PRICES[sl.id]?.[b[sl.id]] ?? 0) > 0)
         .map((sl) => `${sl.short ?? sl.name} ${E.cr(E.PRICES[sl.id][b[sl.id]])}`).join(', ');
-      // the money as its own small table (cost of what is built so far, the account after, fee, profit)
-      const line = (label, v, cls = '', title = '') => `<span class="bb-l"${title ? ` title="${title}"` : ''}>${label}</span><b class="bb-v ${cls}">${v}</b>`;
       const k = (v) => E.cr(v).replace(' Cr', ''); // (the unit once, in the heading)
-      // (while required parts are missing there is no flight to earn anything with: the cost so far)
-      const building = ['engine', 'tanks', 'battery', 'legs'].some((sl) => editMission?.open?.has(sl));
-      const sign = (v) => `${v >= 0 ? '+' : '−'}${k(Math.abs(v))}`;
+      const tone = ok ? 'cost' : 'bad'; // orange: the account pays it; red: it does not (no start)
+      const line = (label, v, cls = '', title = '') => `<span class="bb-l"${title ? ` title="${title}"` : ''}>${label}</span><b class="bb-v ${cls}">${v}</b>`;
+      // unfolded: the account and what the lander costs, split into fuel and parts
       const budget = `<div class="bb-money"><h4>Budget · Cr</h4>`
-        + line('Konto', k(cc.money))
-        + line('Kosten', `${k(cost.total)}`, ok ? 'cost' : 'bad', `${b.payload ? `Kern ${E.cr(E.CARGO_CORE)}` : `Kapsel ${E.cr(E.PRICES.capsule[b.capsule] ?? 0)}`}${parts ? `, ${parts}` : ''}, Treibstoff ${E.cr(cost.fuel)}`)
-        + `<small class="bb-sub">Teile\u00a0${k(cost.parts)} · Treibstoff\u00a0${k(cost.fuel)}</small>`
-        + line('Danach', k(cc.money - cost.total), ok ? '' : 'bad')
-        + line('Prämie', `+${k(fee)}`, 'ok')
-        + (building ? line('Gewinn ≈', '—', '', 'erst wenn der Lander fertig ist') : '') + (building ? '' : line('Gewinn ≈', sign(profit), profit >= 0 ? 'ok' : 'bad', `wenn die Fracht heil ankommt: Prämie + Bergung der Landestufe (${Math.round(E.RECOVER.landed * 100)} % der Teile)${econ.income ? ' + Basis-Einnahmen' : ''} − Lander (ohne Präzisionsbonus und Resttreibstoff)`))
+        + line('Konto', `+${k(cc.money)}`)
+        + line('Treibstoff', k(cost.fuel), tone)
+        + line('Teile', k(cost.parts), tone, `${b.payload ? `Kern ${E.cr(E.CARGO_CORE)}` : `Kapsel ${E.cr(E.PRICES.capsule[b.capsule] ?? 0)}`}${parts ? `, ${parts}` : ''}`)
         + (broke ? `<button class="link loan">Notkredit +${E.cr(E.LOAN)}</button>` : '') + '</div>';
-      // folded: just the account and what the lander costs
-      // folded: what the flight earns (the figure that decides), red when it cannot be paid
-      const brief = !ok ? `<span class="bb-k" title="Konto ${k(cc.money)} Cr"><i>Kosten</i><b class="bad">${k(cost.total)}</b><small>zu teuer</small></span>`
-        : building ? `<span class="bb-k" title="was der Lander bisher kostet: Teile ${k(cost.parts)}, Treibstoff ${k(cost.fuel)} (Cr)"><i>Kosten</i><b class="cost">${k(cost.total)}</b></span>`
-        : `<span class="bb-k" title="Prämie ${k(fee)} − Lander ${k(cost.total)} + Bergung (Cr), wenn die Fracht heil ankommt"><i>Gewinn bei Lieferung</i><b class="${profit >= 0 ? 'ok' : 'bad'}">${sign(profit)}</b></span>`;
+      // folded: what the lander costs
+      const brief = `<span class="bb-k" title="Konto ${k(cc.money)} Cr"><i>Kosten</i><b class="${tone}">${k(cost.total)}</b></span>`;
+      // what the mission pays: in the cargo line
+      const feeChip = chip('', `Prämie +${k(fee)}`, 'ok', 'bei Lieferung');
       return {
-        sub: `${sub}<span class="chips-row">${ringRow()}</span>`, budget, brief,
+        sub: `${sub.replace(/<\/span>$/, `${feeChip}</span>`)}<span class="chips-row">${ringRow()}</span>`, budget, brief,
         canStart: ok, startLabel: ok ? 'Start ▶' : 'Zu teuer',
       };
     },
