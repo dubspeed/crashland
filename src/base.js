@@ -14,31 +14,61 @@ export const REQS = {
   crew: ['lab', 'rocket'],
 };
 
-/** builder options a module unlocks (career); everything not listed here is there from the start */
-export const UNLOCKS = {
-  beacon: { legs: ['wide'], chute: ['large'] },
-  solar: { solar: ['large'], battery: ['large'] },
-  depot: { tanks: ['large'] },
-  lab: { engine: ['eco'], shield: ['light'], capsule: ['armored'] },
-  rover: { legs: ['heavy'] },
-  refinery: { engine: ['strong', 'cluster'], tanks: ['huge'], shield: ['shield'] },
-  rocket: { capsule: ['hab'] },
-};
-const LOCKED = {}; // slot -> option -> module that unlocks it
-for (const [mod, u] of Object.entries(UNLOCKS)) for (const [slot, opts] of Object.entries(u)) for (const o of opts) (LOCKED[slot] ??= {})[o] = mod;
-
-/** the module that unlocks a builder option, or null if it is there from the start */
-export const unlockedBy = (slot, option) => LOCKED[slot]?.[option] ?? null;
-/** is a builder option available, given every module built in any base (damaged ones count) */
-export function isUnlocked(slot, option, builtTypes) {
-  const m = unlockedBy(slot, option);
-  return !m || builtTypes.has(m);
+// ---------- research (career): parts bought once with science points, for every base ----------
+/** the research tree: one node per builder part; branches run left to right, need = nodes bought before */
+export const RESEARCH = [
+  { id: 'engine.eco', branch: 'drive', cost: 3, need: [] },
+  { id: 'engine.strong', branch: 'drive', cost: 5, need: ['engine.eco'] },
+  { id: 'engine.cluster', branch: 'drive', cost: 8, need: ['engine.strong'] },
+  { id: 'tanks.large', branch: 'tanks', cost: 3, need: [] },
+  { id: 'tanks.huge', branch: 'tanks', cost: 6, need: ['tanks.large'] },
+  { id: 'solar.large', branch: 'power', cost: 2, need: [] },
+  { id: 'battery.large', branch: 'power', cost: 2, need: ['solar.large'] },
+  { id: 'legs.wide', branch: 'land', cost: 2, need: [] },
+  { id: 'legs.heavy', branch: 'land', cost: 5, need: ['legs.wide'] },
+  { id: 'chute.large', branch: 'land', cost: 2, need: [] },
+  { id: 'shield.light', branch: 'heat', cost: 3, need: [] },
+  { id: 'shield.shield', branch: 'heat', cost: 6, need: ['shield.light'] },
+];
+export const BRANCHES = { drive: 'Antrieb', tanks: 'Tanks', power: 'Energie', land: 'Landung', heat: 'Hitzeschutz' };
+const NODE = Object.fromEntries(RESEARCH.map((n) => [n.id, n]));
+export const researchNode = (slot, option) => NODE[`${slot}.${option}`] ?? null;
+/** a node's state: 'done', 'open' (buyable now, if the points suffice) or 'locked' (an earlier node is missing) */
+export function researchState(id, done) {
+  if (done.has(id)) return 'done';
+  return NODE[id].need.every((n) => done.has(n)) ? 'open' : 'locked';
+}
+/** buy a node: { sp, done } -> new state, or null if it cannot be bought */
+export function research(state, id) {
+  const n = NODE[id], done = new Set(state.done ?? []);
+  if (!n || researchState(id, done) !== 'open' || (state.sp ?? 0) < n.cost) return null;
+  return { sp: state.sp - n.cost, done: [...done, id] };
+}
+/** is a builder option available, given the research done (a Set of node ids) */
+export function isUnlocked(slot, option, done) {
+  const n = researchNode(slot, option);
+  return !n || done.has(n.id);
 }
 /** a build with every locked choice replaced by the standard part */
-export function allowedBuild(build, builtTypes) {
+export function allowedBuild(build, done) {
   const b = { ...build };
-  for (const sl of S.BUILD_SLOTS) if (!isUnlocked(sl.id, b[sl.id], builtTypes)) b[sl.id] = S.DEFAULT_BUILD[sl.id];
+  for (const sl of S.BUILD_SLOTS) if (!isUnlocked(sl.id, b[sl.id], done)) b[sl.id] = S.DEFAULT_BUILD[sl.id];
   return b;
+}
+/** older saves: the parts their built modules unlocked count as researched */
+const OLD_UNLOCKS = { beacon: ['legs.wide', 'chute.large'], solar: ['solar.large', 'battery.large'], depot: ['tanks.large'], lab: ['engine.eco', 'shield.light'], rover: ['legs.heavy'], refinery: ['engine.strong', 'engine.cluster', 'tanks.huge', 'shield.shield'] };
+export const migratedResearch = (builtTypes) => RESEARCH.map((n) => n.id).filter((id) => [...builtTypes].some((t) => OLD_UNLOCKS[t]?.includes(id)));
+
+/** science points a delivered cargo brings (damaged: half); research labs and rovers on that base add one each */
+export const SCIENCE = { beacon: 1, solar: 1, depot: 1, lab: 3, rover: 2, refinery: 2, rocket: 2, crew: 4, science: 3, parts: 1, crewswap: 2, fuel: 0 };
+export const PLANET_SCIENCE = { 'luna-orbit': 1, 'mars-orbit': 1.5, 'terra-orbit': 2, 'brontes-orbit': 2 };
+export const RESCUE_SCIENCE = 1;
+export function sciencePoints(type, planetId, modules = [], damaged = false) {
+  const base = SCIENCE[type] ?? 0;
+  if (!base) return 0;
+  const extra = modules.filter((m) => !m.damaged && (m.type === 'lab' || m.type === 'rover')).length;
+  const v = Math.round((base + extra) * (PLANET_SCIENCE[planetId] ?? 1));
+  return damaged ? Math.floor(v / 2) : v;
 }
 
 // slots: the beacon in the centre, six on a near ring (16 m), six on a far ring (30 m)

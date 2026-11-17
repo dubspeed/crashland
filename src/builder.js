@@ -188,10 +188,9 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
     const flagged = (w) => Object.values(w.per).filter(Boolean).length, cantCur = Object.values(wCur.per).filter((x) => x === 'bad').length;
     // parts that are not unlocked yet: not as cards, one note says what brings them
     const locked = sl.options.filter((o) => o.id !== 'none' && ctx?.locked?.(slot, o.id));
-    const byModule = {};
-    for (const o of locked) (byModule[ctx.locked(slot, o.id)] ??= []).push(o.name);
-    const lockText = Object.entries(byModule).map(([m, n]) => `${n.join(', ')}: mit ${m}`).join(' · ');
-    const lockNote = locked.length ? `<button class="bo bo-lock${lockOpen ? ' open' : ''}" title="${lockText} – das Modul auf einer Basis bauen"><b>🔒 ${locked.length} weitere</b>${lockOpen ? `<small>${lockText}</small><span class="bo-b"><em class="b-cur">Modul auf einer Basis bauen</em></span>` : ''}</button>` : '';
+    // ctx.locked gives what a part still needs (career: its research price)
+    const lockText = locked.map((o) => `${o.name} ${ctx.locked(slot, o.id)}`).join(' · ');
+    const lockNote = locked.length ? `<button class="bo bo-lock${lockOpen ? ' open' : ''}" title="${lockText} – im Hauptmenü unter Forschung"><b>🔒 ${locked.length} weitere</b>${lockOpen ? `<small>${lockText}</small><span class="bo-b"><em class="b-cur">🔬 Forschung im Hauptmenü</em></span>` : ''}</button>` : '';
     const shown = sl.options.filter((o) => o.id !== 'none' && !locked.includes(o));
     if (isOpen(slot) || build[slot] === 'none') {
       // empty slot: what each part weighs and costs (no comparison yet)
@@ -215,9 +214,9 @@ export function createBuilder({ S, ship, camera, canvas, getBuild, setBuild, res
       const canOff = !!ctx?.open || sl.options.some((x) => x.id === 'none');
       const badges = o.id === build[slot] ? `<em class="b-cur" title="${canOff ? 'nochmal tippen: abbauen' : ''}">gewählt</em>${cant ? `<em class="b-bad">⚠ ${cant} zu schwach</em>` : ''}`
         : `${warnBadge}${ctx?.badge ? ctx.badge(build, { ...build, [slot]: o.id }) : ''}${Math.abs(dm) > 0.5 ? `<em class="${dm < 0 ? 'b-up' : 'b-down'}">${dm > 0 ? '+' : '−'}${f(Math.abs(dm))} kg</em>` : ''}${Math.abs(dv) > 0.005 ? `<em class="${dv > 0 ? 'b-up' : 'b-down'}">Δv ${dv > 0 ? '+' : '−'}${f(Math.abs(dv) * 100)} %</em>` : ''}`;
-      // career: a part the bases have not unlocked yet
+      // career: a part not researched yet
       const lock = ctx?.locked?.(slot, o.id);
-      if (lock) return `<button class="bo locked" data-id="${o.id}" disabled><b>${o.name}</b><small>${nb(o.desc.replace(/ · [+−]\d+ kg/, '')) || '&nbsp;'}</small><span class="bo-b"><em class="b-lock" title="kommt mit dem Modul ${lock}">🔒 ${lock}</em></span></button>`;
+      if (lock) return `<button class="bo locked" data-id="${o.id}" disabled><b>${o.name}</b><small>${nb(o.desc.replace(/ · [+−]\d+ kg/, '')) || '&nbsp;'}</small><span class="bo-b"><em class="b-lock" title="im Hauptmenü unter Forschung">🔒 ${lock}</em></span></button>`;
       return `<button class="bo${o.id === build[slot] ? ' on' : ''}" data-id="${o.id}" aria-pressed="${o.id === build[slot]}"><b>${o.name}</b><small>${nb(o.desc.replace(/ · [+−]\d+ kg/, '')) || '&nbsp;'}</small><span class="bo-b">${badges}</span></button>`;
     }).join('') + lockNote;
   }

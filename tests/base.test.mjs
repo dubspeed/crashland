@@ -31,14 +31,36 @@ test('slots: centre, then near ring, then far ring; older saves get slots', () =
   assert.deepEqual(m.modules.map((x) => x.slot), [0, 3]);
 });
 
-test('unlocks: big parts need the right modules, locked choices fall back to standard', () => {
-  assert.ok(!B.isUnlocked('engine', 'cluster', new Set(['beacon'])));
-  assert.ok(B.isUnlocked('engine', 'cluster', new Set(['refinery'])));
+test('research: parts are bought with science points in order, locked choices fall back to standard', () => {
+  assert.ok(!B.isUnlocked('engine', 'cluster', new Set(['engine.eco'])));
+  assert.ok(B.isUnlocked('engine', 'cluster', new Set(['engine.cluster'])));
   assert.ok(B.isUnlocked('engine', 'std', new Set()));
-  const b = B.allowedBuild({ ...S.DEFAULT_BUILD, engine: 'cluster', tanks: 'small' }, new Set(['beacon']));
+  const b = B.allowedBuild({ ...S.DEFAULT_BUILD, engine: 'cluster', tanks: 'small' }, new Set());
   assert.equal(b.engine, 'std'); assert.equal(b.tanks, 'small');
-  // the standard lander is always buildable
+  // the standard lander is always buildable, every node is a real builder part and its prerequisites exist
   for (const sl of S.BUILD_SLOTS) assert.ok(B.isUnlocked(sl.id, S.DEFAULT_BUILD[sl.id], new Set()), sl.id);
+  for (const n of B.RESEARCH) {
+    const [sl, o] = n.id.split('.');
+    assert.ok(S.BUILD_SLOTS.find((x) => x.id === sl)?.options.some((x) => x.id === o), n.id);
+    for (const r of n.need) assert.ok(B.RESEARCH.some((x) => x.id === r), r);
+  }
+  // buying: needs the earlier node and enough points
+  assert.equal(B.research({ sp: 20, done: [] }, 'engine.strong'), null);
+  assert.equal(B.research({ sp: 2, done: [] }, 'engine.eco'), null);
+  assert.deepEqual(B.research({ sp: 5, done: [] }, 'engine.eco'), { sp: 2, done: ['engine.eco'] });
+  assert.equal(B.research({ sp: 5, done: ['engine.eco'] }, 'engine.eco'), null);
+  // science: more on later planets and with labs/rovers, half when damaged, none for fuel
+  assert.equal(B.sciencePoints('lab', 'luna-orbit'), 3);
+  assert.ok(B.sciencePoints('lab', 'mars-orbit') > 3);
+  assert.equal(B.sciencePoints('science', 'luna-orbit', [{ type: 'lab' }, { type: 'rover', damaged: true }]), 4);
+  assert.equal(B.sciencePoints('lab', 'luna-orbit', [], true), 1);
+  assert.equal(B.sciencePoints('fuel', 'brontes-orbit'), 0);
+  // a whole Luna base earns a good part of the tree, not all of it
+  const luna = S.MISSIONS.reduce((a, t, i) => a + B.sciencePoints(t, 'luna-orbit', S.MISSIONS.slice(0, i).map((type) => ({ type }))), 0);
+  const all = B.RESEARCH.reduce((a, n) => a + n.cost, 0);
+  assert.ok(luna > all / 3 && luna < all, `${luna} of ${all}`);
+  // old saves keep what their modules unlocked
+  assert.deepEqual(B.migratedResearch(new Set(['depot'])), ['tanks.large']);
 });
 
 test('career order and supply contracts', () => {

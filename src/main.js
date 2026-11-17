@@ -244,7 +244,7 @@ function usePlanet(p) {
 function openMissionBuilder(p, type, ring, contract = null) {
   const base = loadBase(p.id);
   if (!type || (!contract && base.modules.some((m) => m.type === type))) return;
-  const c = S.CARGO[type], bon = S.baseBonus(base.modules), built = builtTypes();
+  const c = S.CARGO[type], bon = S.baseBonus(base.modules), done = researched();
   // where it goes: the beacon in the centre, everything else on the near (bonus) or far ring
   ring = contract ? null : type === 'beacon' ? 'center' : ring ?? (B.freeSlot(base, 'near') !== null ? 'near' : 'far');
   const pay = E.PLANET_PAY[p.id] ?? 1;
@@ -254,7 +254,7 @@ function openMissionBuilder(p, type, ring, contract = null) {
   const last = missionBuildFor(type), hadLast = (() => { try { return !!localStorage.getItem(`crashland.mbuild.${type}`); } catch { return false; } })();
   missionBuild = missionBuildFor(type);
   const open = editMission.open;
-  if (career()) missionBuild = B.allowedBuild(missionBuild, built); // parts the bases have not unlocked yet
+  if (career()) missionBuild = B.allowedBuild(missionBuild, done); // parts not researched yet
   $('menu').hidden = true; cam.pitch = 0;
   // the backdrop: this mission's planet and its base's landing site (not the planet flown last)
   usePlanet(p); S.setSite(B.BASE_SITES[p.id] ?? 'plain'); S.setPads(null); world.setSite(S.SITE_IDS.indexOf(B.BASE_SITES[p.id] ?? 'plain'));
@@ -280,7 +280,7 @@ function openMissionBuilder(p, type, ring, contract = null) {
       }
       start(p, { type, ring: pick.ring, contract });
     },
-    locked: career() ? (slot, opt) => { const m = B.unlockedBy(slot, opt); return m && !built.has(m) ? S.CARGO[m].name : null; } : null,
+    locked: career() ? (slot, opt) => { const n = B.researchNode(slot, opt); return n && !done.has(n.id) ? `${n.cost} 🔬` : null; } : null,
     // the line under the title: limits, the slot choice, and in the career what it costs
     status: (b) => {
       if (!career()) return { sub: `${sub}<span class="chips-row">${ringRow()}</span>`, canStart: true, startLabel: 'Start ▶' };
@@ -302,7 +302,8 @@ function openMissionBuilder(p, type, ring, contract = null) {
       // folded: what the lander costs
       const brief = `<span class="bb-k" title="Konto ${k(cc.money)} Cr"><i>Kosten</i><b class="${tone}">${k(cost.total)}</b></span>`;
       // what the mission pays: in the cargo line
-      const feeChip = chip('', `Prämie +${k(fee)}`, 'ok', 'bei Lieferung');
+      const sci = B.sciencePoints(type, p.id, base.modules);
+      const feeChip = chip('', `Prämie +${k(fee)}`, 'ok', 'bei Lieferung') + (sci ? chip('🔬', `+${sci}`, 'sci', 'Forschungspunkte bei Lieferung') : '');
       return {
         sub: `${sub.replace(/<\/span>$/, `${feeChip}</span>`)}<span class="chips-row">${ringRow()}</span>`, budget, brief,
         canStart: ok, startLabel: ok ? 'Start ▶' : 'Zu teuer',
@@ -406,7 +407,7 @@ const builder = createBuilder({
 $('build-btn').addEventListener('click', () => { $('menu').hidden = true; cam.pitch = 0; builder.open({ planets: startMode === '0' ? S.PLANETS : S.ORBIT_PLANETS }); });
 // settings: reset the game state while testing (money, bases, or everything incl. mission landers and best scores)
 function resetGame(what) {
-  const label = { money: 'Geld und Kredit zurücksetzen?', bases: 'Alle Basen zurücksetzen?', all: 'Alles zurücksetzen (Geld, Basen, Missions-Lander, Bestwerte)?' }[what];
+  const label = { money: 'Geld, Kredit und Forschung zurücksetzen?', bases: 'Alle Basen zurücksetzen?', all: 'Alles zurücksetzen (Geld, Basen, Missions-Lander, Bestwerte)?' }[what];
   if (!confirm(label)) return;
   try {
     if (what !== 'bases') localStorage.removeItem('crashland.career');
@@ -457,9 +458,23 @@ function saveBase(id, b) { try { localStorage.setItem(baseKey(id), JSON.stringif
 // career money (prototype): one account for all bases; "sandbox" = everything free
 let economy = 'career';
 try { economy = localStorage.getItem('crashland.economy') ?? 'career'; } catch { /* default */ }
-function loadCareer() { try { return { money: E.START_MONEY, debt: 0, ...JSON.parse(localStorage.getItem('crashland.career') ?? '{}') }; } catch { return { money: E.START_MONEY, debt: 0 }; } }
+// science points (sp) buy research (done: node ids), for every base; older saves keep the parts their modules had unlocked
+function loadCareer() {
+  let c = {};
+  try { c = JSON.parse(localStorage.getItem('crashland.career') ?? '{}') ?? {}; } catch { /* default */ }
+  c = { money: E.START_MONEY, debt: 0, sp: 0, ...c };
+  if (!Array.isArray(c.done)) {
+    let old = false;
+    try { old = !localStorage.getItem('crashland.rmig'); localStorage.setItem('crashland.rmig', '1'); } catch { /* storage unavailable */ }
+    c.done = old ? B.migratedResearch(builtTypes()) : [];
+    saveCareer(c);
+  }
+  return c;
+}
 function saveCareer(c) { try { localStorage.setItem('crashland.career', JSON.stringify(c)); } catch { /* storage unavailable */ } }
 const career = () => economy === 'career';
+/** the research done (sandbox: everything) */
+const researched = () => new Set(career() ? loadCareer().done : B.RESEARCH.map((n) => n.id));
 let mission = null; // the base mission being flown: { planetId, step, type, target: [x, z] }
 // rescue mission: { sc (scenario), planetId, target, result, pay }; each planet has a scenario counter
 let rescue = null;
@@ -558,6 +573,36 @@ function placeBase() {
 // difficulty: one summary button, the options fold out below it
 $('diff-btn').addEventListener('click', () => { const d = $('diff'); d.hidden = !d.hidden; $('diff-btn').setAttribute('aria-expanded', String(!d.hidden)); });
 
+// ---------- research (career): parts bought once with science points, for every base ----------
+const optOf = (id) => { const [sl, o] = id.split('.'), slot = S.BUILD_SLOTS.find((x) => x.id === sl); return { slot, opt: slot.options.find((x) => x.id === o) }; };
+function researchBtn(c) {
+  const can = B.RESEARCH.some((n) => B.researchState(n.id, new Set(c.done)) === 'open' && n.cost <= c.sp);
+  return `<button id="sp-btn" class="sp-btn${can ? ' can' : ''}" title="Forschung: Teile für alle Basen freischalten">🔬 ${c.sp}<small>Forschung</small></button>`;
+}
+function renderResearch() {
+  const c = loadCareer(), done = new Set(c.done);
+  $('rs-sp').textContent = c.sp;
+  $('rs-tree').innerHTML = Object.entries(B.BRANCHES).map(([br, name]) => {
+    const nodes = B.RESEARCH.filter((n) => n.branch === br);
+    return `<div class="rs-branch"><h4>${name}</h4><div class="rs-row">${nodes.map((n, i) => {
+      const st = B.researchState(n.id, done), { slot, opt } = optOf(n.id), short = opt.desc.replace(/ · [+−]\d+ kg/, '');
+      const chain = i && n.need.includes(nodes[i - 1].id) ? '<i class="rs-arrow" aria-hidden="true">›</i>' : '';
+      const need = n.need.filter((x) => !done.has(x)).map((x) => optOf(x).opt.name).join(', ');
+      const foot = st === 'done' ? '<em class="ok">✓ erforscht</em>' : st === 'locked' ? `<em>🔒 nach ${need}</em>` : `<em class="${n.cost <= c.sp ? 'buy' : 'bad'}">${n.cost} 🔬${n.cost <= c.sp ? ' erforschen' : ''}</em>`;
+      return `${chain}<button class="rs-node ${st}${st === 'open' && n.cost > c.sp ? ' poor' : ''}" data-id="${n.id}"${st === 'open' && n.cost <= c.sp ? '' : ' disabled'}>${slot.short !== name ? `<small>${slot.short}</small>` : ''}<b>${opt.name}</b><span>${short}</span>${foot}</button>`;
+    }).join('')}</div></div>`;
+  }).join('');
+}
+function openResearch() { renderResearch(); $('research').hidden = false; }
+$('rs-tree').addEventListener('click', (e) => {
+  const b = e.target.closest('.rs-node'); if (!b || b.disabled) return;
+  const c = loadCareer(), next = B.research(c, b.dataset.id);
+  if (!next) return;
+  saveCareer({ ...c, ...next }); renderResearch(); buildMenu();
+});
+$('rs-close').addEventListener('click', () => { $('research').hidden = true; });
+$('research').addEventListener('click', (e) => { if (e.target === $('research')) $('research').hidden = true; });
+
 function buildMenu() {
   const wrap = $('planets');
   wrap.innerHTML = '';
@@ -577,7 +622,8 @@ function buildMenu() {
   if (startMode === 'base' || startMode === 'rescue') {
     const c = loadCareer();
     $('base-info').innerHTML = `<span class="eco-row"><span class="eco-seg"><button data-eco="career" class="${career() ? 'on' : ''}">Karriere</button><button data-eco="sandbox" class="${career() ? '' : 'on'}">Sandbox</button></span>`
-      + (career() ? `<b class="money">💰 ${E.cr(c.money)}</b>${c.debt > 0 ? ` <small class="debt">Kredit ${E.cr(c.debt)}</small>` : ''}` : '<small>alles kostenlos</small>') + '</span>';
+      + (career() ? `<b class="money">💰 ${E.cr(c.money)}</b>${c.debt > 0 ? ` <small class="debt">Kredit ${E.cr(c.debt)}</small>` : ''}${researchBtn(c)}` : '<small>alles kostenlos</small>') + '</span>';
+    $('sp-btn')?.addEventListener('click', openResearch);
     $('base-info').querySelectorAll('[data-eco]').forEach((b) => b.addEventListener('click', () => { economy = b.dataset.eco; try { localStorage.setItem('crashland.economy', economy); } catch { /* storage unavailable */ } buildMenu(); }));
   }
   // base missions start from orbit (deorbit, re-entry, then down to the base)
@@ -594,7 +640,7 @@ function buildMenu() {
       card.innerHTML = `<span class="orb" style="background: radial-gradient(circle at 35% 30%, ${sky}, ${sky2} 70%)"></span>
         <span class="pname"><b>${p.name.replace(' Orbit', '')}</b><span class="g ${lv.cls}">${lv.name}</span></span>
         <p><b>🆘 ${sc.title}</b>${sc.L.agency ? ` · ${sc.L.agency}` : ''}</p>
-        <span class="chips-row">${chip(sc.L.icon, sc.L.name, '', sc.L.note)}${chip('◎', sc.where, '', 'Start')}${sc.fuelK < 1 ? chip('⛽', `${Math.round(sc.fuelK * 100)} %`, 'warn', 'Treibstoff') : ''}${career() ? chip('💰', E.cr(rescueFee(p, sc)), 'ok', 'Rettungsprämie') : ''}<button class="ch reroll" title="anderer Notruf" aria-label="anderer Notruf">🎲</button></span>`;
+        <span class="chips-row">${chip(sc.L.icon, sc.L.name, '', sc.L.note)}${chip('◎', sc.where, '', 'Start')}${sc.fuelK < 1 ? chip('⛽', `${Math.round(sc.fuelK * 100)} %`, 'warn', 'Treibstoff') : ''}${career() ? chip('💰', E.cr(rescueFee(p, sc)), 'ok', 'Rettungsprämie') + chip('🔬', `+${B.RESCUE_SCIENCE}`, 'sci', 'Forschungspunkte') : ''}<button class="ch reroll" title="anderer Notruf" aria-label="anderer Notruf">🎲</button></span>`;
       card.querySelector('.reroll').addEventListener('click', (e) => { e.stopPropagation(); nextRescue(p.id); buildMenu(); });
       card.addEventListener('click', () => start(p));
       card.addEventListener('keydown', (e) => { if (e.key === 'Enter') start(p); });
@@ -614,7 +660,7 @@ function buildMenu() {
         <span class="pname"><b>${p.name.replace(' Orbit', '')}</b><span class="g">${ms.done}/${ms.total}</span></span>
         <span class="dots">${S.MISSIONS.map((m) => `<i class="${built.has(m) ? (built.get(m).damaged ? 'dmg' : 'done') : ms.open.some((o) => o.type === m) ? 'next' : ''}" title="${S.CARGO[m].name}${ms.locked.find((l) => l.type === m) ? ` – braucht ${ms.locked.find((l) => l.type === m).need.map((n) => S.CARGO[n].name).join(' + ')}` : ''}"></i>`).join('')}</span>
         <span class="mlist">${locked ? `<small class="plock">🔒 erst ${S.ORBIT_PLANETS.find((x) => x.id === B.PLANET_NEEDS[p.id]).name.replace(' Orbit', '')}-Basis fertig bauen</small>`
-          : complete ? offers.map((o, i) => `<button class="mbtn sup" data-c="${i}" title="neben ${S.CARGO[o.near].name}">${S.CARGO[o.type].name}<small>+${E.cr(E.FEES[o.type] * pay).replace(' Cr', '')}</small></button>`).join('')
+          : complete ? offers.map((o, i) => `<button class="mbtn sup" data-c="${i}" title="neben ${S.CARGO[o.near].name}">${S.CARGO[o.type].name}<small>+${E.cr(E.FEES[o.type] * pay).replace(' Cr', '')}${career() && B.sciencePoints(o.type, p.id, base.modules) ? ` · 🔬${B.sciencePoints(o.type, p.id, base.modules)}` : ''}</small></button>`).join('')
           : ms.open.map((o) => `<button class="mbtn" data-type="${o.type}" title="${S.CARGO[o.type].crew ? '4 Crew' : `${S.CARGO[o.type].mass} kg · ${S.CARGO[o.type].g} g`}">${S.CARGO[o.type].name}</button>`).join('')}</span>
         ${complete ? `<span class="chips-row">${chip('📦', `${base.supplies ?? 0} geliefert`, '', 'Versorgungsflüge')}${pay > 1 ? chip('×', pay.toLocaleString('de-DE'), 'ok', 'Prämien auf diesem Planeten') : ''}</span>` : pay > 1 && !locked ? `<span class="chips-row">${chip('×', pay.toLocaleString('de-DE'), 'ok', 'Prämien auf diesem Planeten')}</span>` : ''}
         <span class="chips-row">${bonusChips(bon)}</span>`;
@@ -833,7 +879,9 @@ function finish() {
   // base: a landed cargo close enough to the target becomes a module (damaged ones give no bonus)
   if (mission) {
     mission.result = !ok ? 'lost' : Math.hypot(s.x, s.z) > (mission.contract ? CONTRACT_REACH : BASE_REACH) ? 'far' : s.cargo === 'damaged' ? 'damaged' : 'intact';
-    if (mission.contract && (mission.result === 'intact' || mission.result === 'damaged')) {
+    const delivered = mission.result === 'intact' || mission.result === 'damaged';
+    const sci = delivered ? B.sciencePoints(mission.type, mission.planetId, loadBase(mission.planetId).modules, mission.result === 'damaged') : 0;
+    if (mission.contract && delivered) {
       const base = loadBase(mission.planetId);
       base.supplies = (base.supplies ?? 0) + 1; base.cseed = (base.cseed ?? 0) + 1; // new offers
       saveBase(mission.planetId, base);
@@ -846,8 +894,8 @@ function finish() {
       // income: fee, aim, unburnt fuel, recovered lander, base income; half of it pays back a credit
       const pay = E.payout(s, mission.type, mission.result, mission.cost, mission.econ, (B.RINGS[mission.ring]?.bonus ?? 1) * (E.PLANET_PAY[mission.planetId] ?? 1));
       const cc = loadCareer(), repay = Math.min(cc.debt, Math.round(pay.total / 2));
-      cc.money += pay.total - repay; cc.debt -= repay; saveCareer(cc);
-      mission.pay = { ...pay, repay, money: cc.money };
+      cc.money += pay.total - repay; cc.debt -= repay; cc.sp += sci; saveCareer(cc);
+      mission.pay = { ...pay, repay, money: cc.money, sci, sp: cc.sp };
     }
   }
   if (rescue) {
@@ -856,8 +904,8 @@ function finish() {
       nextRescue(rescue.planetId); // the next call
       if (career()) {
         const fee = rescueFee(planet, rescue.sc), cc = loadCareer(), repay = Math.min(cc.debt, Math.round(fee / 2));
-        cc.money += fee - repay; cc.debt -= repay; saveCareer(cc);
-        rescue.pay = { fee, repay, money: cc.money };
+        cc.money += fee - repay; cc.debt -= repay; cc.sp += B.RESCUE_SCIENCE; saveCareer(cc);
+        rescue.pay = { fee, repay, money: cc.money, sci: B.RESCUE_SCIENCE, sp: cc.sp };
       }
     }
   }
@@ -929,9 +977,8 @@ function showResult() {
   const notes = [];
   if (mission) {
     const base = loadBase(mission.planetId), c = S.CARGO[mission.type];
-    const unl = Object.entries(B.UNLOCKS[mission.type] ?? {}).flatMap(([sl, os]) => os.map((o) => S.BUILD_SLOTS.find((x) => x.id === sl).options.find((x) => x.id === o).name + ' ' + S.BUILD_SLOTS.find((x) => x.id === sl).short));
     if (mission.result === 'intact') notes.push([mission.contract ? `✓ ${c.name} geliefert · 📦 ${base.supplies ?? 0}` : `✓ ${c.name} · ${base.modules.length}/${S.MISSIONS.length}`, 'ok']);
-    if ((mission.result === 'intact' || mission.result === 'damaged') && career() && unl.length) notes.push([`🔓 ${unl.join(', ')}`, 'ok']);
+    if (mission.pay?.sci) notes.push([`🔬 +${mission.pay.sci} Forschungspunkte · ${mission.pay.sp} 🔬`, 'sci']);
     if (mission.result === 'damaged') notes.push([`⚠ ${c.name} beschädigt (${s.cargoDamaged}) · ${base.modules.length}/${S.MISSIONS.length}`, 'warn']);
     if (mission.result === 'far') notes.push([`⚠ mehr als ${mission.contract ? CONTRACT_REACH : BASE_REACH} m vom Ziel – nicht geliefert`, 'warn']);
     if (mission.result === 'lost' && !c.crew) notes.push([`${c.name} verloren`, 'bad']);
@@ -940,6 +987,7 @@ function showResult() {
     const sc = rescue.sc;
     if (rescue.result === 'saved') notes.push([`✓ ${sc.title} · ${RS.LEVELS[sc.level].name}`, 'ok']);
     if (rescue.pay) notes.push([`💰 +${E.cr(rescue.pay.fee)} Rettungsprämie${rescue.pay.repay ? ` (−${E.cr(rescue.pay.repay)} Kredit)` : ''} · ${E.cr(rescue.pay.money)}`, 'ok']);
+    if (rescue.pay?.sci) notes.push([`🔬 +${rescue.pay.sci} Forschungspunkt · ${rescue.pay.sp} 🔬`, 'sci']);
     if (rescue.result === 'far') notes.push([`⚠ mehr als ${BASE_REACH} m von der Basis`, 'warn']);
     if (rescue.result === 'nomodule') notes.push(['⚠ Modul nicht angedockt', 'warn']);
   }
